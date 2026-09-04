@@ -1,61 +1,261 @@
 package io.github.hectorvent.floci.services.securityhub;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.github.hectorvent.floci.core.common.AwsException;
+import io.github.hectorvent.floci.core.common.JsonErrorResponseUtils;
 import io.github.hectorvent.floci.core.common.RegionResolver;
-import io.github.hectorvent.floci.core.storage.StorageBackend;
-import io.github.hectorvent.floci.core.storage.StorageFactory;
+import io.github.hectorvent.floci.services.securityhub.model.SecurityHubAssociation;
+import io.github.hectorvent.floci.services.securityhub.model.SecurityHubState;
 import jakarta.inject.Inject;
-import jakarta.ws.rs.*;
-import jakarta.ws.rs.core.*;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.PATCH;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+
 import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
 
-@Path("/") @Produces(MediaType.APPLICATION_JSON) @Consumes(MediaType.APPLICATION_JSON)
+@Path("/")
+@Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
 public class SecurityHubController {
-    private final ObjectMapper mapper; private final RegionResolver region; private final StorageBackend<String,State> states;
-    @Inject public SecurityHubController(ObjectMapper mapper,RegionResolver region,StorageFactory f){this.mapper=mapper;this.region=region;this.states=f.create("securityhub","securityhub-state.json",new TypeReference<Map<String,State>>(){});}
-    private String key(HttpHeaders h){return region.resolveRegion(h)+"::"+region.getAccountId();}
-    private State state(HttpHeaders h){return states.get(key(h)).orElseGet(State::new);}
-    private void save(HttpHeaders h,State s){states.put(key(h),s);}
+    private final SecurityHubService securityHubService;
+    private final RegionResolver regionResolver;
+    private final ObjectMapper objectMapper;
 
-    @GET @Path("/organization/admin") public Response listAdmin(@Context HttpHeaders h){State s=state(h);var o=mapper.createObjectNode();var a=o.putArray("AdminAccounts");if(s.adminAccountId!=null)a.addObject().put("AccountId",s.adminAccountId).put("Status","ENABLED");return Response.ok(o).build();}
-    @POST @Path("/organization/admin/enable") public Response enableAdmin(@Context HttpHeaders h,String b){State s=state(h);s.adminAccountId=req(parse(b),"AdminAccountId");save(h,s);return ok();}
-    @GET @Path("/accounts") public Response describeHub(@Context HttpHeaders h){State s=state(h);if(!s.enabled)throw notFound("Security Hub is not enabled");var o=mapper.createObjectNode();o.put("HubArn",hubArn(h));o.put("AutoEnableControls",true);o.put("ControlFindingGenerator","SECURITY_CONTROL");return Response.ok(o).build();}
-    @POST @Path("/accounts") public Response enableHub(@Context HttpHeaders h,String b){State s=state(h);s.enabled=true;save(h,s);var o=mapper.createObjectNode();o.put("HubArn",hubArn(h));return Response.ok(o).build();}
-    @GET @Path("/findingAggregator/list") public Response listAggregators(@Context HttpHeaders h){State s=state(h);var o=mapper.createObjectNode();var a=o.putArray("FindingAggregators");if(s.aggregatorArn!=null)a.addObject().put("FindingAggregatorArn",s.aggregatorArn);return Response.ok(o).build();}
-    @POST @Path("/findingAggregator/create") public Response createAggregator(@Context HttpHeaders h,String b){State s=state(h);if(s.aggregatorArn==null)s.aggregatorArn="arn:aws:securityhub:"+region.resolveRegion(h)+":"+region.getAccountId()+":finding-aggregator/"+shortId();JsonNode in=parse(b);s.regionLinkingMode=text(in,"RegionLinkingMode");s.regions=in.get("Regions");save(h,s);return aggregator(s,h);}
-    @GET @Path("/findingAggregator/get/{id}") public Response getAggregator(@Context HttpHeaders h,@PathParam("id") String id){State s=state(h);if(s.aggregatorArn==null)throw notFound("Finding aggregator not found");return aggregator(s,h);}
-    @PATCH @Path("/findingAggregator/update") public Response updateAggregator(@Context HttpHeaders h,String b){State s=state(h);if(s.aggregatorArn==null)throw notFound("Finding aggregator not found");JsonNode in=parse(b);if(in.has("RegionLinkingMode"))s.regionLinkingMode=text(in,"RegionLinkingMode");if(in.has("Regions"))s.regions=in.get("Regions");save(h,s);var o=mapper.createObjectNode();o.put("FindingAggregatorArn",s.aggregatorArn);return Response.ok(o).build();}
-    @GET @Path("/organization/configuration") public Response getOrg(@Context HttpHeaders h){State s=state(h);var o=mapper.createObjectNode();o.put("AutoEnable",false);o.put("AutoEnableStandards","NONE");var c=o.putObject("OrganizationConfiguration");c.put("ConfigurationType",s.central?"CENTRAL":"LOCAL");c.put("Status","ENABLED");return Response.ok(o).build();}
-    @POST @Path("/organization/configuration") public Response updateOrg(@Context HttpHeaders h,String b){State s=state(h);s.central=true;save(h,s);return ok();}
-    @GET @Path("/configurationPolicy/list") public Response listPolicies(@Context HttpHeaders h){State s=state(h);var o=mapper.createObjectNode();var a=o.putArray("ConfigurationPolicySummaries");s.policies.forEach((id,p)->a.add(policySummary(h,id,p)));return Response.ok(o).build();}
-    @POST @Path("/configurationPolicy/create") public Response createPolicy(@Context HttpHeaders h,String b){JsonNode in=parse(b);State s=state(h);String id=shortId();s.policies.put(id,in.deepCopy());save(h,s);return Response.ok(policyDocument(h,id,in)).build();}
-    @GET @Path("/configurationPolicy/get/{id}") public Response getPolicy(@Context HttpHeaders h,@PathParam("id") String id){State s=state(h);JsonNode p=s.policies.get(id);if(p==null)throw notFound("Configuration policy not found");return Response.ok(policyDocument(h,id,p)).build();}
-    @PATCH @Path("/configurationPolicy/{id}") public Response updatePolicy(@Context HttpHeaders h,@PathParam("id") String id,String b){State s=state(h);if(!s.policies.containsKey(id))throw notFound("Configuration policy not found");JsonNode in=parse(b);s.policies.put(id,in.deepCopy());save(h,s);return Response.ok(policyDocument(h,id,in)).build();}
-    @POST @Path("/configurationPolicyAssociation/get") public Response getAssociation(@Context HttpHeaders h,String b){State s=state(h);String target=target(parse(b));String policy=s.associations.get(target);if(policy==null)throw notFound("Association not found");return Response.ok(association(target,policy)).build();}
-    @POST @Path("/configurationPolicyAssociation/associate") public Response associate(@Context HttpHeaders h,String b){JsonNode in=parse(b);State s=state(h);String target=target(in);String policy=req(in,"ConfigurationPolicyIdentifier");s.associations.put(target,policy);save(h,s);return Response.ok(association(target,policy)).build();}
-    @POST @Path("/configurationPolicyAssociation/disassociate") public Response disassociate(@Context HttpHeaders h,String b){State s=state(h);s.associations.remove(target(parse(b)));save(h,s);return ok();}
-    @POST @Path("/configurationPolicyAssociation/list") public Response listAssociations(@Context HttpHeaders h,String b){State s=state(h);var o=mapper.createObjectNode();var a=o.putArray("ConfigurationPolicyAssociationSummaries");s.associations.forEach((t,p)->a.add(association(t,p)));return Response.ok(o).build();}
-    @GET @Path("/tags/{resource: .+}") public Response tags(@PathParam("resource") String resource){var o=mapper.createObjectNode();o.putObject("Tags").put("managed_by","cloud-launchpad");return Response.ok(o).build();}
+    @Inject
+    public SecurityHubController(SecurityHubService securityHubService,
+                                 RegionResolver regionResolver, ObjectMapper objectMapper) {
+        this.securityHubService = securityHubService;
+        this.regionResolver = regionResolver;
+        this.objectMapper = objectMapper;
+    }
 
-    private Response aggregator(State s,HttpHeaders h){var o=mapper.createObjectNode();o.put("FindingAggregatorArn",s.aggregatorArn);o.put("FindingAggregationRegion",region.resolveRegion(h));o.put("RegionLinkingMode",s.regionLinkingMode==null?"SPECIFIED_REGIONS":s.regionLinkingMode);if(s.regions!=null)o.set("Regions",s.regions);return Response.ok(o).build();}
-    private ObjectNode policySummary(HttpHeaders h,String id,JsonNode p){var o=mapper.createObjectNode();o.put("Arn",policyArn(h,id));o.put("Id",id);o.put("Name",text(p,"Name")==null?"Cloud Launchpad Core":text(p,"Name"));o.put("Description",text(p,"Description")==null?"Cloud Launchpad centralized Security Hub baseline":text(p,"Description"));o.put("UpdatedAt",Instant.now().toString());return o;}
-    private ObjectNode policyDocument(HttpHeaders h,String id,JsonNode p){var o=policySummary(h,id,p);JsonNode config=p.get("ConfigurationPolicy");if(config!=null)o.set("ConfigurationPolicy",config);o.put("CreatedAt",Instant.now().toString());return o;}
-    private ObjectNode association(String target,String policy){var o=mapper.createObjectNode();o.put("AssociationStatus","SUCCESS");o.put("AssociationType","APPLIED");o.put("ConfigurationPolicyId",policy.substring(policy.lastIndexOf('/')+1));o.put("TargetId",target);o.put("TargetType",target.startsWith("ou-")?"ORGANIZATIONAL_UNIT":target.startsWith("r-")?"ROOT":"ACCOUNT");o.put("UpdatedAt",Instant.now().toString());return o;}
-    private String hubArn(HttpHeaders h){return "arn:aws:securityhub:"+region.resolveRegion(h)+":"+region.getAccountId()+":hub/default";}
-    private String policyArn(HttpHeaders h,String id){return "arn:aws:securityhub:"+region.resolveRegion(h)+":"+region.getAccountId()+":configuration-policy/"+id;}
-    private static String target(JsonNode in){JsonNode t=in.get("Target");if(t==null||!t.isObject())throw new AwsException("ValidationException","Target is required.",400);for(String k:new String[]{"AccountId","OrganizationalUnitId","RootId"})if(t.path(k).isTextual()&&!t.path(k).asText().isBlank())return t.path(k).asText();throw new AwsException("ValidationException","Target identifier is required.",400);}
-    private JsonNode parse(String b){try{return mapper.readTree(b==null||b.isBlank()?"{}":b);}catch(Exception e){throw new AwsException("ValidationException","Invalid JSON.",400);}}
-    private static String req(JsonNode n,String f){String v=text(n,f);if(v==null||v.isBlank())throw new AwsException("ValidationException",f+" is required.",400);return v;}
-    private static String text(JsonNode n,String f){JsonNode v=n==null?null:n.get(f);return v!=null&&v.isTextual()?v.asText():null;}
-    private static String shortId(){return UUID.randomUUID().toString().replace("-","").substring(0,16);}
-    private static AwsException notFound(String m){return new AwsException("ResourceNotFoundException",m,404);}
-    private Response ok(){return Response.ok(mapper.createObjectNode()).build();}
-    public static class State {public String adminAccountId;public boolean enabled;public String aggregatorArn;public String regionLinkingMode;public JsonNode regions;public boolean central;public Map<String,JsonNode> policies=new LinkedHashMap<>();public Map<String,String> associations=new LinkedHashMap<>();public State(){}}
+    @GET
+    @Path("/organization/admin")
+    public Response listOrganizationAdminAccounts(@Context HttpHeaders headers) {
+        SecurityHubState state = securityHubService.state(region(headers));
+        ObjectNode response = objectMapper.createObjectNode();
+        var accounts = response.putArray("AdminAccounts");
+        if (state.getAdminAccountId() != null) {
+            accounts.addObject().put("AccountId", state.getAdminAccountId()).put("Status", "ENABLED");
+        }
+        return Response.ok(response).build();
+    }
+
+    @POST
+    @Path("/organization/admin/enable")
+    public Response enableOrganizationAdminAccount(@Context HttpHeaders headers, String body) {
+        JsonNode request = readTree(body);
+        securityHubService.enableOrganizationAdminAccount(region(headers), request.path("AdminAccountId").asText(null));
+        return empty();
+    }
+
+    @GET
+    @Path("/accounts")
+    public Response describeHub(@Context HttpHeaders headers) {
+        String region = region(headers);
+        securityHubService.requireEnabled(region);
+        ObjectNode response = objectMapper.createObjectNode();
+        response.put("HubArn", securityHubService.hubArn(region));
+        response.put("AutoEnableControls", true);
+        response.put("ControlFindingGenerator", "SECURITY_CONTROL");
+        return Response.ok(response).build();
+    }
+
+    @POST
+    @Path("/accounts")
+    public Response enableSecurityHub(@Context HttpHeaders headers, String body) {
+        securityHubService.enableSecurityHub(region(headers));
+        return Response.ok(objectMapper.createObjectNode()).build();
+    }
+
+    @GET
+    @Path("/findingAggregator/list")
+    public Response listFindingAggregators(@Context HttpHeaders headers) {
+        SecurityHubState state = securityHubService.state(region(headers));
+        ObjectNode response = objectMapper.createObjectNode();
+        var items = response.putArray("FindingAggregators");
+        if (state.getAggregatorArn() != null) {
+            items.addObject().put("FindingAggregatorArn", state.getAggregatorArn());
+        }
+        return Response.ok(response).build();
+    }
+
+    @POST
+    @Path("/findingAggregator/create")
+    public Response createFindingAggregator(@Context HttpHeaders headers, String body) {
+        String region = region(headers);
+        return aggregator(securityHubService.createFindingAggregator(region, readTree(body)), region);
+    }
+
+    @GET
+    @Path("/findingAggregator/get/{findingAggregatorArn: .+}")
+    public Response getFindingAggregator(@Context HttpHeaders headers,
+                                         @PathParam("findingAggregatorArn") String findingAggregatorArn) {
+        String region = region(headers);
+        return aggregator(securityHubService.getFindingAggregator(region, findingAggregatorArn), region);
+    }
+
+    @PATCH
+    @Path("/findingAggregator/update")
+    public Response updateFindingAggregator(@Context HttpHeaders headers, String body) {
+        String region = region(headers);
+        SecurityHubState state = securityHubService.updateFindingAggregator(region, readTree(body));
+        ObjectNode response = objectMapper.createObjectNode();
+        response.put("FindingAggregatorArn", state.getAggregatorArn());
+        return Response.ok(response).build();
+    }
+
+    @GET
+    @Path("/organization/configuration")
+    public Response describeOrganizationConfiguration(@Context HttpHeaders headers) {
+        SecurityHubState state = securityHubService.organizationConfiguration(region(headers));
+        ObjectNode response = objectMapper.createObjectNode();
+        response.put("AutoEnable", false);
+        response.put("AutoEnableStandards", "NONE");
+        response.put("MemberAccountLimitReached", false);
+        ObjectNode configuration = response.putObject("OrganizationConfiguration");
+        configuration.put("ConfigurationType", state.getOrganizationConfigurationType());
+        configuration.put("Status", state.getOrganizationConfigurationStatus());
+        return Response.ok(response).build();
+    }
+
+    @POST
+    @Path("/organization/configuration")
+    public Response updateOrganizationConfiguration(@Context HttpHeaders headers, String body) {
+        securityHubService.updateOrganizationConfiguration(region(headers), readTree(body));
+        return empty();
+    }
+
+    @GET
+    @Path("/configurationPolicy/list")
+    public Response listConfigurationPolicies(@Context HttpHeaders headers) {
+        String region = region(headers);
+        ObjectNode response = objectMapper.createObjectNode();
+        var items = response.putArray("ConfigurationPolicySummaries");
+        securityHubService.policies(region).forEach(entry -> items.add(policySummary(region, entry.getKey(), entry.getValue())));
+        return Response.ok(response).build();
+    }
+
+    @POST
+    @Path("/configurationPolicy/create")
+    public Response createConfigurationPolicy(@Context HttpHeaders headers, String body) {
+        String region = region(headers);
+        JsonNode request = readTree(body);
+        String id = securityHubService.createConfigurationPolicy(region, request);
+        return Response.ok(policyDocument(region, id, request)).build();
+    }
+
+    @GET
+    @Path("/configurationPolicy/get/{id}")
+    public Response getConfigurationPolicy(@Context HttpHeaders headers, @PathParam("id") String id) {
+        String region = region(headers);
+        return Response.ok(policyDocument(region, id, securityHubService.getConfigurationPolicy(region, id))).build();
+    }
+
+    @PATCH
+    @Path("/configurationPolicy/{id}")
+    public Response updateConfigurationPolicy(@Context HttpHeaders headers, @PathParam("id") String id, String body) {
+        String region = region(headers);
+        return Response.ok(policyDocument(region, id,
+                securityHubService.updateConfigurationPolicy(region, id, readTree(body)))).build();
+    }
+
+    @POST
+    @Path("/configurationPolicyAssociation/get")
+    public Response getConfigurationPolicyAssociation(@Context HttpHeaders headers, String body) {
+        String region = region(headers);
+        JsonNode request = readTree(body);
+        return Response.ok(association(securityHubService.association(region, request))).build();
+    }
+
+    @POST
+    @Path("/configurationPolicyAssociation/associate")
+    public Response startConfigurationPolicyAssociation(@Context HttpHeaders headers, String body) {
+        String region = region(headers);
+        JsonNode request = readTree(body);
+        return Response.ok(association(securityHubService.associate(region, request))).build();
+    }
+
+    @POST
+    @Path("/configurationPolicyAssociation/disassociate")
+    public Response startConfigurationPolicyDisassociation(@Context HttpHeaders headers, String body) {
+        securityHubService.disassociate(region(headers), readTree(body));
+        return empty();
+    }
+
+    @POST
+    @Path("/configurationPolicyAssociation/list")
+    public Response listConfigurationPolicyAssociations(@Context HttpHeaders headers, String body) {
+        String region = region(headers);
+        ObjectNode response = objectMapper.createObjectNode();
+        var items = response.putArray("ConfigurationPolicyAssociationSummaries");
+        securityHubService.associations(region).forEach(entry -> items.add(association(entry)));
+        return Response.ok(response).build();
+    }
+
+    @GET
+    @Path("/tags/{resource: .+}")
+    public Response listTagsForResource(@Context HttpHeaders headers, @PathParam("resource") String resource) {
+        ObjectNode response = objectMapper.createObjectNode();
+        ObjectNode tags = response.putObject("Tags");
+        securityHubService.tagsForResource(region(headers), resource).forEach(tags::put);
+        return Response.ok(response).build();
+    }
+
+    private Response aggregator(SecurityHubState state, String region) {
+        ObjectNode response = objectMapper.createObjectNode();
+        response.put("FindingAggregatorArn", state.getAggregatorArn());
+        response.put("FindingAggregationRegion", region);
+        response.put("RegionLinkingMode", state.getRegionLinkingMode());
+        if (state.getRegions() != null) response.set("Regions", state.getRegions());
+        return Response.ok(response).build();
+    }
+
+    private ObjectNode policySummary(String region, String id, JsonNode policy) {
+        ObjectNode response = objectMapper.createObjectNode();
+        response.put("Arn", securityHubService.policyArn(region, id));
+        response.put("Id", id);
+        response.put("Name", policy.path("Name").asText());
+        if (policy.hasNonNull("Description")) response.put("Description", policy.path("Description").asText());
+        response.put("UpdatedAt", Instant.now().toString());
+        return response;
+    }
+
+    private ObjectNode policyDocument(String region, String id, JsonNode policy) {
+        ObjectNode response = policySummary(region, id, policy);
+        if (policy.has("ConfigurationPolicy")) response.set("ConfigurationPolicy", policy.get("ConfigurationPolicy"));
+        response.put("CreatedAt", Instant.now().toString());
+        return response;
+    }
+
+    private ObjectNode association(SecurityHubAssociation association) {
+        ObjectNode response = objectMapper.createObjectNode();
+        response.put("AssociationStatus", association.getStatus());
+        if (association.getStatusMessage() != null) {
+            response.put("AssociationStatusMessage", association.getStatusMessage());
+        }
+        response.put("AssociationType", "APPLIED");
+        response.put("ConfigurationPolicyId", association.getPolicyId());
+        response.put("TargetId", association.getTargetId());
+        response.put("TargetType", association.getTargetType());
+        response.put("UpdatedAt", Instant.now().toString());
+        return response;
+    }
+
+    private String region(HttpHeaders headers) { return regionResolver.resolveRegion(headers); }
+    private Response empty() { return Response.ok(objectMapper.createObjectNode()).build(); }
+    private JsonNode readTree(String body) {
+        try { return objectMapper.readTree(body == null || body.isBlank() ? "{}" : body); }
+        catch (Exception e) { throw new WebApplicationException(JsonErrorResponseUtils.createSerializationErrorResponse()); }
+    }
 }

@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.hectorvent.floci.core.common.AwsException;
+import io.github.hectorvent.floci.services.identitystore.model.Group;
+import io.github.hectorvent.floci.services.identitystore.model.Membership;
+import io.github.hectorvent.floci.services.identitystore.model.User;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
@@ -33,21 +36,22 @@ public class IdentityStoreJsonHandler {
     }
 
     private Response listGroups(JsonNode request) {
+        var page = service.listGroups(request);
         ObjectNode out = mapper.createObjectNode();
         ArrayNode array = out.putArray("Groups");
-        for (IdentityStoreService.Group group : service.listGroups(
-                IdentityStoreService.required(request, "IdentityStoreId"), IdentityStoreService.filterValue(request))) {
+        for (Group group : page.items()) {
             ObjectNode node = array.addObject();
             node.put("GroupId", group.groupId());
             node.put("IdentityStoreId", group.identityStoreId());
             node.put("DisplayName", group.displayName());
             if (group.description() != null) node.put("Description", group.description());
         }
+        if (page.nextToken() != null) out.put("NextToken", page.nextToken());
         return Response.ok(out).build();
     }
 
     private Response createGroup(JsonNode request) {
-        IdentityStoreService.Group group = service.createGroup(request);
+        Group group = service.createGroup(request);
         ObjectNode out = mapper.createObjectNode();
         out.put("GroupId", group.groupId());
         out.put("IdentityStoreId", group.identityStoreId());
@@ -55,21 +59,22 @@ public class IdentityStoreJsonHandler {
     }
 
     private Response listUsers(JsonNode request) {
+        var page = service.listUsers(request);
         ObjectNode out = mapper.createObjectNode();
         ArrayNode array = out.putArray("Users");
-        for (IdentityStoreService.User user : service.listUsers(
-                IdentityStoreService.required(request, "IdentityStoreId"), IdentityStoreService.filterValue(request))) {
+        for (User user : page.items()) {
             ObjectNode node = array.addObject();
             node.put("UserId", user.userId());
             node.put("IdentityStoreId", user.identityStoreId());
             node.put("UserName", user.userName());
             if (user.displayName() != null) node.put("DisplayName", user.displayName());
         }
+        if (page.nextToken() != null) out.put("NextToken", page.nextToken());
         return Response.ok(out).build();
     }
 
     private Response createUser(JsonNode request) {
-        IdentityStoreService.User user = service.createUser(request);
+        User user = service.createUser(request);
         ObjectNode out = mapper.createObjectNode();
         out.put("UserId", user.userId());
         out.put("IdentityStoreId", user.identityStoreId());
@@ -79,23 +84,20 @@ public class IdentityStoreJsonHandler {
     private Response isMemberInGroups(JsonNode request) {
         String store = IdentityStoreService.required(request, "IdentityStoreId");
         String user = IdentityStoreService.memberUserId(request.get("MemberId"));
-        JsonNode groupIds = request.get("GroupIds");
-        if (groupIds == null || !groupIds.isArray()) {
-            throw new AwsException("ValidationException", "GroupIds must be an array.", 400);
-        }
+        var groupIds = service.validateGroupIds(request.get("GroupIds"));
         ObjectNode out = mapper.createObjectNode();
         ArrayNode results = out.putArray("Results");
-        for (JsonNode group : groupIds) {
+        for (String group : groupIds) {
             ObjectNode result = results.addObject();
-            result.put("GroupId", group.asText());
+            result.put("GroupId", group);
             result.putObject("MemberId").put("UserId", user);
-            result.put("MembershipExists", service.isMember(store, user, group.asText()));
+            result.put("MembershipExists", service.isMember(store, user, group));
         }
         return Response.ok(out).build();
     }
 
     private Response createGroupMembership(JsonNode request) {
-        IdentityStoreService.Membership membership = service.createMembership(request);
+        Membership membership = service.createMembership(request);
         ObjectNode out = mapper.createObjectNode();
         out.put("MembershipId", membership.membershipId());
         out.put("IdentityStoreId", membership.identityStoreId());

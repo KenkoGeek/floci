@@ -71,9 +71,9 @@ public class CloudWatchLogsHandler {
             case "PutResourcePolicy" -> handlePutResourcePolicy(request, region);
             case "DescribeResourcePolicies" -> handleDescribeResourcePolicies(region);
             case "PutDestination" -> handlePutDestination(request, region);
-            case "PutDestinationPolicy" -> handlePutDestinationPolicy(request);
-            case "PutAccountPolicy" -> handlePutAccountPolicy(request);
-            case "DescribeAccountPolicies" -> handleDescribeAccountPolicies(request);
+            case "PutDestinationPolicy" -> handlePutDestinationPolicy(request, region);
+            case "PutAccountPolicy" -> handlePutAccountPolicy(request, region);
+            case "DescribeAccountPolicies" -> handleDescribeAccountPolicies(request, region);
             case "GetDataProtectionPolicy" -> handleGetDataProtectionPolicy(request, region);
             case "StartQuery" -> handleStartQuery(request, region);
             case "GetQueryResults" -> handleGetQueryResults(request, region);
@@ -185,31 +185,31 @@ public class CloudWatchLogsHandler {
         return Response.ok(response).build();
     }
 
-    private Response handlePutDestinationPolicy(JsonNode request) {
+    private Response handlePutDestinationPolicy(JsonNode request, String region) {
         crossAccountService.putDestinationPolicy(
                 request.path("destinationName").asText(null),
-                request.path("accessPolicy").asText(null));
+                request.path("accessPolicy").asText(null), region);
         return Response.ok(objectMapper.createObjectNode()).build();
     }
 
-    private Response handlePutAccountPolicy(JsonNode request) {
+    private Response handlePutAccountPolicy(JsonNode request, String region) {
         AccountPolicy policy = crossAccountService.putAccountPolicy(
                 request.path("policyName").asText(null),
                 request.path("policyDocument").asText(null),
                 request.path("policyType").asText(null),
                 request.path("selectionCriteria").asText(null),
-                request.path("scope").asText(null));
+                request.path("scope").asText(null), region);
         ObjectNode response = objectMapper.createObjectNode();
         response.set("accountPolicy", buildAccountPolicy(policy));
         return Response.ok(response).build();
     }
 
-    private Response handleDescribeAccountPolicies(JsonNode request) {
+    private Response handleDescribeAccountPolicies(JsonNode request, String region) {
         String policyType = request.path("policyType").asText(null);
         String policyName = request.path("policyName").asText(null);
         ObjectNode response = objectMapper.createObjectNode();
         ArrayNode policies = response.putArray("accountPolicies");
-        for (AccountPolicy policy : crossAccountService.describeAccountPolicies(policyType, policyName)) {
+        for (AccountPolicy policy : crossAccountService.describeAccountPolicies(policyType, policyName, region)) {
             policies.add(buildAccountPolicy(policy));
         }
         return Response.ok(response).build();
@@ -230,6 +230,7 @@ public class CloudWatchLogsHandler {
 
     private ObjectNode buildAccountPolicy(AccountPolicy policy) {
         ObjectNode node = objectMapper.createObjectNode();
+        node.put("accountId", policy.getAccountId());
         node.put("policyName", policy.getPolicyName());
         node.put("policyDocument", policy.getPolicyDocument());
         node.put("policyType", policy.getPolicyType());

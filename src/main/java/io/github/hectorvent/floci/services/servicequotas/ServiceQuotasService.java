@@ -137,7 +137,7 @@ public class ServiceQuotasService {
         node.put("Value", quota.value());
         node.put("Unit", "None");
         node.put("Adjustable", true);
-        node.put("GlobalQuota", false);
+        node.put("GlobalQuota", "organizations".equals(serviceCode));
         node.put("QuotaAppliedAtLevel", "ACCOUNT");
         return node;
     }
@@ -192,10 +192,22 @@ public class ServiceQuotasService {
         }
     }
 
-    public ObjectNode listRequestedServiceQuotaChangeHistoryByQuota(String serviceCode, String quotaCode) {
+    public ObjectNode listRequestedServiceQuotaChangeHistoryByQuota(String serviceCode, String quotaCode,
+                                                                    String nextToken, Integer maxResults) {
         requireServiceCode(serviceCode);
         if (quotaCode == null || quotaCode.isBlank()) {
             throw new AwsException("IllegalArgumentException", "Invalid input: QuotaCode must not be empty.", 400);
+        }
+        boolean exists = quotasFor(serviceCode).stream().anyMatch(quota -> quota.quotaCode().equals(quotaCode));
+        if (!exists) {
+            throw new AwsException("NoSuchResourceException",
+                    "The request failed because the specified service quota does not exist.", 400);
+        }
+        if (maxResults != null && (maxResults < 1 || maxResults > 100)) {
+            throw new AwsException("IllegalArgumentException", "Invalid input: MaxResults must be between 1 and 100.", 400);
+        }
+        if (nextToken != null && !nextToken.isEmpty() && decodeToken(nextToken) < 0) {
+            throw new AwsException("InvalidPaginationTokenException", "Invalid NextToken.", 400);
         }
         ObjectNode response = objectMapper.createObjectNode();
         response.putArray("RequestedQuotas");

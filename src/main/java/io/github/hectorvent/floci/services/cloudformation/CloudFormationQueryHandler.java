@@ -9,6 +9,7 @@ import io.github.hectorvent.floci.services.cloudformation.model.StackEvent;
 import io.github.hectorvent.floci.services.cloudformation.model.StackInstance;
 import io.github.hectorvent.floci.services.cloudformation.model.StackResource;
 import io.github.hectorvent.floci.services.cloudformation.model.StackSet;
+import io.github.hectorvent.floci.services.cloudformation.model.StackSetAutoDeploymentTarget;
 import io.github.hectorvent.floci.services.cloudformation.model.StackSetOperation;
 import io.github.hectorvent.floci.services.cloudformation.model.TemplateSummary;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -37,7 +38,6 @@ public class CloudFormationQueryHandler {
 
     private final CloudFormationService cfnService;
     private final StackSetService stackSetService;
-    private volatile boolean organizationsAccessEnabled;
 
     @Inject
     public CloudFormationQueryHandler(CloudFormationService cfnService, StackSetService stackSetService) {
@@ -731,34 +731,34 @@ public class CloudFormationQueryHandler {
     private Response describeOrganizationsAccess() {
         String xml = new XmlBuilder().start("DescribeOrganizationsAccessResponse", CF_NS)
                 .start("DescribeOrganizationsAccessResult")
-                .elem("Status", organizationsAccessEnabled ? "ENABLED" : "DISABLED")
+                .elem("Status", stackSetService.isOrganizationsAccessEnabled() ? "ENABLED" : "DISABLED")
                 .end("DescribeOrganizationsAccessResult").raw(AwsQueryResponse.responseMetadata())
                 .end("DescribeOrganizationsAccessResponse").build();
         return Response.ok(xml).type("text/xml").build();
     }
 
     private Response activateOrganizationsAccess() {
-        organizationsAccessEnabled = true;
-        String xml = new XmlBuilder().start("ActivateOrganizationsAccessResponse", CF_NS)
-                .start("ActivateOrganizationsAccessResult").end("ActivateOrganizationsAccessResult")
-                .raw(AwsQueryResponse.responseMetadata()).end("ActivateOrganizationsAccessResponse").build();
-        return Response.ok(xml).type("text/xml").build();
+        try {
+            stackSetService.activateOrganizationsAccess();
+            String xml = new XmlBuilder().start("ActivateOrganizationsAccessResponse", CF_NS)
+                    .start("ActivateOrganizationsAccessResult").end("ActivateOrganizationsAccessResult")
+                    .raw(AwsQueryResponse.responseMetadata()).end("ActivateOrganizationsAccessResponse").build();
+            return Response.ok(xml).type("text/xml").build();
+        } catch (AwsException e) {
+            return xmlError(e.getErrorCode(), e.getMessage(), e.getHttpStatus());
+        }
     }
 
     private Response listStackSetAutoDeploymentTargets(MultivaluedMap<String, String> params) {
         try {
-            List<StackInstance> instances = stackSetService.listStackInstances(params.getFirst("StackSetName"), null, null);
-            Map<String, String> targets = new java.util.TreeMap<>();
-            for (StackInstance instance : instances) {
-                if (instance.getOrganizationalUnitId() != null && !instance.getOrganizationalUnitId().isBlank()) {
-                    targets.put(instance.getOrganizationalUnitId(), instance.getRegion());
-                }
-            }
+            List<StackSetAutoDeploymentTarget> targets =
+                    stackSetService.listStackSetAutoDeploymentTargets(params.getFirst("StackSetName"));
             XmlBuilder xml = new XmlBuilder().start("ListStackSetAutoDeploymentTargetsResponse", CF_NS)
                     .start("ListStackSetAutoDeploymentTargetsResult").start("Summaries");
-            for (Map.Entry<String, String> target : targets.entrySet()) {
-                xml.start("member").elem("OrganizationalUnitId", target.getKey()).start("Regions")
-                        .elem("member", target.getValue()).end("Regions").end("member");
+            for (StackSetAutoDeploymentTarget target : targets) {
+                xml.start("member").elem("OrganizationalUnitId", target.getOrganizationalUnitId()).start("Regions");
+                for (String region : target.getRegions()) xml.elem("member", region);
+                xml.end("Regions").end("member");
             }
             xml.end("Summaries").end("ListStackSetAutoDeploymentTargetsResult")
                     .raw(AwsQueryResponse.responseMetadata()).end("ListStackSetAutoDeploymentTargetsResponse");
@@ -776,11 +776,11 @@ public class CloudFormationQueryHandler {
                     extractParameters(params),
                     extractList(params, "Capabilities.member."),
                     extractTags(params),
-                    params.getFirst("Description"));
-            if (params.getFirst("PermissionModel") != null) ss.setPermissionModel(params.getFirst("PermissionModel"));
-            ss.setAutoDeploymentEnabled(Boolean.parseBoolean(params.getFirst("AutoDeployment.Enabled")));
-            ss.setRetainStacksOnAccountRemoval(Boolean.parseBoolean(params.getFirst("AutoDeployment.RetainStacksOnAccountRemoval")));
-            ss.setManagedExecutionActive(Boolean.parseBoolean(params.getFirst("ManagedExecution.Active")));
+                    params.getFirst("Description"),
+                    params.getFirst("PermissionModel"),
+                    Boolean.parseBoolean(params.getFirst("AutoDeployment.Enabled")),
+                    Boolean.parseBoolean(params.getFirst("AutoDeployment.RetainStacksOnAccountRemoval")),
+                    Boolean.parseBoolean(params.getFirst("ManagedExecution.Active")));
             String xml = new XmlBuilder()
                     .start("CreateStackSetResponse", CF_NS)
                     .start("CreateStackSetResult")
@@ -855,7 +855,14 @@ public class CloudFormationQueryHandler {
                     extractParameters(params, previousParameters),
                     extractList(params, "Capabilities.member."),
                     extractTags(params),
-                    params.getFirst("Description"));
+                    params.getFirst("Description"),
+                    params.getFirst("OperationId"),
+                    params.containsKey("AutoDeployment.Enabled")
+                            ? Boolean.parseBoolean(params.getFirst("AutoDeployment.Enabled")) : null,
+                    params.containsKey("AutoDeployment.RetainStacksOnAccountRemoval")
+                            ? Boolean.parseBoolean(params.getFirst("AutoDeployment.RetainStacksOnAccountRemoval")) : null,
+                    params.containsKey("ManagedExecution.Active")
+                            ? Boolean.parseBoolean(params.getFirst("ManagedExecution.Active")) : null);
             return operationResponse("UpdateStackSet", op.getOperationId());
         } catch (AwsException e) {
             return xmlError(e.getErrorCode(), e.getMessage(), e.getHttpStatus());
@@ -877,7 +884,8 @@ public class CloudFormationQueryHandler {
                     params.getFirst("StackSetName"),
                     extractList(params, "Accounts.member."),
                     resolveRegions(params, region),
-                    extractList(params, "DeploymentTargets.OrganizationalUnitIds.member."));
+                    extractList(params, "DeploymentTargets.OrganizationalUnitIds.member."),
+                    params.getFirst("OperationId"));
             return operationResponse("CreateStackInstances", op.getOperationId());
         } catch (AwsException e) {
             return xmlError(e.getErrorCode(), e.getMessage(), e.getHttpStatus());

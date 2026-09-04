@@ -6,6 +6,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
 @RegisterForReflection
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class AccountPolicy {
+    private String accountId;
     private String policyName;
     private String policyDocument;
     private String policyType;
@@ -13,6 +14,8 @@ public class AccountPolicy {
     private String scope;
     private long lastUpdatedTime;
 
+    public String getAccountId() { return accountId; }
+    public void setAccountId(String accountId) { this.accountId = accountId; }
     public String getPolicyName() { return policyName; }
     public void setPolicyName(String policyName) { this.policyName = policyName; }
     public String getPolicyDocument() { return policyDocument; }

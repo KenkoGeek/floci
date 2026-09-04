@@ -1,49 +1,98 @@
 package io.github.hectorvent.floci.services.accessanalyzer;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.hectorvent.floci.core.common.AwsException;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.hectorvent.floci.core.common.JsonErrorResponseUtils;
+import io.github.hectorvent.floci.core.common.PaginatedResult;
+import io.github.hectorvent.floci.core.common.Pagination;
 import io.github.hectorvent.floci.core.common.RegionResolver;
-import io.github.hectorvent.floci.core.storage.StorageBackend;
-import io.github.hectorvent.floci.core.storage.StorageFactory;
+import io.github.hectorvent.floci.services.accessanalyzer.model.Analyzer;
 import jakarta.inject.Inject;
-import jakarta.ws.rs.*;
-import jakarta.ws.rs.core.*;
-import java.time.Instant;
-import java.util.Comparator;
-import java.util.Map;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.PUT;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 
 @Path("/")
 @Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
 public class AccessAnalyzerController {
-    private final ObjectMapper mapper; private final RegionResolver region; private final StorageBackend<String, Analyzer> analyzers;
+    private final AccessAnalyzerService accessAnalyzerService;
+    private final RegionResolver regionResolver;
+    private final ObjectMapper objectMapper;
+
     @Inject
-    public AccessAnalyzerController(ObjectMapper mapper, RegionResolver region, StorageFactory storageFactory) {
-        this.mapper=mapper; this.region=region;
-        this.analyzers=storageFactory.create("accessanalyzer","accessanalyzer-analyzers.json",new TypeReference<Map<String,Analyzer>>(){});
+    public AccessAnalyzerController(AccessAnalyzerService accessAnalyzerService,
+                                    RegionResolver regionResolver, ObjectMapper objectMapper) {
+        this.accessAnalyzerService = accessAnalyzerService;
+        this.regionResolver = regionResolver;
+        this.objectMapper = objectMapper;
     }
-    @GET @Path("/analyzer")
-    public Response list(@Context HttpHeaders headers) {
-        String prefix=region.resolveRegion(headers)+"::";
-        var out=mapper.createObjectNode(); var arr=out.putArray("analyzers");
-        analyzers.scan(k->k.startsWith(prefix)).stream().sorted(Comparator.comparing(Analyzer::name)).forEach(a->{
-            var n=arr.addObject(); n.put("arn",a.arn()); n.put("name",a.name()); n.put("type",a.type()); n.put("status","ACTIVE"); n.put("createdAt",a.createdAt());
-        }); return Response.ok(out).build();
+
+    @GET
+    @Path("/analyzer")
+    public Response listAnalyzers(@Context HttpHeaders headers,
+                                  @QueryParam("type") String type,
+                                  @QueryParam("maxResults") String maxResults,
+                                  @QueryParam("nextToken") String nextToken) {
+        String region = regionResolver.resolveRegion(headers);
+        PaginatedResult<Analyzer> page = accessAnalyzerService.listAnalyzers(
+                region, type, Pagination.parseMaxResults(maxResults, "ValidationException"), nextToken);
+        ObjectNode response = objectMapper.createObjectNode();
+        ArrayNode items = response.putArray("analyzers");
+        page.items().forEach(analyzer -> items.add(analyzerSummary(analyzer)));
+        if (page.nextToken() != null) {
+            response.put("nextToken", page.nextToken());
+        }
+        return Response.ok(response).build();
     }
-    @PUT @Path("/analyzer") @Consumes(MediaType.APPLICATION_JSON)
-    public Response create(@Context HttpHeaders headers,String body){return createInternal(headers,body);}
-    @POST @Path("/analyzer") @Consumes(MediaType.APPLICATION_JSON)
-    public Response createPost(@Context HttpHeaders headers,String body){return createInternal(headers,body);}
-    private Response createInternal(HttpHeaders headers,String body){
-        JsonNode in=parse(body); String name=req(in,"analyzerName"); String type=req(in,"type"); String r=region.resolveRegion(headers); String key=r+"::"+name;
-        if(analyzers.get(key).isPresent()) throw new AwsException("ConflictException","Analyzer already exists.",409);
-        String arn="arn:aws:access-analyzer:"+r+":"+region.getAccountId()+":analyzer/"+name;
-        analyzers.put(key,new Analyzer(name,arn,type,Instant.now().toString())); var out=mapper.createObjectNode(); out.put("arn",arn); return Response.ok(out).build();
+
+    @PUT
+    @Path("/analyzer")
+    public Response createAnalyzer(@Context HttpHeaders headers, String body) {
+        Analyzer analyzer = accessAnalyzerService.createAnalyzer(readTree(body), regionResolver.resolveRegion(headers));
+        ObjectNode response = objectMapper.createObjectNode();
+        response.put("arn", analyzer.getArn());
+        return Response.ok(response).build();
     }
-    @DELETE @Path("/analyzer/{name}")
-    public Response delete(@Context HttpHeaders headers,@PathParam("name") String name){analyzers.delete(region.resolveRegion(headers)+"::"+name);return Response.ok(mapper.createObjectNode()).build();}
-    private JsonNode parse(String b){try{return mapper.readTree(b==null||b.isBlank()?"{}":b);}catch(Exception e){throw new AwsException("ValidationException","Invalid JSON.",400);}}
-    private static String req(JsonNode n,String f){JsonNode v=n.get(f);if(v==null||!v.isTextual()||v.textValue().isBlank())throw new AwsException("ValidationException",f+" is required.",400);return v.textValue();}
-    public record Analyzer(String name,String arn,String type,String createdAt){}
+
+    @DELETE
+    @Path("/analyzer/{analyzerName}")
+    public Response deleteAnalyzer(@Context HttpHeaders headers, @PathParam("analyzerName") String analyzerName) {
+        accessAnalyzerService.deleteAnalyzer(regionResolver.resolveRegion(headers), analyzerName);
+        return Response.ok(objectMapper.createObjectNode()).build();
+    }
+
+    private ObjectNode analyzerSummary(Analyzer analyzer) {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("arn", analyzer.getArn());
+        node.put("name", analyzer.getName());
+        node.put("type", analyzer.getType());
+        node.put("status", analyzer.getStatus());
+        node.put("createdAt", analyzer.getCreatedAt());
+        if (analyzer.getConfiguration() != null) {
+            node.set("configuration", analyzer.getConfiguration());
+        }
+        node.set("tags", objectMapper.valueToTree(analyzer.getTags()));
+        return node;
+    }
+
+    private JsonNode readTree(String body) {
+        try {
+            return objectMapper.readTree(body == null || body.isBlank() ? "{}" : body);
+        } catch (Exception e) {
+            throw new WebApplicationException(JsonErrorResponseUtils.createSerializationErrorResponse());
+        }
+    }
 }

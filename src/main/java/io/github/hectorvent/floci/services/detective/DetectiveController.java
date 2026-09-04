@@ -1,35 +1,200 @@
 package io.github.hectorvent.floci.services.detective;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.hectorvent.floci.core.common.AwsException;
+import io.github.hectorvent.floci.core.common.JsonErrorResponseUtils;
 import io.github.hectorvent.floci.core.common.RegionResolver;
-import io.github.hectorvent.floci.core.storage.StorageBackend;
-import io.github.hectorvent.floci.core.storage.StorageFactory;
+import io.github.hectorvent.floci.services.detective.model.DetectiveMember;
+import io.github.hectorvent.floci.services.detective.model.DetectiveState;
 import jakarta.inject.Inject;
-import jakarta.ws.rs.*;
-import jakarta.ws.rs.core.*;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 
-@Path("/") @Produces(MediaType.APPLICATION_JSON) @Consumes(MediaType.APPLICATION_JSON)
+import java.util.List;
+
+@Path("/")
+@Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
 public class DetectiveController {
-    private final ObjectMapper mapper; private final RegionResolver region; private final StorageBackend<String,State> states;
-    @Inject public DetectiveController(ObjectMapper mapper,RegionResolver region,StorageFactory f){this.mapper=mapper;this.region=region;this.states=f.create("detective","detective-state.json",new TypeReference<Map<String,State>>(){});}
-    private String key(HttpHeaders h){return region.resolveRegion(h)+"::"+region.getAccountId();}
-    private State state(HttpHeaders h){return states.get(key(h)).orElseGet(State::new);} private void save(HttpHeaders h,State s){states.put(key(h),s);}
-    private String graphArn(HttpHeaders h){return "arn:aws:detective:"+region.resolveRegion(h)+":"+region.getAccountId()+":graph:floci";}
-    @GET @Path("/orgs/adminAccountslist") public Response admins(@Context HttpHeaders h){State s=state(h);var o=mapper.createObjectNode();var a=o.putArray("Administrators");if(s.admin!=null)a.addObject().put("AccountId",s.admin);return Response.ok(o).build();}
-    @POST @Path("/orgs/enableAdminAccount") public Response enableAdmin(@Context HttpHeaders h,String b){State s=state(h);s.admin=req(parse(b),"AccountId");s.graph=true;save(h,s);return ok();}
-    @GET @Path("/graphs/list") public Response graphs(@Context HttpHeaders h){State s=state(h);var o=mapper.createObjectNode();var a=o.putArray("GraphList");if(s.graph)a.addObject().put("Arn",graphArn(h));return Response.ok(o).build();}
-    @GET @Path("/orgs/describeOrganizationConfiguration") public Response describeOrg(@Context HttpHeaders h){var o=mapper.createObjectNode();o.put("AutoEnable",state(h).autoEnable);return Response.ok(o).build();}
-    @POST @Path("/orgs/updateOrganizationConfiguration") public Response updateOrg(@Context HttpHeaders h,String b){State s=state(h);JsonNode in=parse(b);s.autoEnable=in.path("AutoEnable").asBoolean(false);save(h,s);return ok();}
-    @GET @Path("/graph/members/list") public Response members(@Context HttpHeaders h){State s=state(h);var o=mapper.createObjectNode();var a=o.putArray("MemberDetails");s.members.forEach((id,email)->a.addObject().put("AccountId",id).put("EmailAddress",email).put("Status","ENABLED").put("GraphArn",graphArn(h)));return Response.ok(o).build();}
-    @POST @Path("/graph/members") public Response createMembers(@Context HttpHeaders h,String b){State s=state(h);JsonNode in=parse(b);JsonNode accts=in.get("Accounts");if(accts!=null&&accts.isArray())for(JsonNode a:accts)s.members.put(a.path("AccountId").asText(),a.path("EmailAddress").asText("member@example.com"));save(h,s);var o=mapper.createObjectNode();o.putArray("Members");o.putArray("UnprocessedAccounts");return Response.ok(o).build();}
-    @POST @Path("/graph/member/monitoringstate") public Response monitoring(@Context HttpHeaders h,String b){State s=state(h);String id=req(parse(b),"AccountId");s.members.putIfAbsent(id,"member@example.com");save(h,s);return ok();}
-    private JsonNode parse(String b){try{return mapper.readTree(b==null||b.isBlank()?"{}":b);}catch(Exception e){throw new AwsException("ValidationException","Invalid JSON.",400);}}
-    private static String req(JsonNode n,String f){if(!n.path(f).isTextual()||n.path(f).asText().isBlank())throw new AwsException("ValidationException",f+" is required.",400);return n.path(f).asText();}
-    private Response ok(){return Response.ok(mapper.createObjectNode()).build();}
-    public static class State{public String admin;public boolean graph;public boolean autoEnable;public Map<String,String> members=new LinkedHashMap<>();public State(){}}
+    private final DetectiveService service;
+    private final RegionResolver regionResolver;
+    private final ObjectMapper objectMapper;
+
+    @Inject
+    public DetectiveController(DetectiveService service, RegionResolver regionResolver, ObjectMapper objectMapper) {
+        this.service = service;
+        this.regionResolver = regionResolver;
+        this.objectMapper = objectMapper;
+    }
+
+    @POST
+    @Path("/orgs/adminAccountslist")
+    public Response listOrganizationAdminAccounts(@Context HttpHeaders headers, String body) {
+        DetectiveState state = service.state(region(headers));
+        var response = objectMapper.createObjectNode();
+        var administrators = response.putArray("Administrators");
+        if (state.getAdminAccountId() != null) {
+            administrators.addObject().put("AccountId", state.getAdminAccountId());
+        }
+        return Response.ok(response).build();
+    }
+
+    @POST
+    @Path("/orgs/enableAdminAccount")
+    public Response enableOrganizationAdminAccount(@Context HttpHeaders headers, String body) {
+        service.enableAdmin(region(headers), parse(body).path("AccountId").asText(null));
+        return empty();
+    }
+
+    @POST
+    @Path("/graphs/list")
+    public Response listGraphs(@Context HttpHeaders headers, String body) {
+        String region = region(headers);
+        DetectiveState state = service.state(region);
+        var response = objectMapper.createObjectNode();
+        var graphs = response.putArray("GraphList");
+        if (state.isGraph()) {
+            graphs.addObject().put("Arn", service.graphArn(region));
+        }
+        return Response.ok(response).build();
+    }
+
+    @POST
+    @Path("/orgs/describeOrganizationConfiguration")
+    public Response describeOrganizationConfiguration(@Context HttpHeaders headers, String body) {
+        String region = region(headers);
+        JsonNode request = parse(body);
+        service.requireGraphArn(region, request.path("GraphArn").asText(null));
+        DetectiveState state = service.requireGraph(region);
+        var response = objectMapper.createObjectNode();
+        response.put("AutoEnable", state.isAutoEnable());
+        return Response.ok(response).build();
+    }
+
+    @POST
+    @Path("/orgs/updateOrganizationConfiguration")
+    public Response updateOrganizationConfiguration(@Context HttpHeaders headers, String body) {
+        JsonNode request = parse(body);
+        if (!request.has("AutoEnable") || !request.get("AutoEnable").isBoolean()) {
+            throw new AwsException("ValidationException", "AutoEnable is required.", 400);
+        }
+        service.updateOrganizationConfiguration(region(headers), request.path("GraphArn").asText(null),
+                request.path("AutoEnable").asBoolean());
+        return empty();
+    }
+
+    @POST
+    @Path("/graph/members/list")
+    public Response listMembers(@Context HttpHeaders headers, String body) {
+        String region = region(headers);
+        JsonNode request = parse(body);
+        List<DetectiveMember> all = service.listMembers(region, request.path("GraphArn").asText(null));
+        Integer maxResults = integer(request, "MaxResults");
+        int limit = maxResults == null ? 50 : maxResults;
+        if (limit < 1 || limit > 50) {
+            throw new AwsException("ValidationException", "MaxResults must be between 1 and 50.", 400);
+        }
+        int offset = offset(request.path("NextToken").asText(null), all.size());
+        int end = Math.min(all.size(), offset + limit);
+        var response = objectMapper.createObjectNode();
+        var members = response.putArray("MemberDetails");
+        for (DetectiveMember member : all.subList(offset, end)) {
+            members.add(memberNode(region, member));
+        }
+        if (end < all.size()) {
+            response.put("NextToken", Integer.toString(end));
+        }
+        return Response.ok(response).build();
+    }
+
+    @POST
+    @Path("/graph/members")
+    public Response createMembers(@Context HttpHeaders headers, String body) {
+        String region = region(headers);
+        JsonNode request = parse(body);
+        String graphArn = request.path("GraphArn").asText(null);
+        JsonNode accounts = request.get("Accounts");
+        if (accounts == null || !accounts.isArray() || accounts.isEmpty() || accounts.size() > 50) {
+            throw new AwsException("ValidationException", "Accounts must contain between 1 and 50 members.", 400);
+        }
+        var response = objectMapper.createObjectNode();
+        var members = response.putArray("Members");
+        for (JsonNode account : accounts) {
+            DetectiveMember member = service.createMember(region, graphArn,
+                    account.path("AccountId").asText(null), account.path("EmailAddress").asText(null));
+            members.add(memberNode(region, member));
+        }
+        response.putArray("UnprocessedAccounts");
+        return Response.ok(response).build();
+    }
+
+    @POST
+    @Path("/graph/member/monitoringstate")
+    public Response startMonitoringMember(@Context HttpHeaders headers, String body) {
+        JsonNode request = parse(body);
+        service.startMonitoring(region(headers), request.path("AccountId").asText(null),
+                request.path("GraphArn").asText(null));
+        return Response.ok().build();
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode memberNode(String region, DetectiveMember member) {
+        var node = objectMapper.createObjectNode();
+        node.put("AccountId", member.getAccountId());
+        node.put("EmailAddress", member.getEmailAddress());
+        node.put("Status", member.getStatus());
+        node.put("GraphArn", service.graphArn(region));
+        node.put("AdministratorId", regionResolver.getAccountId());
+        node.put("InvitationType", "ORGANIZATION");
+        return node;
+    }
+
+    private static Integer integer(JsonNode request, String field) {
+        JsonNode value = request.get(field);
+        if (value == null || value.isNull()) {
+            return null;
+        }
+        if (!value.isIntegralNumber()) {
+            throw new AwsException("ValidationException", field + " must be an integer.", 400);
+        }
+        return value.intValue();
+    }
+
+    private static int offset(String nextToken, int size) {
+        if (nextToken == null || nextToken.isBlank()) {
+            return 0;
+        }
+        try {
+            int value = Integer.parseInt(nextToken);
+            if (value < 0 || value > size) {
+                throw new NumberFormatException();
+            }
+            return value;
+        } catch (NumberFormatException e) {
+            throw new AwsException("ValidationException", "NextToken is invalid.", 400);
+        }
+    }
+
+    private String region(HttpHeaders headers) {
+        return regionResolver.resolveRegion(headers);
+    }
+
+    private Response empty() {
+        return Response.ok(objectMapper.createObjectNode()).build();
+    }
+
+    private JsonNode parse(String body) {
+        try {
+            return objectMapper.readTree(body == null || body.isBlank() ? "{}" : body);
+        } catch (Exception e) {
+            throw new WebApplicationException(JsonErrorResponseUtils.createSerializationErrorResponse());
+        }
+    }
 }

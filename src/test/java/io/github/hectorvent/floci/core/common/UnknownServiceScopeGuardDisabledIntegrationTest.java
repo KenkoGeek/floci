@@ -22,13 +22,13 @@ class UnknownServiceScopeGuardDisabledIntegrationTest {
     @Test
     void unsupportedScopeFallsThroughWhenRejectionDisabled() {
         given()
-            .header("Authorization", "AWS4-HMAC-SHA256 Credential=test/20260707/us-east-1/securityhub"
+            .header("Authorization", "AWS4-HMAC-SHA256 Credential=test/20260707/us-east-1/notimplemented"
                     + "/aws4_request, SignedHeaders=host;x-amz-date, Signature=deadbeef")
         .when()
-            .get("/accounts")
+            .get("/no-such-bucket-1754?list-type=2")
         .then()
-            // Back to the old behaviour: S3's path-style catch-all answers for the bucket
-            // named "accounts", instead of the guard's UnknownOperationException.
+            // Back to the old behaviour: S3's path-style catch-all answers the request
+            // instead of the guard's UnknownOperationException.
             .statusCode(404)
             .body(containsString("<Code>NoSuchBucket</Code>"));
     }

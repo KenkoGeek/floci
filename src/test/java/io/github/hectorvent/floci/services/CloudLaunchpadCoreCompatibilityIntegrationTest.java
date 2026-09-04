@@ -36,16 +36,16 @@ class CloudLaunchpadCoreCompatibilityIntegrationTest {
     @Test
     void identityStoreGroupUserAndMembershipLifecycle() {
         String store = "d-1234567890";
-        String group = json11("identitystore", "AWSIdentityStoreService.CreateGroup",
+        String group = json11("identitystore", "AWSIdentityStore.CreateGroup",
                 "{\"IdentityStoreId\":\"" + store + "\",\"DisplayName\":\"CoreAdmins\"}")
                 .then().statusCode(200).extract().path("GroupId");
-        String user = json11("identitystore", "AWSIdentityStoreService.CreateUser",
+        String user = json11("identitystore", "AWSIdentityStore.CreateUser",
                 "{\"IdentityStoreId\":\"" + store + "\",\"UserName\":\"core@example.com\"}")
                 .then().statusCode(200).extract().path("UserId");
-        json11("identitystore", "AWSIdentityStoreService.CreateGroupMembership",
+        json11("identitystore", "AWSIdentityStore.CreateGroupMembership",
                 "{\"IdentityStoreId\":\"" + store + "\",\"GroupId\":\"" + group + "\",\"MemberId\":{\"UserId\":\"" + user + "\"}}")
                 .then().statusCode(200).body("MembershipId", notNullValue());
-        json11("identitystore", "AWSIdentityStoreService.IsMemberInGroups",
+        json11("identitystore", "AWSIdentityStore.IsMemberInGroups",
                 "{\"IdentityStoreId\":\"" + store + "\",\"GroupIds\":[\"" + group + "\"],\"MemberId\":{\"UserId\":\"" + user + "\"}}")
                 .then().statusCode(200).body("Results[0].MembershipExists", equalTo(true));
     }
@@ -98,14 +98,14 @@ class CloudLaunchpadCoreCompatibilityIntegrationTest {
         given().contentType("application/json").header("Authorization", auth("inspector2"))
                 .body("{\"delegatedAdminAccountId\":\"333333333333\"}").post("/delegatedadminaccounts/enable")
                 .then().statusCode(200);
-        given().header("Authorization", auth("inspector2"))
-                .get("/delegatedadminaccounts/list")
+        given().contentType("application/json").header("Authorization", auth("inspector2"))
+                .body("{}").post("/delegatedadminaccounts/list")
                 .then().statusCode(200).body("delegatedAdminAccounts[0].accountId", equalTo("333333333333"));
 
         given().contentType("application/json").header("Authorization", auth("detective"))
                 .body("{\"AccountId\":\"444444444444\"}").post("/orgs/enableAdminAccount").then().statusCode(200);
-        given().header("Authorization", auth("detective"))
-                .get("/orgs/adminAccountslist")
+        given().contentType("application/json").header("Authorization", auth("detective"))
+                .body("{}").post("/orgs/adminAccountslist")
                 .then().statusCode(200).body("Administrators[0].AccountId", equalTo("444444444444"));
     }
 

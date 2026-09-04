@@ -1,31 +1,86 @@
 package io.github.hectorvent.floci.services.macie2;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.hectorvent.floci.core.common.AwsException;
+import io.github.hectorvent.floci.core.common.JsonErrorResponseUtils;
 import io.github.hectorvent.floci.core.common.RegionResolver;
-import io.github.hectorvent.floci.core.storage.StorageBackend;
-import io.github.hectorvent.floci.core.storage.StorageFactory;
+import io.github.hectorvent.floci.services.macie2.model.MacieState;
 import jakarta.inject.Inject;
-import jakarta.ws.rs.*;
-import jakarta.ws.rs.core.*;
-import java.util.Map;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.PATCH;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 
-@Path("/") @Produces(MediaType.APPLICATION_JSON) @Consumes(MediaType.APPLICATION_JSON)
+@Path("/")
+@Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
 public class MacieController {
-    private final ObjectMapper mapper; private final RegionResolver region; private final StorageBackend<String,State> states;
-    @Inject public MacieController(ObjectMapper mapper,RegionResolver region,StorageFactory f){this.mapper=mapper;this.region=region;this.states=f.create("macie2","macie2-state.json",new TypeReference<Map<String,State>>(){});}
-    private String key(HttpHeaders h){return region.resolveRegion(h)+"::"+region.getAccountId();}
-    private State state(HttpHeaders h){return states.get(key(h)).orElse(new State(null,false,false));}
-    public Response listAdminInternal(HttpHeaders h){State s=state(h);var o=mapper.createObjectNode();var a=o.putArray("adminAccounts");if(s.admin()!=null)a.addObject().put("accountId",s.admin()).put("status","ENABLED");return Response.ok(o).build();}
-    @POST @Path("/admin") public Response enableAdmin(@Context HttpHeaders h,String body){JsonNode in=parse(body);State s=state(h);states.put(key(h),new State(req(in,"adminAccountId"),s.enabled(),s.autoEnable()));return ok();}
-    @GET @Path("/macie") public Response get(@Context HttpHeaders h){State s=state(h);if(!s.enabled())throw new AwsException("ResourceNotFoundException","Macie is not enabled.",404);var o=mapper.createObjectNode();o.put("status","ENABLED");o.put("serviceRole","arn:aws:iam::"+region.getAccountId()+":role/aws-service-role/macie.amazonaws.com/AWSServiceRoleForAmazonMacie");return Response.ok(o).build();}
-    @POST @Path("/macie") public Response enable(@Context HttpHeaders h,String body){State s=state(h);states.put(key(h),new State(s.admin(),true,s.autoEnable()));return ok();}
-    @PATCH @Path("/admin/configuration") public Response updateConfig(@Context HttpHeaders h,String body){JsonNode in=parse(body);State s=state(h);boolean auto=in.has("autoEnable")?in.path("autoEnable").asBoolean():s.autoEnable();states.put(key(h),new State(s.admin(),s.enabled(),auto));return ok();}
-    @GET @Path("/admin/configuration") public Response getConfig(@Context HttpHeaders h){var o=mapper.createObjectNode();o.put("autoEnable",state(h).autoEnable());return Response.ok(o).build();}
-    private JsonNode parse(String b){try{return mapper.readTree(b==null||b.isBlank()?"{}":b);}catch(Exception e){throw new AwsException("ValidationException","Invalid JSON.",400);}}
-    private static String req(JsonNode n,String f){if(!n.path(f).isTextual()||n.path(f).asText().isBlank())throw new AwsException("ValidationException",f+" is required.",400);return n.path(f).asText();}
-    private Response ok(){return Response.ok(mapper.createObjectNode()).build();}
-    public record State(String admin,boolean enabled,boolean autoEnable){}
+    private final MacieService macieService;
+    private final RegionResolver regionResolver;
+    private final ObjectMapper objectMapper;
+
+    @Inject
+    public MacieController(MacieService macieService, RegionResolver regionResolver, ObjectMapper objectMapper) {
+        this.macieService = macieService;
+        this.regionResolver = regionResolver;
+        this.objectMapper = objectMapper;
+    }
+
+    public Response listAdminInternal(HttpHeaders headers) {
+        MacieState state = macieService.state(region(headers));
+        var response = objectMapper.createObjectNode();
+        var accounts = response.putArray("adminAccounts");
+        if (state.getAdminAccountId() != null) accounts.addObject().put("accountId", state.getAdminAccountId()).put("status", "ENABLED");
+        return Response.ok(response).build();
+    }
+
+    @POST @Path("/admin")
+    public Response enableOrganizationAdminAccount(@Context HttpHeaders headers, String body) {
+        macieService.enableOrganizationAdminAccount(region(headers), readTree(body).path("adminAccountId").asText(null));
+        return empty();
+    }
+
+    @GET @Path("/macie")
+    public Response getMacieSession(@Context HttpHeaders headers) {
+        macieService.requireSession(region(headers));
+        var response = objectMapper.createObjectNode();
+        response.put("status", "ENABLED");
+        response.put("serviceRole", "arn:aws:iam::" + regionResolver.getAccountId() + ":role/aws-service-role/macie.amazonaws.com/AWSServiceRoleForAmazonMacie");
+        return Response.ok(response).build();
+    }
+
+    @POST @Path("/macie")
+    public Response enableMacie(@Context HttpHeaders headers, String body) {
+        macieService.enableMacie(region(headers));
+        return empty();
+    }
+
+    @PATCH @Path("/admin/configuration")
+    public Response updateOrganizationConfiguration(@Context HttpHeaders headers, String body) {
+        JsonNode request = readTree(body);
+        if (!request.has("autoEnable") || !request.get("autoEnable").isBoolean()) {
+            throw new io.github.hectorvent.floci.core.common.AwsException("ValidationException", "autoEnable is required.", 400);
+        }
+        macieService.updateOrganizationConfiguration(region(headers), request.path("autoEnable").asBoolean());
+        return empty();
+    }
+
+    @GET @Path("/admin/configuration")
+    public Response describeOrganizationConfiguration(@Context HttpHeaders headers) {
+        MacieState state = macieService.requireSession(region(headers));
+        var response = objectMapper.createObjectNode();
+        response.put("autoEnable", state.isAutoEnable());
+        return Response.ok(response).build();
+    }
+
+    private String region(HttpHeaders headers) { return regionResolver.resolveRegion(headers); }
+    private Response empty() { return Response.ok(objectMapper.createObjectNode()).build(); }
+    private JsonNode readTree(String body) { try { return objectMapper.readTree(body == null || body.isBlank() ? "{}" : body); } catch (Exception e) { throw new WebApplicationException(JsonErrorResponseUtils.createSerializationErrorResponse()); } }
 }

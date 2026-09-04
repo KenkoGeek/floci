@@ -1,35 +1,154 @@
 package io.github.hectorvent.floci.services.inspector2;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.hectorvent.floci.core.common.AwsException;
+import io.github.hectorvent.floci.core.common.JsonErrorResponseUtils;
 import io.github.hectorvent.floci.core.common.RegionResolver;
-import io.github.hectorvent.floci.core.storage.StorageBackend;
-import io.github.hectorvent.floci.core.storage.StorageFactory;
+import io.github.hectorvent.floci.services.inspector2.model.InspectorState;
 import jakarta.inject.Inject;
-import jakarta.ws.rs.*;
-import jakarta.ws.rs.core.*;
-import java.util.Map;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 
-@Path("/") @Produces(MediaType.APPLICATION_JSON) @Consumes(MediaType.APPLICATION_JSON)
+@Path("/")
+@Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
 public class Inspector2Controller {
-    private final ObjectMapper mapper; private final RegionResolver region; private final StorageBackend<String, State> states;
-    @Inject public Inspector2Controller(ObjectMapper mapper, RegionResolver region, StorageFactory f) {
-        this.mapper=mapper; this.region=region;
-        this.states=f.create("inspector2","inspector2-state.json",new TypeReference<Map<String,State>>(){});
+    private final Inspector2Service service;
+    private final RegionResolver regionResolver;
+    private final ObjectMapper objectMapper;
+
+    @Inject
+    public Inspector2Controller(Inspector2Service service, RegionResolver regionResolver, ObjectMapper objectMapper) {
+        this.service = service;
+        this.regionResolver = regionResolver;
+        this.objectMapper = objectMapper;
     }
-    private String key(HttpHeaders h){return region.resolveRegion(h)+"::"+region.getAccountId();}
-    private State state(HttpHeaders h){return states.get(key(h)).orElse(new State(null,false,false));}
-    private void save(HttpHeaders h,State s){states.put(key(h),s);}
-    @GET @Path("/delegatedadminaccounts/list") public Response listAdmins(@Context HttpHeaders h){State s=state(h);var o=mapper.createObjectNode();var a=o.putArray("delegatedAdminAccounts");if(s.admin()!=null)a.addObject().put("accountId",s.admin()).put("status","ENABLED");return Response.ok(o).build();}
-    @POST @Path("/delegatedadminaccounts/enable") public Response enableAdmin(@Context HttpHeaders h,String b){State s=state(h);save(h,new State(req(parse(b),"delegatedAdminAccountId"),s.enabled(),s.orgConfigured()));return ok();}
-    @POST @Path("/status/batch/get") public Response batchStatus(@Context HttpHeaders h,String b){JsonNode in=parse(b);State s=state(h);var o=mapper.createObjectNode();var a=o.putArray("accounts");JsonNode ids=in.get("accountIds");if(ids!=null&&ids.isArray())for(JsonNode id:ids){var n=a.addObject();n.put("accountId",id.asText());n.putObject("state").put("status",s.enabled()?"ENABLED":"DISABLED");n.putObject("resourceState");}o.putArray("failedAccounts");return Response.ok(o).build();}
-    @POST @Path("/enable") public Response enable(@Context HttpHeaders h,String b){State s=state(h);save(h,new State(s.admin(),true,s.orgConfigured()));var o=mapper.createObjectNode();o.putArray("accounts");o.putArray("failedAccounts");return Response.ok(o).build();}
-    @POST @Path("/organizationconfiguration/update") public Response updateOrg(@Context HttpHeaders h,String b){State s=state(h);save(h,new State(s.admin(),s.enabled(),true));return ok();}
-    @GET @Path("/organizationconfiguration/describe") public Response describeOrg(@Context HttpHeaders h){var o=mapper.createObjectNode();var a=o.putObject("autoEnable");a.put("ec2",true);a.put("ecr",true);a.put("lambda",true);a.put("lambdaCode",true);o.put("maxAccountLimitReached",false);return Response.ok(o).build();}
-    private JsonNode parse(String b){try{return mapper.readTree(b==null||b.isBlank()?"{}":b);}catch(Exception e){throw new AwsException("ValidationException","Invalid JSON.",400);}}
-    private static String req(JsonNode n,String f){if(!n.path(f).isTextual()||n.path(f).asText().isBlank())throw new AwsException("ValidationException",f+" is required.",400);return n.path(f).asText();}
-    private Response ok(){return Response.ok(mapper.createObjectNode()).build();}
-    public record State(String admin,boolean enabled,boolean orgConfigured){}
+
+    @POST
+    @Path("/delegatedadminaccounts/list")
+    public Response listDelegatedAdminAccounts(@Context HttpHeaders headers, String body) {
+        InspectorState state = service.state(region(headers));
+        var response = objectMapper.createObjectNode();
+        var accounts = response.putArray("delegatedAdminAccounts");
+        if (state.getAdminAccountId() != null) {
+            accounts.addObject().put("accountId", state.getAdminAccountId()).put("status", "ENABLED");
+        }
+        return Response.ok(response).build();
+    }
+
+    @POST
+    @Path("/delegatedadminaccounts/enable")
+    public Response enableDelegatedAdminAccount(@Context HttpHeaders headers, String body) {
+        JsonNode request = parse(body);
+        String accountId = request.path("delegatedAdminAccountId").asText(null);
+        service.enableDelegatedAdmin(region(headers), accountId);
+        var response = objectMapper.createObjectNode();
+        response.put("delegatedAdminAccountId", accountId);
+        return Response.ok(response).build();
+    }
+
+    @POST
+    @Path("/status/batch/get")
+    public Response batchGetAccountStatus(@Context HttpHeaders headers, String body) {
+        JsonNode request = parse(body);
+        JsonNode accountIds = request.get("accountIds");
+        if (accountIds == null || !accountIds.isArray() || accountIds.isEmpty() || accountIds.size() > 100) {
+            throw new AwsException("ValidationException",
+                    "accountIds must contain between 1 and 100 account IDs.", 400);
+        }
+        InspectorState state = service.accountStatus(region(headers));
+        var response = objectMapper.createObjectNode();
+        var accounts = response.putArray("accounts");
+        for (JsonNode accountId : accountIds) {
+            Inspector2Service.requireAccountId(accountId.asText(null));
+            var account = accounts.addObject();
+            account.put("accountId", accountId.asText());
+            account.set("state", stateNode(state.getStatus()));
+            var resources = account.putObject("resourceState");
+            resources.set("ec2", stateNode(state.getStatus()));
+            resources.set("ecr", stateNode(state.getStatus()));
+            resources.set("lambda", stateNode(state.getStatus()));
+            resources.set("lambdaCode", stateNode(state.getStatus()));
+        }
+        response.putArray("failedAccounts");
+        return Response.ok(response).build();
+    }
+
+    @POST
+    @Path("/enable")
+    public Response enable(@Context HttpHeaders headers, String body) {
+        JsonNode request = parse(body);
+        service.enable(region(headers), request);
+        var response = objectMapper.createObjectNode();
+        var accounts = response.putArray("accounts");
+        JsonNode accountIds = request.get("accountIds");
+        if (accountIds != null && accountIds.isArray()) {
+            for (JsonNode accountId : accountIds) {
+                var account = accounts.addObject();
+                account.put("accountId", accountId.asText());
+                account.put("status", "ENABLING");
+                var resourceStatus = account.putObject("resourceStatus");
+                resourceStatus.put("ec2", "ENABLING");
+                resourceStatus.put("ecr", "ENABLING");
+                resourceStatus.put("lambda", "ENABLING");
+                resourceStatus.put("lambdaCode", "ENABLING");
+            }
+        }
+        response.putArray("failedAccounts");
+        return Response.ok(response).build();
+    }
+
+    @POST
+    @Path("/organizationconfiguration/update")
+    public Response updateOrganizationConfiguration(@Context HttpHeaders headers, String body) {
+        service.updateOrganizationConfiguration(region(headers), parse(body));
+        return empty();
+    }
+
+    @POST
+    @Path("/organizationconfiguration/describe")
+    public Response describeOrganizationConfiguration(@Context HttpHeaders headers, String body) {
+        InspectorState state = service.state(region(headers));
+        if (state.getAdminAccountId() == null) {
+            throw new AwsException("AccessDeniedException", "A delegated administrator is required.", 403);
+        }
+        var response = objectMapper.createObjectNode();
+        var autoEnable = response.putObject("autoEnable");
+        autoEnable.put("ec2", state.isAutoEnableEc2());
+        autoEnable.put("ecr", state.isAutoEnableEcr());
+        autoEnable.put("lambda", state.isAutoEnableLambda());
+        autoEnable.put("lambdaCode", state.isAutoEnableLambdaCode());
+        response.put("maxAccountLimitReached", false);
+        return Response.ok(response).build();
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode stateNode(String status) {
+        var state = objectMapper.createObjectNode();
+        state.put("status", status);
+        return state;
+    }
+
+    private String region(HttpHeaders headers) {
+        return regionResolver.resolveRegion(headers);
+    }
+
+    private Response empty() {
+        return Response.ok(objectMapper.createObjectNode()).build();
+    }
+
+    private JsonNode parse(String body) {
+        try {
+            return objectMapper.readTree(body == null || body.isBlank() ? "{}" : body);
+        } catch (Exception e) {
+            throw new WebApplicationException(JsonErrorResponseUtils.createSerializationErrorResponse());
+        }
+    }
 }

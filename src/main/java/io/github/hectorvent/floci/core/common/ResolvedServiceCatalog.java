@@ -415,7 +415,7 @@ public class ResolvedServiceCatalog {
                 descriptor("identitystore", "identitystore", config.services().identitystore().enabled(), true,
                         "identitystore", config.storage().mode(), 5000L, null, ServiceProtocol.JSON,
                         protocols(ServiceProtocol.JSON),
-                        Set.of("AWSIdentityStoreService."), Set.of("identitystore"), Set.of(), Set.of()),
+                        Set.of("AWSIdentityStore."), Set.of("identitystore"), Set.of(), Set.of()),
                 descriptor("budgets", "budgets", config.services().budgets().enabled(), true,
                         "budgets", config.storage().mode(), 5000L, null, ServiceProtocol.JSON,
                         protocols(ServiceProtocol.JSON),
