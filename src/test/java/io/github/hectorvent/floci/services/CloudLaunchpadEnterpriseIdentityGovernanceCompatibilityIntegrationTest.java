@@ -12,7 +12,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 
 @QuarkusTest
-class CloudLaunchpadEnterpriseIdentityGovernanceShimCompatibilityIntegrationTest {
+class CloudLaunchpadEnterpriseIdentityGovernanceCompatibilityIntegrationTest {
     private static final String ACCOUNT = "999999999999";
     private static final String REGION = "us-west-2";
     private static final String JSON11 = "application/x-amz-json-1.1";

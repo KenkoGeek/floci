@@ -12,7 +12,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 
 @QuarkusTest
-class CloudLaunchpadEnterpriseSecurityShimCompatibilityIntegrationTest {
+class CloudLaunchpadEnterpriseSecurityCompatibilityIntegrationTest {
     private static final String ACCOUNT = "999999999999";
     private static final String REGION = "us-west-2";
 
