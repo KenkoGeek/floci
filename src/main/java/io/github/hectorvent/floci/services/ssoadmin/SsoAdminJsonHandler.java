@@ -2,6 +2,7 @@ package io.github.hectorvent.floci.services.ssoadmin;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.hectorvent.floci.core.common.AwsException;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -10,7 +11,6 @@ import jakarta.ws.rs.core.Response;
 
 @ApplicationScoped
 public class SsoAdminJsonHandler {
-
     private final SsoAdminService service;
     private final ObjectMapper mapper;
 
@@ -23,8 +23,19 @@ public class SsoAdminJsonHandler {
     public Response handle(String action, JsonNode request, String callerAccountId) {
         return switch (action) {
             case "ListInstances" -> listInstances(callerAccountId);
-            default -> throw new AwsException("UnknownOperationException",
-                    "Operation " + action + " is not supported.", 400);
+            case "ListPermissionSets" -> listPermissionSets(request);
+            case "CreatePermissionSet" -> createPermissionSet(request);
+            case "DescribePermissionSet" -> describePermissionSet(request);
+            case "UpdatePermissionSet" -> updatePermissionSet(request);
+            case "ListManagedPoliciesInPermissionSet" -> listManagedPolicies(request);
+            case "AttachManagedPolicyToPermissionSet" -> attachManagedPolicy(request);
+            case "DetachManagedPolicyFromPermissionSet" -> detachManagedPolicy(request);
+            case "DeleteInlinePolicyFromPermissionSet" -> deleteInlinePolicy(request);
+            case "PutInlinePolicyToPermissionSet" -> putInlinePolicy(request);
+            case "ListAccountAssignments" -> listAccountAssignments(request);
+            case "CreateAccountAssignment" -> createAccountAssignment(request);
+            case "DescribeAccountAssignmentCreationStatus" -> describeAssignment(request);
+            default -> throw new AwsException("UnknownOperationException", "Operation " + action + " is not supported.", 400);
         };
     }
 
@@ -37,5 +48,110 @@ public class SsoAdminJsonHandler {
         instance.put("OwnerAccountId", callerAccountId);
         instance.put("Status", "ACTIVE");
         return Response.ok(response).build();
+    }
+
+    private Response listPermissionSets(JsonNode request) {
+        ObjectNode response = mapper.createObjectNode();
+        ArrayNode arns = response.putArray("PermissionSets");
+        service.listPermissionSets(SsoAdminService.required(request, "InstanceArn")).forEach(p -> arns.add(p.arn()));
+        return Response.ok(response).build();
+    }
+
+    private Response createPermissionSet(JsonNode request) {
+        SsoAdminService.PermissionSet p = service.createPermissionSet(request);
+        ObjectNode response = mapper.createObjectNode();
+        response.set("PermissionSet", permissionSetNode(p));
+        return Response.ok(response).build();
+    }
+
+    private Response describePermissionSet(JsonNode request) {
+        SsoAdminService.PermissionSet p = service.getPermissionSet(
+                SsoAdminService.required(request, "InstanceArn"), SsoAdminService.required(request, "PermissionSetArn"));
+        ObjectNode response = mapper.createObjectNode();
+        response.set("PermissionSet", permissionSetNode(p));
+        return Response.ok(response).build();
+    }
+
+    private Response updatePermissionSet(JsonNode request) {
+        service.updatePermissionSet(request);
+        return Response.ok(mapper.createObjectNode()).build();
+    }
+
+    private Response listManagedPolicies(JsonNode request) {
+        SsoAdminService.PermissionSet p = service.getPermissionSet(
+                SsoAdminService.required(request, "InstanceArn"), SsoAdminService.required(request, "PermissionSetArn"));
+        ObjectNode response = mapper.createObjectNode();
+        ArrayNode policies = response.putArray("AttachedManagedPolicies");
+        p.managedPolicies().forEach((arn, name) -> policies.addObject().put("Arn", arn).put("Name", name));
+        return Response.ok(response).build();
+    }
+
+    private Response attachManagedPolicy(JsonNode request) {
+        service.attachPolicy(SsoAdminService.required(request, "InstanceArn"),
+                SsoAdminService.required(request, "PermissionSetArn"), SsoAdminService.required(request, "ManagedPolicyArn"));
+        return Response.ok(mapper.createObjectNode()).build();
+    }
+
+    private Response detachManagedPolicy(JsonNode request) {
+        service.detachPolicy(SsoAdminService.required(request, "InstanceArn"),
+                SsoAdminService.required(request, "PermissionSetArn"), SsoAdminService.required(request, "ManagedPolicyArn"));
+        return Response.ok(mapper.createObjectNode()).build();
+    }
+
+    private Response deleteInlinePolicy(JsonNode request) {
+        service.deleteInlinePolicy(SsoAdminService.required(request, "InstanceArn"), SsoAdminService.required(request, "PermissionSetArn"));
+        return Response.ok(mapper.createObjectNode()).build();
+    }
+
+    private Response putInlinePolicy(JsonNode request) {
+        service.putInlinePolicy(SsoAdminService.required(request, "InstanceArn"), SsoAdminService.required(request, "PermissionSetArn"),
+                SsoAdminService.required(request, "InlinePolicy"));
+        return Response.ok(mapper.createObjectNode()).build();
+    }
+
+    private Response listAccountAssignments(JsonNode request) {
+        ObjectNode response = mapper.createObjectNode();
+        ArrayNode array = response.putArray("AccountAssignments");
+        for (SsoAdminService.Assignment a : service.listAssignments(SsoAdminService.required(request, "InstanceArn"),
+                SsoAdminService.required(request, "AccountId"), SsoAdminService.required(request, "PermissionSetArn"))) {
+            array.addObject().put("AccountId", a.accountId()).put("PermissionSetArn", a.permissionSetArn())
+                    .put("PrincipalId", a.principalId()).put("PrincipalType", a.principalType());
+        }
+        return Response.ok(response).build();
+    }
+
+    private Response createAccountAssignment(JsonNode request) {
+        SsoAdminService.AssignmentOperation op = service.createAssignment(request);
+        ObjectNode response = mapper.createObjectNode();
+        response.set("AccountAssignmentCreationStatus", assignmentOperationNode(op));
+        return Response.ok(response).build();
+    }
+
+    private Response describeAssignment(JsonNode request) {
+        SsoAdminService.AssignmentOperation op = service.getAssignmentOperation(
+                SsoAdminService.required(request, "InstanceArn"),
+                SsoAdminService.required(request, "AccountAssignmentCreationRequestId"));
+        ObjectNode response = mapper.createObjectNode();
+        response.set("AccountAssignmentCreationStatus", assignmentOperationNode(op));
+        return Response.ok(response).build();
+    }
+
+    private ObjectNode permissionSetNode(SsoAdminService.PermissionSet p) {
+        ObjectNode node = mapper.createObjectNode();
+        node.put("PermissionSetArn", p.arn());
+        node.put("Name", p.name());
+        if (p.description() != null) node.put("Description", p.description());
+        node.put("SessionDuration", p.sessionDuration());
+        return node;
+    }
+
+    private ObjectNode assignmentOperationNode(SsoAdminService.AssignmentOperation op) {
+        ObjectNode node = mapper.createObjectNode();
+        node.put("RequestId", op.requestId()); node.put("Status", op.status());
+        node.put("TargetId", op.accountId()); node.put("TargetType", "AWS_ACCOUNT");
+        node.put("PermissionSetArn", op.permissionSetArn()); node.put("PrincipalId", op.principalId());
+        node.put("PrincipalType", op.principalType());
+        if (op.failureReason() != null) node.put("FailureReason", op.failureReason());
+        return node;
     }
 }

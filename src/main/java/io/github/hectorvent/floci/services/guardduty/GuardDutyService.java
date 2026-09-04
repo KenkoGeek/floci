@@ -72,6 +72,7 @@ public class GuardDutyService {
 
     private final StorageBackend<String, Detector> detectorStore;
     private final StorageBackend<String, AdminAccount> adminAccountStore;
+    private final StorageBackend<String, MemberAccount> memberStore;
 
     @Inject
     public GuardDutyService(StorageFactory storageFactory) {
@@ -84,14 +85,27 @@ public class GuardDutyService {
                         "guardduty",
                         "guardduty-admin-accounts.json",
                         new TypeReference<Map<String, AdminAccount>>() {
+                        }),
+                storageFactory.create(
+                        "guardduty",
+                        "guardduty-members.json",
+                        new TypeReference<Map<String, MemberAccount>>() {
                         }));
     }
 
     GuardDutyService(
             StorageBackend<String, Detector> detectorStore,
             StorageBackend<String, AdminAccount> adminAccountStore) {
+        this(detectorStore, adminAccountStore, new io.github.hectorvent.floci.core.storage.InMemoryStorage<>());
+    }
+
+    GuardDutyService(
+            StorageBackend<String, Detector> detectorStore,
+            StorageBackend<String, AdminAccount> adminAccountStore,
+            StorageBackend<String, MemberAccount> memberStore) {
         this.detectorStore = detectorStore;
         this.adminAccountStore = adminAccountStore;
+        this.memberStore = memberStore;
     }
 
     public synchronized Detector createDetector(String region, String accountId, JsonNode request) {
@@ -225,6 +239,31 @@ public class GuardDutyService {
         int end = Math.min(offset + maxResults, accounts.size());
         String responseToken = end < accounts.size() ? encodeOffset(end) : null;
         return new Page<>(accounts.subList(offset, end), responseToken);
+    }
+
+    public synchronized void createMembers(String region, String detectorId, JsonNode request) {
+        getDetector(region, detectorId);
+        JsonNode details = request.get("accountDetails");
+        if (details == null || !details.isArray()) {
+            throw badRequest("accountDetails must be an array.");
+        }
+        for (JsonNode detail : details) {
+            String accountId = requireText(detail, "accountId");
+            if (!ACCOUNT_ID_PATTERN.matcher(accountId).matches()) {
+                throw badRequest("accountId must be a 12-digit account ID.");
+            }
+            String email = detail.has("email") && detail.get("email").isTextual()
+                    ? detail.get("email").textValue() : "member@" + accountId + ".example.com";
+            memberStore.put(region + "::" + detectorId + "::" + accountId,
+                    new MemberAccount(accountId, email, "Enabled"));
+        }
+    }
+
+    public List<MemberAccount> listMembers(String region, String detectorId) {
+        getDetector(region, detectorId);
+        String prefix = region + "::" + detectorId + "::";
+        return memberStore.scan(key -> key.startsWith(prefix)).stream()
+                .sorted(Comparator.comparing(MemberAccount::accountId)).toList();
     }
 
     public Map<String, String> listTags(String arn) {
@@ -533,6 +572,9 @@ public class GuardDutyService {
 
     private static AwsException badRequest(String message) {
         return new AwsException("BadRequestException", message, 400);
+    }
+
+    public record MemberAccount(String accountId, String email, String relationshipStatus) {
     }
 
     public record Page<T>(List<T> items, String nextToken) {

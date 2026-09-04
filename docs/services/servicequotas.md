@@ -25,6 +25,7 @@ see Limitations.
 | `GetAWSDefaultServiceQuota` | Same as GetServiceQuota; defaults equal applied values |
 | `ListAWSDefaultServiceQuotas` | Same as ListServiceQuotas; defaults equal applied values |
 | `RequestServiceQuotaIncrease` | Validates and echoes an increase request as `PENDING`; not persisted, quota unchanged |
+| `ListRequestedServiceQuotaChangeHistoryByQuota` | - |
 <!-- floci:actions:end -->
 
 ## Limitations

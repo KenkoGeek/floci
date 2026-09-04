@@ -710,6 +710,14 @@ public interface EmulatorConfig {
         NetworkFirewallServiceConfig networkfirewall();
         ServiceCatalogServiceConfig servicecatalog();
         SsoAdminServiceConfig ssoadmin();
+        IdentityStoreServiceConfig identitystore();
+        BudgetsServiceConfig budgets();
+        AccountServiceConfig account();
+        AccessAnalyzerServiceConfig accessanalyzer();
+        SecurityHubServiceConfig securityhub();
+        Macie2ServiceConfig macie2();
+        Inspector2ServiceConfig inspector2();
+        DetectiveServiceConfig detective();
         ServiceQuotasServiceConfig servicequotas();
         RamServiceConfig ram();
         ControlTowerServiceConfig controltower();
@@ -731,6 +739,15 @@ public interface EmulatorConfig {
         @WithDefault("true")
         boolean enabled();
     }
+
+    interface IdentityStoreServiceConfig { @WithDefault("true") boolean enabled(); }
+    interface BudgetsServiceConfig { @WithDefault("true") boolean enabled(); }
+    interface AccountServiceConfig { @WithDefault("true") boolean enabled(); }
+    interface AccessAnalyzerServiceConfig { @WithDefault("true") boolean enabled(); }
+    interface SecurityHubServiceConfig { @WithDefault("true") boolean enabled(); }
+    interface Macie2ServiceConfig { @WithDefault("true") boolean enabled(); }
+    interface Inspector2ServiceConfig { @WithDefault("true") boolean enabled(); }
+    interface DetectiveServiceConfig { @WithDefault("true") boolean enabled(); }
 
     interface ApsServiceConfig {
         @WithDefault("true")
@@ -776,6 +793,9 @@ public interface EmulatorConfig {
     interface ControlTowerServiceConfig {
         @WithDefault("true")
         boolean enabled();
+
+        @WithDefault("false")
+        boolean seedLandingZone();
     }
 
     interface GuardDutyServiceConfig {

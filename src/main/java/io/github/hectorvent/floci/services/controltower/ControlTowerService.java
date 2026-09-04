@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.hectorvent.floci.config.EmulatorConfig;
 import io.github.hectorvent.floci.core.common.AwsException;
 import io.github.hectorvent.floci.core.storage.StorageBackend;
 import io.github.hectorvent.floci.core.storage.StorageFactory;
@@ -59,6 +60,8 @@ public class ControlTowerService {
     private static final String IDENTITY_CENTER_ENABLED_BASELINE_ID = "FLOCIIDCBASELINE1";
     private static final String IDENTITY_CENTER_BASELINE_VERSION = "1.0";
     private static final String CONTROL_TOWER_BASELINE_ID = "17BSJV3IGJ2QSGA2";
+    private static final String CONFIG_BASELINE_NAME = "ConfigBaseline";
+    private static final String CONFIG_BASELINE_ID = "FLOCICONFIGBASELINE";
 
     // Static baseline catalog. Only `name` is load-bearing (LZA matches case-insensitively on
     // name at register-organizational-unit/index.ts:109-111 and :502); ids are fixed for
@@ -66,6 +69,8 @@ public class ControlTowerService {
     private static final List<BaselineCatalogEntry> BASELINE_CATALOG = List.of(
             new BaselineCatalogEntry("AWSControlTowerBaseline", CONTROL_TOWER_BASELINE_ID,
                     "Sets up resources to govern an OU."),
+            new BaselineCatalogEntry(CONFIG_BASELINE_NAME, CONFIG_BASELINE_ID,
+                    "Sets up AWS Config resources for an organizational unit."),
             new BaselineCatalogEntry(IDENTITY_CENTER_BASELINE_NAME, IDENTITY_CENTER_BASELINE_ID,
                     "Sets up resources shared for IAM Identity Center access."),
             new BaselineCatalogEntry("AuditBaseline", "J8HX46AHS5MIKQPD",
@@ -76,6 +81,7 @@ public class ControlTowerService {
     private final StorageBackend<String, LandingZone> landingZoneStore;
     private final StorageBackend<String, EnabledBaseline> enabledBaselineStore;
     private final OrganizationsService organizationsService;
+    private final boolean seedLandingZone;
     // Operation ledgers keyed by "accountId::region": opId -> operationType. In-memory on purpose:
     // pollers within one pipeline run are the only consumers, and unknown ids still answer
     // SUCCEEDED (restart-safe for LZA). Scoped so one account cannot enumerate another's
@@ -83,7 +89,8 @@ public class ControlTowerService {
     private final Map<String, OperationLedger> operationLedgers = new ConcurrentHashMap<>();
 
     @Inject
-    public ControlTowerService(StorageFactory storageFactory, OrganizationsService organizationsService) {
+    public ControlTowerService(StorageFactory storageFactory, OrganizationsService organizationsService,
+                               EmulatorConfig config) {
         this(
                 storageFactory.create(
                         "controltower",
@@ -95,22 +102,32 @@ public class ControlTowerService {
                         "controltower-enabled-baselines.json",
                         new TypeReference<Map<String, EnabledBaseline>>() {
                         }),
-                organizationsService);
+                organizationsService,
+                config.services().controltower().seedLandingZone());
     }
 
     ControlTowerService(
             StorageBackend<String, LandingZone> landingZoneStore,
             StorageBackend<String, EnabledBaseline> enabledBaselineStore) {
-        this(landingZoneStore, enabledBaselineStore, null);
+        this(landingZoneStore, enabledBaselineStore, null, true);
     }
 
     ControlTowerService(
             StorageBackend<String, LandingZone> landingZoneStore,
             StorageBackend<String, EnabledBaseline> enabledBaselineStore,
             OrganizationsService organizationsService) {
+        this(landingZoneStore, enabledBaselineStore, organizationsService, true);
+    }
+
+    ControlTowerService(
+            StorageBackend<String, LandingZone> landingZoneStore,
+            StorageBackend<String, EnabledBaseline> enabledBaselineStore,
+            OrganizationsService organizationsService,
+            boolean seedLandingZone) {
         this.landingZoneStore = landingZoneStore;
         this.enabledBaselineStore = enabledBaselineStore;
         this.organizationsService = organizationsService;
+        this.seedLandingZone = seedLandingZone;
     }
 
     public synchronized LandingZone getOrSeedLandingZone(String accountId, String region) {
@@ -124,7 +141,10 @@ public class ControlTowerService {
     }
 
     public synchronized List<LandingZone> listLandingZones(String accountId, String region) {
-        return List.of(getOrSeedLandingZone(accountId, region));
+        if (seedLandingZone) {
+            return List.of(getOrSeedLandingZone(accountId, region));
+        }
+        return landingZoneStore.get(region).map(List::of).orElseGet(List::of);
     }
 
     /**
@@ -134,7 +154,10 @@ public class ControlTowerService {
      */
     private LandingZone requireSeededLandingZone(
             String accountId, String region, String landingZoneIdentifier) {
-        LandingZone landingZone = getOrSeedLandingZone(accountId, region);
+        LandingZone landingZone = seedLandingZone
+                ? getOrSeedLandingZone(accountId, region)
+                : landingZoneStore.get(region).orElseThrow(() -> new AwsException("ResourceNotFoundException",
+                        "Landing zone not found: " + landingZoneIdentifier, 404));
         if (!landingZone.getArn().equals(landingZoneIdentifier)) {
             throw new AwsException("ResourceNotFoundException",
                     "Landing zone not found: " + landingZoneIdentifier, 404);
@@ -466,12 +489,17 @@ public class ControlTowerService {
         if (alreadyStored) {
             return false;
         }
-        JsonNode manifest = getOrSeedLandingZone(accountId, region).getManifest();
-        return manifest.path("accessManagement").path("enabled").asBoolean(false);
+        JsonNode manifest = seedLandingZone
+                ? getOrSeedLandingZone(accountId, region).getManifest()
+                : landingZoneStore.get(region).map(LandingZone::getManifest).orElse(null);
+        return manifest != null && manifest.path("accessManagement").path("enabled").asBoolean(false);
     }
 
     private EnabledBaseline syntheticIdentityCenterBaseline(String accountId, String region) {
-        LandingZone lz = getOrSeedLandingZone(accountId, region);
+        LandingZone lz = seedLandingZone
+                ? getOrSeedLandingZone(accountId, region)
+                : landingZoneStore.get(region)
+                        .orElseThrow(() -> new AwsException("ResourceNotFoundException", "Landing zone not found.", 404));
         return new EnabledBaseline(
                 "arn:aws:controltower:" + region + ":" + accountId
                         + ":enabledbaseline/" + IDENTITY_CENTER_ENABLED_BASELINE_ID,

@@ -368,8 +368,25 @@ floci:
       enabled: true
     ssoadmin:
       enabled: true
+    identitystore:
+      enabled: true
+    budgets:
+      enabled: true
+    account:
+      enabled: true
+    accessanalyzer:
+      enabled: true
+    securityhub:
+      enabled: true
+    macie2:
+      enabled: true
+    inspector2:
+      enabled: true
+    detective:
+      enabled: true
     controltower:
       enabled: true
+      seed-landing-zone: true
     route53resolver:
       enabled: true
     connect:

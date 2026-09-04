@@ -56,7 +56,9 @@ public class ServiceQuotasService {
             "codebuild", List.of(
                     new QuotaDefinition("L-2DC20C30", "Concurrently running builds", GENERIC_QUOTA_VALUE)),
             "lambda", List.of(
-                    new QuotaDefinition("L-B99A9384", "Concurrent executions", GENERIC_QUOTA_VALUE)));
+                    new QuotaDefinition("L-B99A9384", "Concurrent executions", GENERIC_QUOTA_VALUE)),
+            "organizations", List.of(
+                    new QuotaDefinition("L-FLOCIACCOUNTS", "Maximum number of accounts", 50.0)));
 
     private static final List<String> GENERIC_QUOTA_NAMES = List.of(
             "Resources per Region",
@@ -188,6 +190,16 @@ public class ServiceQuotasService {
         } catch (IllegalArgumentException e) {
             return -1;
         }
+    }
+
+    public ObjectNode listRequestedServiceQuotaChangeHistoryByQuota(String serviceCode, String quotaCode) {
+        requireServiceCode(serviceCode);
+        if (quotaCode == null || quotaCode.isBlank()) {
+            throw new AwsException("IllegalArgumentException", "Invalid input: QuotaCode must not be empty.", 400);
+        }
+        ObjectNode response = objectMapper.createObjectNode();
+        response.putArray("RequestedQuotas");
+        return response;
     }
 
     record QuotaDefinition(String quotaCode, String quotaName, double value) {

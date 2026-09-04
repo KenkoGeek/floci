@@ -29,6 +29,8 @@
 | `SetStackPolicy` | Accepted; no-op (stub — stack policies are not enforced) |
 | `GetStackPolicy` | Accepted; returns an empty policy (stub) |
 | `DescribeStackResource` | Get a specific stack resource |
+| `DescribeOrganizationsAccess` | - |
+| `ActivateOrganizationsAccess` | - |
 | `CreateStackSet` | Create a stack set from a template |
 | `DescribeStackSet` | Get stack set details |
 | `ListStackSets` | List stack sets |
@@ -40,6 +42,7 @@
 | `DeleteStackInstances` | Remove instances and their resources |
 | `ListStackSetOperations` | List operations performed on a stack set |
 | `DescribeStackSetOperation` | - |
+| `ListStackSetAutoDeploymentTargets` | - |
 <!-- floci:actions:end -->
 
 ## Supported Resource Types

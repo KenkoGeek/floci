@@ -144,14 +144,25 @@ public class StackSetService {
     // ── Instances ──────────────────────────────────────────────────────────────
 
     public StackSetOperation createStackInstances(String name, List<String> accounts, List<String> regions) {
+        return createStackInstances(name, accounts, regions, List.of());
+    }
+
+    public StackSetOperation createStackInstances(String name, List<String> accounts, List<String> regions, List<String> organizationalUnits) {
         StackSet ss = getStackSetOrThrow(name);
-        if (accounts == null || accounts.isEmpty() || regions == null || regions.isEmpty()) {
-            throw new AwsException("ValidationError",
-                    "Accounts and Regions must each contain at least one value", 400);
+        List<String> effectiveAccounts = accounts == null ? new ArrayList<>() : new ArrayList<>(accounts);
+        if (effectiveAccounts.isEmpty() && organizationalUnits != null) {
+            for (String ou : organizationalUnits) {
+                long numeric = Integer.toUnsignedLong(ou.hashCode()) % 100_000_000_000L;
+                effectiveAccounts.add(String.format("9%011d", numeric));
+            }
         }
-        if (accounts.stream().anyMatch(account -> account == null || !account.matches("[0-9]{12}"))) {
+        if (effectiveAccounts.isEmpty() || regions == null || regions.isEmpty()) {
             throw new AwsException("ValidationError",
-                    "1 validation error detected: Value '" + accounts
+                    "Accounts or DeploymentTargets and Regions must contain at least one value", 400);
+        }
+        if (effectiveAccounts.stream().anyMatch(account -> account == null || !account.matches("[0-9]{12}"))) {
+            throw new AwsException("ValidationError",
+                    "1 validation error detected: Value '" + effectiveAccounts
                             + "' at 'accounts' failed to satisfy constraint: Member must satisfy constraint: "
                             + "[Member must have length less than or equal to 12, Member must have length "
                             + "greater than or equal to 12, Member must satisfy regular expression pattern: "
@@ -159,9 +170,13 @@ public class StackSetService {
                     400);
         }
         List<StackInstance> deployed = new ArrayList<>();
-        for (String account : accounts) {
+        for (int accountIndex = 0; accountIndex < effectiveAccounts.size(); accountIndex++) {
+            String account = effectiveAccounts.get(accountIndex);
             for (String region : regions) {
                 StackInstance inst = deployInstance(ss, account, region, INSTANCE_CHANGE_SET, "CREATE");
+                if (organizationalUnits != null && !organizationalUnits.isEmpty()) {
+                    inst.setOrganizationalUnitId(organizationalUnits.get(Math.min(accountIndex, organizationalUnits.size() - 1)));
+                }
                 instances.put(instanceKey(name, account, region), inst);
                 deployed.add(inst);
             }

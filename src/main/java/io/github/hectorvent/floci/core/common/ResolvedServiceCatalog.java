@@ -31,6 +31,12 @@ import io.github.hectorvent.floci.services.ses.SesController;
 import io.github.hectorvent.floci.services.appsync.AppSyncController;
 import io.github.hectorvent.floci.services.rdsdata.RdsDataController;
 import io.github.hectorvent.floci.services.guardduty.GuardDutyController;
+import io.github.hectorvent.floci.services.account.AccountController;
+import io.github.hectorvent.floci.services.accessanalyzer.AccessAnalyzerController;
+import io.github.hectorvent.floci.services.securityhub.SecurityHubController;
+import io.github.hectorvent.floci.services.macie2.MacieController;
+import io.github.hectorvent.floci.services.inspector2.Inspector2Controller;
+import io.github.hectorvent.floci.services.detective.DetectiveController;
 import io.github.hectorvent.floci.services.aps.ApsController;
 import io.github.hectorvent.floci.services.controltower.ControlTowerController;
 import io.github.hectorvent.floci.services.rum.RumController;
@@ -406,6 +412,32 @@ public class ResolvedServiceCatalog {
                         null, null, 5000L, null, ServiceProtocol.JSON,
                         protocols(ServiceProtocol.JSON),
                         Set.of("SWBExternalService."), Set.of("sso"), Set.of(), Set.of()),
+                descriptor("identitystore", "identitystore", config.services().identitystore().enabled(), true,
+                        "identitystore", config.storage().mode(), 5000L, null, ServiceProtocol.JSON,
+                        protocols(ServiceProtocol.JSON),
+                        Set.of("AWSIdentityStoreService."), Set.of("identitystore"), Set.of(), Set.of()),
+                descriptor("budgets", "budgets", config.services().budgets().enabled(), true,
+                        "budgets", config.storage().mode(), 5000L, null, ServiceProtocol.JSON,
+                        protocols(ServiceProtocol.JSON),
+                        Set.of("AWSBudgetServiceGateway."), Set.of("budgets"), Set.of(), Set.of()),
+                descriptor("account", "account", config.services().account().enabled(), true,
+                        "account", config.storage().mode(), 5000L, null, ServiceProtocol.REST_JSON,
+                        protocols(ServiceProtocol.REST_JSON), Set.of(), Set.of("account"), Set.of(), Set.of(AccountController.class)),
+                descriptor("access-analyzer", "accessanalyzer", config.services().accessanalyzer().enabled(), true,
+                        "accessanalyzer", config.storage().mode(), 5000L, null, ServiceProtocol.REST_JSON,
+                        protocols(ServiceProtocol.REST_JSON), Set.of(), Set.of("access-analyzer"), Set.of(), Set.of(AccessAnalyzerController.class)),
+                descriptor("securityhub", "securityhub", config.services().securityhub().enabled(), true,
+                        "securityhub", config.storage().mode(), 5000L, null, ServiceProtocol.REST_JSON,
+                        protocols(ServiceProtocol.REST_JSON), Set.of(), Set.of("securityhub"), Set.of(), Set.of(SecurityHubController.class)),
+                descriptor("macie2", "macie2", config.services().macie2().enabled(), true,
+                        "macie2", config.storage().mode(), 5000L, null, ServiceProtocol.REST_JSON,
+                        protocols(ServiceProtocol.REST_JSON), Set.of(), Set.of("macie2"), Set.of(), Set.of(MacieController.class)),
+                descriptor("inspector2", "inspector2", config.services().inspector2().enabled(), true,
+                        "inspector2", config.storage().mode(), 5000L, null, ServiceProtocol.REST_JSON,
+                        protocols(ServiceProtocol.REST_JSON), Set.of(), Set.of("inspector2"), Set.of(), Set.of(Inspector2Controller.class)),
+                descriptor("detective", "detective", config.services().detective().enabled(), true,
+                        "detective", config.storage().mode(), 5000L, null, ServiceProtocol.REST_JSON,
+                        protocols(ServiceProtocol.REST_JSON), Set.of(), Set.of("detective"), Set.of(), Set.of(DetectiveController.class)),
                 descriptor("autoscaling", "autoscaling", config.services().autoscaling().enabled(), true,
                         "autoscaling", config.storage().mode(), 5000L, AwsNamespaces.AUTOSCALING, ServiceProtocol.QUERY,
                         protocols(ServiceProtocol.QUERY),
