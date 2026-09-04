@@ -23,9 +23,9 @@ class UnknownServiceScopeGuardIntegrationTest {
     }
 
     @Test
-    void accountScopedRestRequestGetsUnknownOperation() {
+    void unsupportedServiceScopedRestPostGetsUnknownOperation() {
         given()
-            .header("Authorization", authorization("account"))
+            .header("Authorization", authorization("notimplemented"))
             .contentType("application/json")
             .body("{}")
         .when()
@@ -39,9 +39,9 @@ class UnknownServiceScopeGuardIntegrationTest {
     }
 
     @Test
-    void securityhubScopedRestRequestGetsUnknownOperation() {
+    void unsupportedServiceScopedRestGetGetsUnknownOperation() {
         given()
-            .header("Authorization", authorization("securityhub"))
+            .header("Authorization", authorization("notimplemented"))
         .when()
             .get("/accounts")
         .then()
