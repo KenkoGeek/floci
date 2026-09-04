@@ -35,9 +35,12 @@ import io.github.hectorvent.floci.services.account.AccountController;
 import io.github.hectorvent.floci.services.accessanalyzer.AccessAnalyzerController;
 import io.github.hectorvent.floci.services.securityhub.SecurityHubController;
 import io.github.hectorvent.floci.services.macie2.MacieController;
+import io.github.hectorvent.floci.services.securityadmin.SecurityAdminController;
 import io.github.hectorvent.floci.services.inspector2.Inspector2Controller;
 import io.github.hectorvent.floci.services.detective.DetectiveController;
 import io.github.hectorvent.floci.services.aps.ApsController;
+import io.github.hectorvent.floci.services.controlcatalog.ControlCatalogController;
+import io.github.hectorvent.floci.services.controltower.ControlTowerControlController;
 import io.github.hectorvent.floci.services.controltower.ControlTowerController;
 import io.github.hectorvent.floci.services.rum.RumController;
 import io.github.hectorvent.floci.services.s3vectors.S3VectorsController;
@@ -431,7 +434,7 @@ public class ResolvedServiceCatalog {
                         protocols(ServiceProtocol.REST_JSON), Set.of(), Set.of("securityhub"), Set.of(), Set.of(SecurityHubController.class)),
                 descriptor("macie2", "macie2", config.services().macie2().enabled(), true,
                         "macie2", config.storage().mode(), 5000L, null, ServiceProtocol.REST_JSON,
-                        protocols(ServiceProtocol.REST_JSON), Set.of(), Set.of("macie2"), Set.of(), Set.of(MacieController.class)),
+                        protocols(ServiceProtocol.REST_JSON), Set.of(), Set.of("macie2"), Set.of(), Set.of(MacieController.class, SecurityAdminController.class)),
                 descriptor("inspector2", "inspector2", config.services().inspector2().enabled(), true,
                         "inspector2", config.storage().mode(), 5000L, null, ServiceProtocol.REST_JSON,
                         protocols(ServiceProtocol.REST_JSON), Set.of(), Set.of("inspector2"), Set.of(), Set.of(Inspector2Controller.class)),
@@ -576,7 +579,7 @@ public class ResolvedServiceCatalog {
                         storageMode(config.storage().services().guardduty().mode(), config.storage().mode()),
                         config.storage().services().guardduty().flushIntervalMs(), null, ServiceProtocol.REST_JSON,
                         protocols(ServiceProtocol.REST_JSON),
-                        Set.of(), Set.of("guardduty"), Set.of(), Set.of(GuardDutyController.class)),
+                        Set.of(), Set.of("guardduty"), Set.of(), Set.of(GuardDutyController.class, SecurityAdminController.class)),
                 descriptor("route53resolver", "route53resolver", config.services().route53resolver().enabled(), true,
                         "route53resolver", config.storage().mode(), 5000L, null, ServiceProtocol.JSON,
                         protocols(ServiceProtocol.JSON),
@@ -594,11 +597,15 @@ public class ResolvedServiceCatalog {
                         "servicecatalog", config.storage().mode(), 5000L, null, ServiceProtocol.JSON,
                         protocols(ServiceProtocol.JSON),
                         Set.of("AWS242ServiceCatalogService."), Set.of("servicecatalog"), Set.of(), Set.of()),
+                descriptor("controlcatalog", "controlcatalog", config.services().controlcatalog().enabled(), true,
+                        null, null, 5000L, null, ServiceProtocol.REST_JSON,
+                        protocols(ServiceProtocol.REST_JSON),
+                        Set.of(), Set.of("controlcatalog"), Set.of(), Set.of(ControlCatalogController.class)),
                 descriptor("controltower", "controltower", config.services().controltower().enabled(), true,
                         "controltower", storageMode(config.storage().services().controltower().mode(), config.storage().mode()),
                         config.storage().services().controltower().flushIntervalMs(), null, ServiceProtocol.REST_JSON,
                         protocols(ServiceProtocol.REST_JSON),
-                        Set.of(), Set.of("controltower"), Set.of(), Set.of(ControlTowerController.class)),
+                        Set.of(), Set.of("controltower"), Set.of(), Set.of(ControlTowerController.class, ControlTowerControlController.class)),
                 descriptor("aps", "aps", config.services().aps().enabled(), true,
                         "aps", storageMode(config.storage().services().aps().mode(), config.storage().mode()),
                         config.storage().services().aps().flushIntervalMs(), null, ServiceProtocol.REST_JSON,

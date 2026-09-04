@@ -33,7 +33,7 @@ public class MacieController {
         this.objectMapper = objectMapper;
     }
 
-    public Response listAdminInternal(HttpHeaders headers) {
+    public Response listAdminInternal(@Context HttpHeaders headers) {
         MacieState state = macieService.state(region(headers));
         var response = objectMapper.createObjectNode();
         var accounts = response.putArray("adminAccounts");

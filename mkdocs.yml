@@ -118,6 +118,7 @@ nav:
     - IAM: services/iam.md
     - STS: services/sts.md
     - Organizations: services/organizations.md
+    - Control Catalog: services/controlcatalog.md
     - Control Tower: services/controltower.md
     - AWS Service Catalog: services/service-catalog.md
     - ElastiCache: services/elasticache.md

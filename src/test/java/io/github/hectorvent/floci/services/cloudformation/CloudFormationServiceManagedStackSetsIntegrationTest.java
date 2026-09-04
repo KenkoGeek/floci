@@ -80,6 +80,12 @@ class CloudFormationServiceManagedStackSetsIntegrationTest {
         assertQueueVisible(directAccount, queue);
         assertQueueVisible(nestedAccount, queue);
 
+        cloudFormation("ListStackSetAutoDeploymentTargets")
+                .formParam("StackSetName", stackSet)
+                .post("/").then().statusCode(200)
+                .body(containsString("<OrganizationalUnitId>" + parentOu + "</OrganizationalUnitId>"))
+                .body(containsString("<member>" + REGION + "</member>"));
+
         cloudFormation("ListStackInstances")
                 .formParam("StackSetName", stackSet)
                 .post("/").then().statusCode(200)

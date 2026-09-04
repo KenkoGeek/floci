@@ -40,6 +40,12 @@ Enabled-baseline operations are recorded with AWS operation names such as `ENABL
 | `ResetEnabledBaseline` | `POST /reset-enabled-baseline` | Records a reset for an enabled baseline |
 | `UpdateEnabledBaseline` | `POST /update-enabled-baseline` | Updates version and parameters |
 | `GetBaselineOperation` | `POST /get-baseline-operation` | Reads a previously issued baseline operation |
+| `EnableControl` | `POST /enable-control` | Enables a control on a target and returns an enabled-control ARN plus operation ID |
+| `ListEnabledControls` | `POST /list-enabled-controls` | Lists enabled controls with target/filter pagination |
+| `GetEnabledControl` | `POST /get-enabled-control` | Returns enabled-control details and parameters |
+| `UpdateEnabledControl` | `POST /update-enabled-control` | Updates parameters when they differ from the current configuration |
+| `ResetEnabledControl` | `POST /reset-enabled-control` | Repairs non-SCP enabled controls and records a reset operation |
+| `GetControlOperation` | `POST /get-control-operation` | Reads a previously issued control operation |
 
 ## Operation behavior
 

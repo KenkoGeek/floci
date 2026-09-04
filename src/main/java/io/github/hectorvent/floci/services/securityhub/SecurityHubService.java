@@ -268,6 +268,7 @@ public class SecurityHubService {
                 throw notFound("The configuration policy association was not found.");
             }
             association.setStatus("SUCCESS");
+            applyPolicyToAccountTarget(region, state, association);
             save(region, state);
         }
         return association.copy();
@@ -292,6 +293,22 @@ public class SecurityHubService {
         save(region, state);
     }
 
+    private void applyPolicyToAccountTarget(String region, SecurityHubState administrator,
+                                            SecurityHubAssociation association) {
+        if (!"ACCOUNT".equals(association.getTargetType()) || SELF_MANAGED.equals(association.getPolicyId())) {
+            return;
+        }
+        JsonNode policy = administrator.getPolicies().get(association.getPolicyId());
+        JsonNode securityHub = policy == null ? null : policy.path("ConfigurationPolicy").path("SecurityHub");
+        if (securityHub == null || !securityHub.isObject() || !securityHub.path("ServiceEnabled").isBoolean()) {
+            return;
+        }
+        SecurityHubState target = states.getForAccount(association.getTargetId(), region)
+                .orElseGet(SecurityHubState::new);
+        target.setEnabled(securityHub.path("ServiceEnabled").asBoolean());
+        states.putForAccount(association.getTargetId(), region, target);
+    }
+
     public List<SecurityHubAssociation> associations(String region) {
         return state(region).getAssociations().values().stream()
                 .map(SecurityHubAssociation::copy)
@@ -304,28 +321,55 @@ public class SecurityHubService {
 
     public Map<String, String> tagsForResource(String region, String arn) {
         SecurityHubState state = state(region);
-        if (arn == null) {
-            throw notFound("The specified Security Hub resource was not found.");
-        }
-        if (arn.equals(hubArn(region)) || arn.equals(state.getAggregatorArn())) {
+        JsonNode resource = taggedResource(state, region, arn);
+        if (resource == null) {
             return Map.of();
         }
-        String id = normalizePolicyId(arn);
-        JsonNode policy = state.getPolicies().get(id);
-        if (policy == null) {
-            throw notFound("The specified Security Hub resource was not found.");
-        }
-        JsonNode tags = policy.get("Tags");
+        JsonNode tags = resource.get("Tags");
         if (tags == null || !tags.isObject()) {
             return Map.of();
         }
         Map<String, String> result = new LinkedHashMap<>();
         tags.fields().forEachRemaining(entry -> {
-            if (entry.getValue().isTextual()) {
-                result.put(entry.getKey(), entry.getValue().textValue());
-            }
+            if (entry.getValue().isTextual()) result.put(entry.getKey(), entry.getValue().textValue());
         });
         return result;
+    }
+
+    public synchronized void tagResource(String region, String arn, Map<String, String> tags) {
+        SecurityHubState state = state(region);
+        ObjectNode resource = policyResource(state, region, arn);
+        ObjectNode current = resource.withObject("Tags");
+        tags.forEach(current::put);
+        validateTags(current);
+        save(region, state);
+    }
+
+    public synchronized void untagResource(String region, String arn, List<String> tagKeys) {
+        SecurityHubState state = state(region);
+        ObjectNode resource = policyResource(state, region, arn);
+        ObjectNode tags = resource.withObject("Tags");
+        tagKeys.forEach(tags::remove);
+        save(region, state);
+    }
+
+    private JsonNode taggedResource(SecurityHubState state, String region, String arn) {
+        if (arn == null || !arn.startsWith("arn:aws:securityhub:" + region + ":" + regionResolver.getAccountId() + ":")) {
+            throw notFound("The specified Security Hub resource was not found.");
+        }
+        if (arn.equals(hubArn(region)) || arn.equals(state.getAggregatorArn())) return null;
+        String id = normalizePolicyId(arn);
+        JsonNode policy = state.getPolicies().get(id);
+        if (policy == null) throw notFound("The specified Security Hub resource was not found.");
+        return policy;
+    }
+
+    private ObjectNode policyResource(SecurityHubState state, String region, String arn) {
+        JsonNode resource = taggedResource(state, region, arn);
+        if (!(resource instanceof ObjectNode object)) {
+            throw notFound("The specified Security Hub resource does not support mutable tags in this emulator.");
+        }
+        return object;
     }
 
     public String hubArn(String region) {

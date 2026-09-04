@@ -627,6 +627,8 @@ floci:
       enabled: true
     detective:
       enabled: true
+    controlcatalog:
+      enabled: true
     controltower:
       enabled: true
     route53resolver:

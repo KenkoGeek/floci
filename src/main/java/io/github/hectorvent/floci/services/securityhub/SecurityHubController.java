@@ -156,14 +156,14 @@ public class SecurityHubController {
     }
 
     @GET
-    @Path("/configurationPolicy/get/{id}")
+    @Path("/configurationPolicy/get/{id: .+}")
     public Response getConfigurationPolicy(@Context HttpHeaders headers, @PathParam("id") String id) {
         String region = region(headers);
         return Response.ok(policyDocument(region, id, securityHubService.getConfigurationPolicy(region, id))).build();
     }
 
     @PATCH
-    @Path("/configurationPolicy/{id}")
+    @Path("/configurationPolicy/{id: .+}")
     public Response updateConfigurationPolicy(@Context HttpHeaders headers, @PathParam("id") String id, String body) {
         String region = region(headers);
         return Response.ok(policyDocument(region, id,
@@ -222,9 +222,11 @@ public class SecurityHubController {
     }
 
     private ObjectNode policySummary(String region, String id, JsonNode policy) {
+        int slash = id == null ? -1 : id.lastIndexOf('/');
+        String policyId = slash >= 0 ? id.substring(slash + 1) : id;
         ObjectNode response = objectMapper.createObjectNode();
-        response.put("Arn", securityHubService.policyArn(region, id));
-        response.put("Id", id);
+        response.put("Arn", securityHubService.policyArn(region, policyId));
+        response.put("Id", policyId);
         response.put("Name", policy.path("Name").asText());
         if (policy.hasNonNull("Description")) response.put("Description", policy.path("Description").asText());
         response.put("UpdatedAt", Instant.now().toString());
