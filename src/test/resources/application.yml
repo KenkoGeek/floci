@@ -439,6 +439,8 @@ floci:
       enabled: true
     servicequotas:
       enabled: true
+    verifiedpermissions:
+      enabled: true
     ram:
       enabled: true
     codegurureviewer:

@@ -734,6 +734,7 @@ public interface EmulatorConfig {
         SecurityHubServiceConfig securityhub();
         DetectiveServiceConfig detective();
         ServiceQuotasServiceConfig servicequotas();
+        VerifiedPermissionsServiceConfig verifiedpermissions();
         RamServiceConfig ram();
         ControlCatalogServiceConfig controlcatalog();
         ControlTowerServiceConfig controltower();
@@ -922,6 +923,11 @@ public interface EmulatorConfig {
     }
 
     interface ServiceQuotasServiceConfig {
+        @WithDefault("true")
+        boolean enabled();
+    }
+
+    interface VerifiedPermissionsServiceConfig {
         @WithDefault("true")
         boolean enabled();
     }
