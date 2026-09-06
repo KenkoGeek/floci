@@ -130,6 +130,7 @@ nav:
     - Amazon Inspector: services/inspector2.md
     - Security Hub: services/securityhub.md
     - Amazon Detective: services/detective.md
+    - Amazon Verified Permissions: services/verifiedpermissions.md
     - Control Catalog: services/controlcatalog.md
     - AWS Marketplace: services/marketplace.md
     - Control Tower: services/controltower.md
