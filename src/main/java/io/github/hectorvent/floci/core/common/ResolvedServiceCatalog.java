@@ -652,6 +652,7 @@ public class ResolvedServiceCatalog {
                 descriptor("verifiedpermissions", "verifiedpermissions", config.services().verifiedpermissions().enabled(), true,
                         "verifiedpermissions", config.storage().mode(), 5000L, null, ServiceProtocol.JSON,
                         protocols(ServiceProtocol.JSON),
+                        Set.of("VerifiedPermissions."), Set.of("verifiedpermissions"), Set.of(), Set.of()),
                 descriptor("marketplace", "marketplace", config.services().marketplace().enabled(), true,
                         "marketplace", config.storage().mode(), 5000L, null, ServiceProtocol.REST_JSON,
                         protocols(ServiceProtocol.REST_JSON, ServiceProtocol.JSON, ServiceProtocol.CBOR),

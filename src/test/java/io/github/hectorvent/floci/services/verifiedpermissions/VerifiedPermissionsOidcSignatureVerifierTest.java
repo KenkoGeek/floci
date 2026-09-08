@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.hc.client5.http.SystemDefaultDnsResolver;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
 import java.net.InetAddress;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Map;
@@ -39,6 +40,21 @@ class VerifiedPermissionsOidcSignatureVerifierTest {
                 InetAddress.getByName("10.0.0.1")));
         assertTrue(VerifiedPermissionsOidcSignatureVerifier.isBlockedPublicAddress(
                 InetAddress.getByName("192.168.1.1")));
+    }
+
+    @Test
+    void oidcDocumentsRejectOversizedDeclaredAndStreamingBodies() throws Exception {
+        byte[] exactLimit = new byte[VerifiedPermissionsOidcSignatureVerifier.MAX_OIDC_DOCUMENT_BYTES];
+        assertEquals(exactLimit.length, VerifiedPermissionsOidcSignatureVerifier.readBoundedBody(
+                new ByteArrayInputStream(exactLimit), exactLimit.length, "OIDC discovery document").length);
+
+        byte[] oversized = new byte[VerifiedPermissionsOidcSignatureVerifier.MAX_OIDC_DOCUMENT_BYTES + 1];
+        assertThrows(VerifiedPermissionsOidcSignatureVerifier.VerificationException.class,
+                () -> VerifiedPermissionsOidcSignatureVerifier.readBoundedBody(
+                        new ByteArrayInputStream(oversized), oversized.length, "OIDC discovery document"));
+        assertThrows(VerifiedPermissionsOidcSignatureVerifier.VerificationException.class,
+                () -> VerifiedPermissionsOidcSignatureVerifier.readBoundedBody(
+                        new ByteArrayInputStream(oversized), -1, "JWKS document"));
     }
 
     @Test

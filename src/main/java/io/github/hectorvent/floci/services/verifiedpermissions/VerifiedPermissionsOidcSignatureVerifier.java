@@ -15,11 +15,12 @@ import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.client5.http.protocol.HttpClientContext;
 import org.apache.hc.core5.http.HttpStatus;
-import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.io.support.ClassicRequestBuilder;
 import org.apache.hc.core5.util.Timeout;
 import org.jboss.logging.Logger;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigInteger;
 import java.net.InetAddress;
 import java.net.URI;
@@ -42,6 +43,7 @@ public class VerifiedPermissionsOidcSignatureVerifier implements AutoCloseable {
     private static final Duration CACHE_TTL = Duration.ofMinutes(10);
     private static final Duration UNKNOWN_KID_REFRESH_COOLDOWN = Duration.ofMinutes(1);
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(10);
+    static final int MAX_OIDC_DOCUMENT_BYTES = 1024 * 1024;
 
     private final ObjectMapper objectMapper;
     private final CloseableHttpClient httpClient;
@@ -178,7 +180,14 @@ public class VerifiedPermissionsOidcSignatureVerifier implements AutoCloseable {
                 if (response.getCode() != HttpStatus.SC_OK) {
                     throw new VerificationException("Fetching " + description + " returned HTTP " + response.getCode());
                 }
-                byte[] body = response.getEntity() == null ? new byte[0] : EntityUtils.toByteArray(response.getEntity());
+                byte[] body;
+                if (response.getEntity() == null) {
+                    body = new byte[0];
+                } else {
+                    try (InputStream input = response.getEntity().getContent()) {
+                        body = readBoundedBody(input, response.getEntity().getContentLength(), description);
+                    }
+                }
                 try {
                     return objectMapper.readTree(body);
                 } catch (Exception e) {
@@ -190,6 +199,18 @@ public class VerifiedPermissionsOidcSignatureVerifier implements AutoCloseable {
         } catch (Exception e) {
             throw new VerificationException("Failed to fetch " + description, e);
         }
+    }
+
+    static byte[] readBoundedBody(InputStream input, long contentLength, String description)
+            throws IOException, VerificationException {
+        if (contentLength > MAX_OIDC_DOCUMENT_BYTES) {
+            throw new VerificationException(description + " exceeds the maximum allowed response size");
+        }
+        byte[] body = input.readNBytes(MAX_OIDC_DOCUMENT_BYTES + 1);
+        if (body.length > MAX_OIDC_DOCUMENT_BYTES) {
+            throw new VerificationException(description + " exceeds the maximum allowed response size");
+        }
+        return body;
     }
 
     static URI validatePublicHttpsUri(String value, String description) throws VerificationException {
