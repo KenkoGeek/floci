@@ -134,6 +134,41 @@ class ScimIntegrationTest {
     }
 
     @Test
+    void getGroupUsesAwsScimRepresentation() {
+        String groupId = given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"externalId\":\"get-group-ext\",\"displayName\":\"SCIM Get Group\"}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Groups")
+            .then()
+                .statusCode(201)
+                .extract().path("id");
+
+        given()
+                .header("Authorization", BEARER)
+            .when()
+                .get("/" + TENANT + "/scim/v2/Groups/" + groupId)
+            .then()
+                .statusCode(200)
+                .body("schemas[0]", equalTo("urn:ietf:params:scim:schemas:core:2.0:Group"))
+                .body("id", equalTo(groupId))
+                .body("externalId", equalTo("get-group-ext"))
+                .body("displayName", equalTo("SCIM Get Group"))
+                .body("meta.resourceType", equalTo("Group"))
+                .body("meta.created", notNullValue())
+                .body("meta.lastModified", notNullValue());
+
+        given()
+                .header("Authorization", BEARER)
+            .when()
+                .get("/" + TENANT + "/scim/v2/Groups/9067f2a3c1-00000000-0000-0000-0000-000000000099")
+            .then()
+                .statusCode(404)
+                .body("status", equalTo("404"));
+    }
+
+    @Test
     void deleteUserUsesAwsScimStatusAndRemovesIdentityStoreResource() {
         String userId = given()
                 .contentType("application/json")

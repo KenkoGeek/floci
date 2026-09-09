@@ -13,6 +13,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.GET;
 import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
@@ -51,6 +52,23 @@ public class ScimController {
         this.identityStoreService = identityStoreService;
         this.ssoAdminService = ssoAdminService;
         this.mapper = mapper;
+    }
+
+    @GET
+    @Path("/Groups/{groupId}")
+    public Response getGroup(@PathParam("tenantId") String tenantId,
+                             @PathParam("groupId") String groupId,
+                             @HeaderParam("Authorization") String authorization) {
+        try {
+            requireBearer(authorization);
+            String identityStoreId = resolveIdentityStore(tenantId);
+            ObjectNode request = mapper.createObjectNode();
+            request.put("IdentityStoreId", identityStoreId);
+            request.put("GroupId", groupId);
+            return Response.ok(groupResponse(identityStoreService.describeGroup(request))).build();
+        } catch (AwsException exception) {
+            return scimError(scimStatus(exception), exception.getMessage());
+        }
     }
 
     @DELETE
