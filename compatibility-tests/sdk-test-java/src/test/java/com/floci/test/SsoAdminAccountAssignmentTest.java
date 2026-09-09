@@ -508,6 +508,28 @@ class SsoAdminAccountAssignmentTest {
     }
 
     @Test
+    @DisplayName("deletes permission sets through the AWS SDK")
+    void deletePermissionSetUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only permission-set lifecycle");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient()) {
+            String instanceArn = sso.listInstances(request -> {}).instances().get(0).instanceArn();
+            String permissionSetArn = sso.createPermissionSet(request -> request
+                            .instanceArn(instanceArn)
+                            .name("DeletePermissionSetSdkAdmins"))
+                    .permissionSet().permissionSetArn();
+            var response = sso.deletePermissionSet(request -> request
+                    .instanceArn(instanceArn)
+                    .permissionSetArn(permissionSetArn));
+            assertThat(response.sdkHttpResponse().isSuccessful()).isTrue();
+            assertThatThrownBy(() -> sso.describePermissionSet(request -> request
+                    .instanceArn(instanceArn)
+                    .permissionSetArn(permissionSetArn)))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ResourceNotFoundException.class);
+        }
+    }
+
+    @Test
     @DisplayName("deletes account assignments through the AWS SDK")
     void deleteAccountAssignmentUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only account and principal identifiers");

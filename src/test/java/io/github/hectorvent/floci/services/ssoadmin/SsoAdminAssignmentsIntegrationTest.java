@@ -52,6 +52,22 @@ class SsoAdminAssignmentsIntegrationTest {
     }
 
     @Test
+    void deletePermissionSetReturnsEmptyResponseAndRemovesIt() {
+        String instanceArn = json("SWBExternalService.ListInstances", "{}")
+                .then().statusCode(200).extract().path("Instances[0].InstanceArn");
+        String permissionSetArn = json("SWBExternalService.CreatePermissionSet",
+                "{\"InstanceArn\":\"" + instanceArn + "\",\"Name\":\"DeletePermissionSetIntegration\"}")
+                .then().statusCode(200).extract().path("PermissionSet.PermissionSetArn");
+
+        json("SWBExternalService.DeletePermissionSet",
+                "{\"InstanceArn\":\"" + instanceArn + "\",\"PermissionSetArn\":\"" + permissionSetArn + "\"}")
+                .then().statusCode(200).body(equalTo(""));
+        json("SWBExternalService.DescribePermissionSet",
+                "{\"InstanceArn\":\"" + instanceArn + "\",\"PermissionSetArn\":\"" + permissionSetArn + "\"}")
+                .then().statusCode(400).body("__type", equalTo("ResourceNotFoundException"));
+    }
+
+    @Test
     void invalidAssignmentRequestIdReturnsResourceNotFound() {
         String instanceArn = json("SWBExternalService.ListInstances", "{}")
                 .then().statusCode(200).extract().path("Instances[0].InstanceArn");

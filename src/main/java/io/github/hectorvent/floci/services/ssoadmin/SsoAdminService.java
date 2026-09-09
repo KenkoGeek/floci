@@ -702,6 +702,27 @@ public class SsoAdminService implements Resettable {
         return permissionSets.get(arn).orElseThrow(() -> notFound("Permission set not found: " + arn));
     }
 
+    public synchronized void deletePermissionSet(String instanceArn, String permissionSetArn) {
+        SsoInstance instance = requireInstance(instanceArn);
+        if (instance.accountInstance()) {
+            throw accessDenied("Permission sets are only available from an organization instance.");
+        }
+        getPermissionSet(instanceArn, permissionSetArn);
+        permissionSets.delete(permissionSetArn);
+        for (String key : new ArrayList<>(assignments.keys())) {
+            Assignment assignment = assignments.get(key).orElse(null);
+            if (assignment != null && permissionSetArn.equals(assignment.permissionSetArn())) {
+                assignments.delete(key);
+            }
+        }
+        for (String key : new ArrayList<>(permissionSetProvisionings.keys())) {
+            PermissionSetProvisioning provisioning = permissionSetProvisionings.get(key).orElse(null);
+            if (provisioning != null && permissionSetArn.equals(provisioning.permissionSetArn())) {
+                permissionSetProvisionings.delete(key);
+            }
+        }
+    }
+
     public synchronized PermissionSet updatePermissionSet(JsonNode request) {
         PermissionSet current = getPermissionSet(required(request, "InstanceArn"), required(request, "PermissionSetArn"));
         String description = request.has("Description") ? optionalDescription(request) : current.description();

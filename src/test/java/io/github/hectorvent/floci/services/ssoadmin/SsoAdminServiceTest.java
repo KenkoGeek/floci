@@ -593,6 +593,23 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void deletePermissionSetRemovesAssignmentsAndProvisioningState() {
+        PermissionSet permissionSet = createPermissionSet("DeletePermissionSetAdmins");
+        service.createAssignment(assignmentRequest(permissionSet.arn()));
+        assertFalse(service.listAssignments(service.getInstanceArn(), ACCOUNT_ID, permissionSet.arn()).isEmpty());
+
+        service.deletePermissionSet(service.getInstanceArn(), permissionSet.arn());
+
+        assertError("ResourceNotFoundException",
+                () -> service.getPermissionSet(service.getInstanceArn(), permissionSet.arn()));
+        assertTrue(service.listPermissionSetsProvisionedToAccount(mapper.createObjectNode()
+                .put("InstanceArn", service.getInstanceArn())
+                .put("AccountId", ACCOUNT_ID)).items().stream().noneMatch(permissionSet.arn()::equals));
+        assertError("ResourceNotFoundException",
+                () -> service.deletePermissionSet(service.getInstanceArn(), permissionSet.arn()));
+    }
+
+    @Test
     void listAccountAssignmentsForPrincipalFiltersAndPaginatesUserOrGroupAccess() {
         PermissionSet first = createPermissionSet("PrincipalListOne");
         PermissionSet second = createPermissionSet("PrincipalListTwo");

@@ -25,6 +25,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | `DeleteApplicationGrant` | Deletes a supported OAuth 2.0 grant configuration from an IAM Identity Center application. |
 | `ListPermissionSets` | Lists permission sets with AWS-compatible pagination. |
 | `CreatePermissionSet` | Creates a permission set. |
+| `DeletePermissionSet` | Deletes a permission set and removes its local account-assignment and provisioning state. |
 | `DescribePermissionSet` | Describes a permission set. |
 | `UpdatePermissionSet` | Updates mutable permission-set settings. |
 | `ListManagedPoliciesInPermissionSet` | Lists attached AWS managed policies with AWS-compatible pagination. |
