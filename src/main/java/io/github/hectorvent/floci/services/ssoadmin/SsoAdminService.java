@@ -396,6 +396,10 @@ public class SsoAdminService implements Resettable {
         return configuration;
     }
 
+    public InstanceAccessControlAttributeConfiguration describeInstanceAccessControlAttributeConfiguration(JsonNode request) {
+        return getInstanceAccessControlAttributeConfiguration(required(request, "InstanceArn"));
+    }
+
     public InstanceAccessControlAttributeConfiguration getInstanceAccessControlAttributeConfiguration(String instanceArn) {
         requireInstance(instanceArn);
         return accessControlAttributeConfigurations.get(instanceArn)
