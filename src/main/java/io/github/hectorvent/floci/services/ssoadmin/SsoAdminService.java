@@ -1068,6 +1068,33 @@ public class SsoAdminService implements Resettable {
                 optionalMaxResults(request), text(request, "NextToken"), 50, 100, "ValidationException");
     }
 
+    public PaginatedResult<AssignmentDeletionOperation> listAccountAssignmentDeletionStatus(JsonNode request) {
+        String instanceArn = required(request, "InstanceArn");
+        SsoInstance instance = requireInstance(instanceArn);
+        if (instance.accountInstance()) {
+            throw accessDenied("Account assignments are only available from an organization instance.");
+        }
+        String statusFilter = null;
+        JsonNode filter = request == null ? null : request.get("Filter");
+        if (filter != null && !filter.isNull()) {
+            if (!filter.isObject() || filter.size() > 1 || (filter.size() == 1 && !filter.has("Status"))) {
+                throw validation("Filter may contain only Status.");
+            }
+            if (filter.has("Status")) {
+                statusFilter = required(filter, "Status");
+                if (!Set.of("IN_PROGRESS", "FAILED", "SUCCEEDED").contains(statusFilter)) {
+                    throw validation("Filter.Status is invalid.");
+                }
+            }
+        }
+        String finalStatusFilter = statusFilter;
+        List<AssignmentDeletionOperation> operations = assignmentDeletionOperations.scan(key -> true).stream()
+                .filter(operation -> finalStatusFilter == null || finalStatusFilter.equals(operation.status()))
+                .toList();
+        return Pagination.paginate(operations, AssignmentDeletionOperation::requestId,
+                optionalMaxResults(request), text(request, "NextToken"), 50, 100, "ValidationException");
+    }
+
     static String required(JsonNode request, String field) {
         String value = text(request, field);
         if (value == null || value.isBlank()) {

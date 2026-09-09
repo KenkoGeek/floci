@@ -803,6 +803,16 @@ class SsoAdminServiceTest {
         assertTrue(deleted.createdDateEpochMillis() > 0);
         assertTrue(service.listAssignments(service.getInstanceArn(), ACCOUNT_ID, permissionSet.arn()).isEmpty());
         assertEquals(deleted, service.getAssignmentDeletionOperation(service.getInstanceArn(), deleted.requestId()));
+
+        ObjectNode listStatus = mapper.createObjectNode();
+        listStatus.put("InstanceArn", service.getInstanceArn());
+        listStatus.putObject("Filter").put("Status", "SUCCEEDED");
+        var statusPage = service.listAccountAssignmentDeletionStatus(listStatus);
+        assertEquals(1, statusPage.items().size());
+        assertEquals(deleted.requestId(), statusPage.items().get(0).requestId());
+        listStatus.putObject("Filter").put("Status", "INVALID");
+        assertError("ValidationException", () -> service.listAccountAssignmentDeletionStatus(listStatus));
+
         assertError("ResourceNotFoundException", () -> service.deleteAssignment(request));
     }
 

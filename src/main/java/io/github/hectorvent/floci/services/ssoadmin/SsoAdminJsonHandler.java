@@ -62,6 +62,7 @@ public class SsoAdminJsonHandler {
             case "DescribeAccountAssignmentCreationStatus" -> describeAssignment(request);
             case "ListAccountAssignmentCreationStatus" -> listAccountAssignmentCreationStatus(request);
             case "DescribeAccountAssignmentDeletionStatus" -> describeAssignmentDeletion(request);
+            case "ListAccountAssignmentDeletionStatus" -> listAccountAssignmentDeletionStatus(request);
             default -> throw new AwsException("UnknownOperationException", "Operation " + action + " is not supported.", 400);
         };
     }
@@ -404,6 +405,22 @@ public class SsoAdminJsonHandler {
         status.put("PrincipalType", operation.principalType());
         if (operation.failureReason() != null) {
             status.put("FailureReason", operation.failureReason());
+        }
+        return Response.ok(response).build();
+    }
+
+    private Response listAccountAssignmentDeletionStatus(JsonNode request) {
+        var page = service.listAccountAssignmentDeletionStatus(request);
+        ObjectNode response = mapper.createObjectNode();
+        ArrayNode statuses = response.putArray("AccountAssignmentsDeletionStatus");
+        page.items().forEach(operation -> {
+            ObjectNode status = statuses.addObject();
+            status.put("RequestId", operation.requestId());
+            status.put("Status", operation.status());
+            status.put("CreatedDate", operation.createdDateEpochMillis() / 1000.0d);
+        });
+        if (page.nextToken() != null) {
+            response.put("NextToken", page.nextToken());
         }
         return Response.ok(response).build();
     }
