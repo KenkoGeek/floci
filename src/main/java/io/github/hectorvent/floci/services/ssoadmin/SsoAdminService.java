@@ -956,8 +956,8 @@ public class SsoAdminService implements Resettable {
         assignments.put(key, assignment);
         ensurePermissionSetProvisioned(permission, account);
         String requestId = UUID.randomUUID().toString();
-        AssignmentOperation operation = new AssignmentOperation(requestId, "SUCCEEDED", account, permission,
-                principal, principalType, null);
+        AssignmentOperation operation = new AssignmentOperation(requestId, "SUCCEEDED", System.currentTimeMillis(),
+                account, permission, principal, principalType, null);
         assignmentOperations.put(requestId, operation);
         return operation;
     }
@@ -1039,6 +1039,33 @@ public class SsoAdminService implements Resettable {
             throw validation("AccountAssignmentCreationRequestId must be a UUID.");
         }
         return assignmentOperations.get(requestId).orElseThrow(() -> notFound("Assignment operation not found: " + requestId));
+    }
+
+    public PaginatedResult<AssignmentOperation> listAccountAssignmentCreationStatus(JsonNode request) {
+        String instanceArn = required(request, "InstanceArn");
+        SsoInstance instance = requireInstance(instanceArn);
+        if (instance.accountInstance()) {
+            throw accessDenied("Account assignments are only available from an organization instance.");
+        }
+        String statusFilter = null;
+        JsonNode filter = request == null ? null : request.get("Filter");
+        if (filter != null && !filter.isNull()) {
+            if (!filter.isObject() || filter.size() > 1 || (filter.size() == 1 && !filter.has("Status"))) {
+                throw validation("Filter may contain only Status.");
+            }
+            if (filter.has("Status")) {
+                statusFilter = required(filter, "Status");
+                if (!Set.of("IN_PROGRESS", "FAILED", "SUCCEEDED").contains(statusFilter)) {
+                    throw validation("Filter.Status is invalid.");
+                }
+            }
+        }
+        String finalStatusFilter = statusFilter;
+        List<AssignmentOperation> operations = assignmentOperations.scan(key -> true).stream()
+                .filter(operation -> finalStatusFilter == null || finalStatusFilter.equals(operation.status()))
+                .toList();
+        return Pagination.paginate(operations, AssignmentOperation::requestId,
+                optionalMaxResults(request), text(request, "NextToken"), 50, 100, "ValidationException");
     }
 
     static String required(JsonNode request, String field) {

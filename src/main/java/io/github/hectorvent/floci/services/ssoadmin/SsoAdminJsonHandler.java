@@ -60,6 +60,7 @@ public class SsoAdminJsonHandler {
             case "CreateAccountAssignment" -> createAccountAssignment(request);
             case "DeleteAccountAssignment" -> deleteAccountAssignment(request);
             case "DescribeAccountAssignmentCreationStatus" -> describeAssignment(request);
+            case "ListAccountAssignmentCreationStatus" -> listAccountAssignmentCreationStatus(request);
             case "DescribeAccountAssignmentDeletionStatus" -> describeAssignmentDeletion(request);
             default -> throw new AwsException("UnknownOperationException", "Operation " + action + " is not supported.", 400);
         };
@@ -371,6 +372,22 @@ public class SsoAdminJsonHandler {
         return Response.ok(response).build();
     }
 
+    private Response listAccountAssignmentCreationStatus(JsonNode request) {
+        var page = service.listAccountAssignmentCreationStatus(request);
+        ObjectNode response = mapper.createObjectNode();
+        ArrayNode statuses = response.putArray("AccountAssignmentsCreationStatus");
+        for (AssignmentOperation operation : page.items()) {
+            ObjectNode status = statuses.addObject();
+            status.put("RequestId", operation.requestId());
+            status.put("Status", operation.status());
+            status.put("CreatedDate", operation.createdDateEpochMillis() / 1000.0d);
+        }
+        if (page.nextToken() != null) {
+            response.put("NextToken", page.nextToken());
+        }
+        return Response.ok(response).build();
+    }
+
     private Response describeAssignmentDeletion(JsonNode request) {
         var operation = service.getAssignmentDeletionOperation(
                 SsoAdminService.required(request, "InstanceArn"),
@@ -405,6 +422,7 @@ public class SsoAdminJsonHandler {
     private ObjectNode assignmentOperationNode(AssignmentOperation op) {
         ObjectNode node = mapper.createObjectNode();
         node.put("RequestId", op.requestId()); node.put("Status", op.status());
+        node.put("CreatedDate", op.createdDateEpochMillis() / 1000.0d);
         node.put("TargetId", op.accountId()); node.put("TargetType", "AWS_ACCOUNT");
         node.put("PermissionSetArn", op.permissionSetArn()); node.put("PrincipalId", op.principalId());
         node.put("PrincipalType", op.principalType());

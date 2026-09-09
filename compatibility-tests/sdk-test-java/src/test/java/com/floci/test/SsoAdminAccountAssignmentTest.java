@@ -578,6 +578,13 @@ class SsoAdminAccountAssignmentTest {
                     .instanceArn(instanceArn)
                     .accountAssignmentCreationRequestId(created.accountAssignmentCreationStatus().requestId()));
             assertThat(status.accountAssignmentCreationStatus().statusAsString()).isEqualTo("SUCCEEDED");
+            assertThat(status.accountAssignmentCreationStatus().createdDate()).isNotNull();
+
+            var creationStatuses = sso.listAccountAssignmentCreationStatus(request -> request
+                    .instanceArn(instanceArn)
+                    .filter(filter -> filter.status("SUCCEEDED")));
+            assertThat(creationStatuses.accountAssignmentsCreationStatus())
+                    .anyMatch(operation -> created.accountAssignmentCreationStatus().requestId().equals(operation.requestId()));
 
             var assignments = sso.listAccountAssignments(request -> request
                     .instanceArn(instanceArn)
