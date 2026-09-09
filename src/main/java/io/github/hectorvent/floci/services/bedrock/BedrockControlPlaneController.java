@@ -71,6 +71,12 @@ public class BedrockControlPlaneController {
         return execute("CreateFoundationModelAgreement", body, Map.of(), headers);
     }
 
+    @GET
+    @Path("/foundation-models/{modelIdentifier:.+}")
+    public Response getFoundationModel(@PathParam("modelIdentifier") String modelIdentifier, @Context HttpHeaders headers) {
+        return execute("GetFoundationModel", null, Map.of("modelIdentifier", modelIdentifier), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(

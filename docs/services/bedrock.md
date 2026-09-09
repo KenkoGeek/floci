@@ -16,6 +16,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `GetFoundationModelAvailability` | `GET /foundation-model-availability/{modelId}` | Returns agreement, authorization, entitlement, and regional availability state. |
 | `ListFoundationModelAgreementOffers` | `GET /list-foundation-model-agreement-offers/{modelId}` | Returns a deterministic local public offer and opaque offer token. |
 | `CreateFoundationModelAgreement` | `POST /create-foundation-model-agreement` | Validates the offer token, persists agreement state, and returns HTTP 202. |
+| `GetFoundationModel` | `GET /foundation-models/{modelIdentifier}` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 
