@@ -569,6 +569,20 @@ class SsoAdminServiceTest {
         assertFalse(created.primaryRegion());
         assertNotNull(created.addedDate());
 
+        RegionMetadata described = service.describeRegion(request);
+        assertEquals("us-west-2", described.regionName());
+        assertEquals("ACTIVE", described.status());
+        assertFalse(described.primaryRegion());
+
+        ObjectNode primaryDescribe = mapper.createObjectNode();
+        primaryDescribe.put("InstanceArn", service.getInstanceArn());
+        primaryDescribe.put("RegionName", "us-east-1");
+        assertTrue(service.describeRegion(primaryDescribe).primaryRegion());
+
+        ObjectNode missingDescribe = request.deepCopy();
+        missingDescribe.put("RegionName", "eu-west-3");
+        assertError("ResourceNotFoundException", () -> service.describeRegion(missingDescribe));
+
         assertError("ConflictException", () -> service.addRegion(request));
 
         ObjectNode primaryRegion = request.deepCopy();

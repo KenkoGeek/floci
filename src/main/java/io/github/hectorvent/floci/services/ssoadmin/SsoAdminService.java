@@ -701,6 +701,15 @@ public class SsoAdminService implements Resettable {
         return application;
     }
 
+    public RegionMetadata describeRegion(JsonNode request) {
+        SsoInstance instance = requireInstance(required(request, "InstanceArn"));
+        String regionName = validateRegionName(required(request, "RegionName"));
+        return listRegionsForInstance(instance).stream()
+                .filter(region -> regionName.equals(region.regionName()))
+                .findFirst()
+                .orElseThrow(() -> notFound("Region is not enabled for this IAM Identity Center instance: " + regionName));
+    }
+
     public synchronized RegionMetadata addRegion(JsonNode request) {
         requireInstance(required(request, "InstanceArn"));
         String regionName = validateRegionName(required(request, "RegionName"));

@@ -38,6 +38,7 @@ public class SsoAdminJsonHandler {
             case "CreateTrustedTokenIssuer" -> createTrustedTokenIssuer(request, callerAccountId);
             case "DeleteTrustedTokenIssuer" -> deleteTrustedTokenIssuer(request);
             case "AddRegion" -> addRegion(request);
+            case "DescribeRegion" -> describeRegion(request);
             case "CreateApplication" -> createApplication(request, callerAccountId, region);
             case "DescribeApplication" -> describeApplication(request);
             case "CreateApplicationAssignment" -> createApplicationAssignment(request);
@@ -179,6 +180,16 @@ public class SsoAdminJsonHandler {
     private Response addRegion(JsonNode request) {
         var region = service.addRegion(request);
         return Response.ok(mapper.createObjectNode().put("Status", region.status())).build();
+    }
+
+    private Response describeRegion(JsonNode request) {
+        var region = service.describeRegion(request);
+        ObjectNode response = mapper.createObjectNode();
+        response.put("AddedDate", service.regionAddedDateEpochSeconds(region));
+        response.put("IsPrimaryRegion", region.primaryRegion());
+        response.put("RegionName", region.regionName());
+        response.put("Status", region.status());
+        return Response.ok(response).build();
     }
 
     private Response deleteApplication(JsonNode request) {
