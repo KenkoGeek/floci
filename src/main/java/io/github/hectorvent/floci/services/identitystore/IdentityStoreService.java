@@ -177,6 +177,10 @@ public class IdentityStoreService implements Resettable {
                 optionalMaxResults(request), text(request, "NextToken"), 50, 100, "ValidationException");
     }
 
+    List<User> listUsersForScim(String storeId) {
+        return listUsersAll(requireStore(storeId), null);
+    }
+
     public User describeUser(JsonNode request) {
         String storeId = requireStore(required(request, "IdentityStoreId"));
         return requireUser(storeId, requireResourceId(required(request, "UserId"), "UserId"));

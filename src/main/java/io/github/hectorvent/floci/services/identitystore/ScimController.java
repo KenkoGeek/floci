@@ -49,6 +49,10 @@ public class ScimController {
             "^(displayName|externalId|members\\.value|id) eq \\\"([^\\\"]*)\\\"$");
     private static final Pattern DOUBLE_GROUP_FILTER = Pattern.compile(
             "^(id|member) eq \\\"([^\\\"]*)\\\" and (id|member) eq \\\"([^\\\"]*)\\\"$");
+    private static final Pattern SINGLE_USER_FILTER = Pattern.compile(
+            "^(userName|externalId|groups\\.value|id) eq \\\"([^\\\"]*)\\\"$");
+    private static final Pattern DOUBLE_USER_FILTER = Pattern.compile(
+            "^(id|manager) eq \\\"([^\\\"]*)\\\" and (id|manager) eq \\\"([^\\\"]*)\\\"$");
     private static final Pattern PREFIXED_TENANT = Pattern.compile(
             "([0-9a-f]{10})-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
             Pattern.CASE_INSENSITIVE);
@@ -65,6 +69,48 @@ public class ScimController {
         this.identityStoreService = identityStoreService;
         this.ssoAdminService = ssoAdminService;
         this.mapper = mapper;
+    }
+
+    @GET
+    @Path("/Users")
+    public Response listUsers(@PathParam("tenantId") String tenantId,
+                              @HeaderParam("Authorization") String authorization,
+                              @QueryParam("filter") String filter,
+                              @QueryParam("count") String countValue,
+                              @QueryParam("cursor") String cursor,
+                              @Context UriInfo uriInfo) {
+        try {
+            requireBearer(authorization);
+            String identityStoreId = resolveIdentityStore(tenantId);
+            validateListQueryParameters(uriInfo, List.of("filter", "count", "cursor"));
+            int count = scimCount(countValue);
+            boolean cursorPresent = uriInfo.getQueryParameters().containsKey("cursor");
+            List<User> matching = filterScimUsers(identityStoreId, filter);
+            int offset = cursorPresent ? decodeCursor(cursor, filter) : 0;
+            if (offset > matching.size()) {
+                throw validation("cursor is invalid.");
+            }
+            int end = Math.min(offset + count, matching.size());
+
+            ObjectNode response = mapper.createObjectNode();
+            response.putArray("schemas").add(LIST_SCHEMA);
+            ArrayNode resources = response.putArray("Resources");
+            for (User user : matching.subList(offset, end)) {
+                resources.add(userResponse(user));
+            }
+            response.put("itemsPerPage", end - offset);
+            if (cursorPresent) {
+                if (end < matching.size()) {
+                    response.put("nextCursor", encodeCursor(end, filter));
+                }
+            } else {
+                response.put("totalResults", matching.size());
+                response.put("startIndex", 1);
+            }
+            return Response.ok(response).build();
+        } catch (AwsException exception) {
+            return scimError(scimStatus(exception), exception.getMessage());
+        }
     }
 
     @GET
@@ -544,6 +590,66 @@ public class ScimController {
                 }
             }
         }
+    }
+
+    private List<User> filterScimUsers(String identityStoreId, String filter) {
+        List<User> users = identityStoreService.listUsersForScim(identityStoreId);
+        if (filter == null || filter.isBlank()) {
+            if (filter != null && !filter.isEmpty()) {
+                throw validation("filter is invalid.");
+            }
+            return users;
+        }
+
+        Matcher single = SINGLE_USER_FILTER.matcher(filter);
+        if (single.matches()) {
+            String attribute = single.group(1);
+            String value = single.group(2);
+            return switch (attribute) {
+                case "userName" -> users.stream()
+                        .filter(user -> value.equals(user.userName()))
+                        .toList();
+                case "externalId" -> users.stream()
+                        .filter(user -> value.equals(scimExternalId(user.attributes().get("ExternalIds"), USER_SCHEMA)))
+                        .toList();
+                case "id" -> users.stream()
+                        .filter(user -> value.equals(user.userId()))
+                        .toList();
+                case "groups.value" -> usersForGroup(identityStoreId, users, value);
+                default -> throw validation("filter is invalid.");
+            };
+        }
+
+        Matcher combined = DOUBLE_USER_FILTER.matcher(filter);
+        if (!combined.matches() || combined.group(1).equals(combined.group(3))) {
+            throw validation("filter is invalid.");
+        }
+        String userId = "id".equals(combined.group(1)) ? combined.group(2) : combined.group(4);
+        String managerId = "manager".equals(combined.group(1)) ? combined.group(2) : combined.group(4);
+        return users.stream()
+                .filter(user -> userId.equals(user.userId()) && managerId.equals(scimManagerId(user)))
+                .toList();
+    }
+
+    private List<User> usersForGroup(String identityStoreId, List<User> users, String groupId) {
+        java.util.Set<String> userIds = identityStoreService.listMembershipsForScim(identityStoreId).stream()
+                .filter(membership -> groupId.equals(membership.groupId()))
+                .map(Membership::userId)
+                .collect(java.util.stream.Collectors.toSet());
+        return users.stream().filter(user -> userIds.contains(user.userId())).toList();
+    }
+
+    private static String scimManagerId(User user) {
+        JsonNode extensions = user.attributes().get("Extensions");
+        if (extensions == null || !extensions.isObject()) {
+            return null;
+        }
+        JsonNode enterprise = extensions.get(IDENTITYSTORE_ENTERPRISE_EXTENSION);
+        if (enterprise == null || !enterprise.isObject()) {
+            return null;
+        }
+        JsonNode manager = enterprise.get("manager");
+        return manager != null && manager.isObject() ? optionalText(manager, "value") : null;
     }
 
     private List<Group> filterScimGroups(String identityStoreId, String filter) {
