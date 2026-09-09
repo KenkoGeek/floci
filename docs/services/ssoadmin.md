@@ -36,6 +36,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | `ListAccountAssignments` | Lists account assignments with AWS-compatible pagination. |
 | `ListAccountAssignmentsForPrincipal` | Lists the AWS account and permission set assignments for a user or group, with AccountId filtering and AWS-compatible pagination. |
 | `ProvisionPermissionSet` | Provisions a permission set to one AWS account or refreshes all previously provisioned accounts, returning an AWS-compatible provisioning status. |
+| `DescribePermissionSetProvisioningStatus` | Describes a persisted permission-set provisioning request by its AWS-compatible UUID request identifier. |
 | `ListPermissionSetsProvisionedToAccount` | Lists permission sets provisioned to an AWS account, including current/stale provisioning status filters and AWS-compatible pagination. |
 | `ListAccountsForProvisionedPermissionSet` | Lists AWS accounts where a permission set is provisioned, including current/stale provisioning status filters and AWS-compatible pagination. |
 | `CreateAccountAssignment` | Creates an account assignment and operation record. |

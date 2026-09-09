@@ -53,6 +53,7 @@ public class SsoAdminJsonHandler {
             case "ListAccountAssignments" -> listAccountAssignments(request);
             case "ListAccountAssignmentsForPrincipal" -> listAccountAssignmentsForPrincipal(request, callerAccountId);
             case "ProvisionPermissionSet" -> provisionPermissionSet(request);
+            case "DescribePermissionSetProvisioningStatus" -> describePermissionSetProvisioningStatus(request);
             case "ListPermissionSetsProvisionedToAccount" -> listPermissionSetsProvisionedToAccount(request);
             case "ListAccountsForProvisionedPermissionSet" -> listAccountsForProvisionedPermissionSet(request);
             case "CreateAccountAssignment" -> createAccountAssignment(request);
@@ -269,6 +270,27 @@ public class SsoAdminJsonHandler {
             status.put("AccountId", operation.accountId());
         }
         status.put("PermissionSetArn", operation.permissionSetArn());
+        if (operation.failureReason() != null) {
+            status.put("FailureReason", operation.failureReason());
+        }
+        return Response.ok(response).build();
+    }
+
+    private Response describePermissionSetProvisioningStatus(JsonNode request) {
+        PermissionSetProvisioningOperation operation = service.getPermissionSetProvisioningOperation(
+                SsoAdminService.required(request, "InstanceArn"),
+                SsoAdminService.required(request, "ProvisionPermissionSetRequestId"));
+        ObjectNode response = mapper.createObjectNode();
+        ObjectNode status = response.putObject("PermissionSetProvisioningStatus");
+        status.put("RequestId", operation.requestId());
+        status.put("Status", operation.status());
+        status.put("CreatedDate", operation.createdDateEpochMillis() / 1000.0d);
+        if (operation.accountId() != null) {
+            status.put("AccountId", operation.accountId());
+        }
+        if (operation.permissionSetArn() != null) {
+            status.put("PermissionSetArn", operation.permissionSetArn());
+        }
         if (operation.failureReason() != null) {
             status.put("FailureReason", operation.failureReason());
         }

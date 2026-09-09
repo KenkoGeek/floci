@@ -999,6 +999,15 @@ public class SsoAdminService implements Resettable {
                 .orElseThrow(() -> notFound("Assignment deletion operation not found: " + requestId));
     }
 
+    public PermissionSetProvisioningOperation getPermissionSetProvisioningOperation(String instanceArn, String requestId) {
+        requireInstance(instanceArn);
+        if (requestId == null || !requestId.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+            throw validation("ProvisionPermissionSetRequestId must be a UUID.");
+        }
+        return permissionSetProvisioningOperations.get(requestId)
+                .orElseThrow(() -> notFound("Permission set provisioning operation not found: " + requestId));
+    }
+
     public AssignmentOperation getAssignmentOperation(String instanceArn, String requestId) {
         requireInstance(instanceArn);
         if (requestId == null || !requestId.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {

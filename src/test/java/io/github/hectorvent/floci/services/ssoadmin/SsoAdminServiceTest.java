@@ -647,6 +647,9 @@ class SsoAdminServiceTest {
         assertEquals(ACCOUNT_ID, operation.accountId());
         assertEquals(permissionSet.arn(), operation.permissionSetArn());
         assertTrue(operation.createdDateEpochMillis() > 0);
+        assertEquals(operation, service.getPermissionSetProvisioningOperation(service.getInstanceArn(), operation.requestId()));
+        assertError("ValidationException",
+                () -> service.getPermissionSetProvisioningOperation(service.getInstanceArn(), "not-a-uuid"));
 
         ObjectNode assignment = assignmentRequest(permissionSet.arn());
         service.createAssignment(assignment);

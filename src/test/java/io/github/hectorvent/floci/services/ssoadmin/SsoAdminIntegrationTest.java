@@ -459,7 +459,7 @@ class SsoAdminIntegrationTest {
             .then().statusCode(200)
             .extract().path("PermissionSet.PermissionSetArn");
 
-        given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
+        String requestId = given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
                 .header("X-Amz-Target", "SWBExternalService.ProvisionPermissionSet")
                 .body("{\"InstanceArn\":\"" + instanceArn + "\",\"PermissionSetArn\":\"" + permissionSetArn
                         + "\",\"TargetType\":\"AWS_ACCOUNT\",\"TargetId\":\"123456789012\"}")
@@ -468,7 +468,16 @@ class SsoAdminIntegrationTest {
                 .body("PermissionSetProvisioningStatus.Status", equalTo("SUCCEEDED"))
                 .body("PermissionSetProvisioningStatus.AccountId", equalTo("123456789012"))
                 .body("PermissionSetProvisioningStatus.PermissionSetArn", equalTo(permissionSetArn))
-                .body("PermissionSetProvisioningStatus.RequestId", matchesPattern("[0-9a-f-]{36}"));
+                .body("PermissionSetProvisioningStatus.RequestId", matchesPattern("[0-9a-f-]{36}"))
+                .extract().path("PermissionSetProvisioningStatus.RequestId");
+
+        given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.DescribePermissionSetProvisioningStatus")
+                .body("{\"InstanceArn\":\"" + instanceArn + "\",\"ProvisionPermissionSetRequestId\":\"" + requestId + "\"}")
+            .when().post("/")
+            .then().statusCode(200)
+                .body("PermissionSetProvisioningStatus.RequestId", equalTo(requestId))
+                .body("PermissionSetProvisioningStatus.Status", equalTo("SUCCEEDED"));
     }
 
     @Test
