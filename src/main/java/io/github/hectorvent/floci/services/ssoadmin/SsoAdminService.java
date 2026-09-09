@@ -60,6 +60,7 @@ public class SsoAdminService implements Resettable {
     private static final Pattern REGION_NAME = Pattern.compile("([a-z]+-){2,3}\\d");
     private static final Pattern APPLICATION_PROVIDER_ARN = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:sso::aws:applicationProvider/[a-zA-Z0-9-/]+");
     private static final Pattern APPLICATION_ARN = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:sso::\\d{12}:application/(?:sso)?ins-[a-zA-Z0-9-.]{16}/apl-[a-zA-Z0-9]{16}");
+    private static final Pattern TRUSTED_TOKEN_ISSUER_ARN = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:sso::\\d{12}:trustedTokenIssuer/(?:sso)?ins-[a-zA-Z0-9-.]{16}/tti-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}");
     private static final Pattern APPLICATION_ACCESS_SCOPE = Pattern.compile("([A-Za-z0-9_]{1,50})(:[A-Za-z0-9_]{1,50}){0,1}(:[A-Za-z0-9_]{1,50}){0,1}");
     private static final Pattern CLIENT_TOKEN = Pattern.compile("[!-~]+");
     private static final Pattern APPLICATION_URL = Pattern.compile("http(s)?://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#/%?=~_|]");
@@ -317,8 +318,27 @@ public class SsoAdminService implements Resettable {
     }
 
     public TrustedTokenIssuer getTrustedTokenIssuer(String trustedTokenIssuerArn) {
+        validateTrustedTokenIssuerArn(trustedTokenIssuerArn);
         return trustedTokenIssuers.get(trustedTokenIssuerArn)
                 .orElseThrow(() -> notFound("Trusted token issuer not found: " + trustedTokenIssuerArn));
+    }
+
+    public synchronized void deleteTrustedTokenIssuer(JsonNode request) {
+        String trustedTokenIssuerArn = required(request, "TrustedTokenIssuerArn");
+        getTrustedTokenIssuer(trustedTokenIssuerArn);
+        trustedTokenIssuers.delete(trustedTokenIssuerArn);
+        for (String key : new ArrayList<>(trustedTokenIssuerClientTokens.keys())) {
+            if (trustedTokenIssuerArn.equals(trustedTokenIssuerClientTokens.get(key).orElse(null))) {
+                trustedTokenIssuerClientTokens.delete(key);
+            }
+        }
+    }
+
+    private static void validateTrustedTokenIssuerArn(String trustedTokenIssuerArn) {
+        if (trustedTokenIssuerArn == null || trustedTokenIssuerArn.length() < 10 || trustedTokenIssuerArn.length() > 1224
+                || !TRUSTED_TOKEN_ISSUER_ARN.matcher(trustedTokenIssuerArn).matches()) {
+            throw validation("TrustedTokenIssuerArn is invalid.");
+        }
     }
 
     private static boolean trustedTokenIssuerMatches(TrustedTokenIssuer issuer, String name, String issuerType,
