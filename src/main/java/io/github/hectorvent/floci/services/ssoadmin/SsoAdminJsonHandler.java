@@ -26,6 +26,7 @@ public class SsoAdminJsonHandler {
     public Response handle(String action, JsonNode request, String callerAccountId) {
         return switch (action) {
             case "ListInstances" -> listInstances(callerAccountId);
+            case "AddRegion" -> addRegion(request);
             case "ListPermissionSets" -> listPermissionSets(request);
             case "CreatePermissionSet" -> createPermissionSet(request);
             case "DescribePermissionSet" -> describePermissionSet(request);
@@ -51,6 +52,11 @@ public class SsoAdminJsonHandler {
         instance.put("OwnerAccountId", callerAccountId);
         instance.put("Status", "ACTIVE");
         return Response.ok(response).build();
+    }
+
+    private Response addRegion(JsonNode request) {
+        var region = service.addRegion(request);
+        return Response.ok(mapper.createObjectNode().put("Status", region.status())).build();
     }
 
     private Response listPermissionSets(JsonNode request) {

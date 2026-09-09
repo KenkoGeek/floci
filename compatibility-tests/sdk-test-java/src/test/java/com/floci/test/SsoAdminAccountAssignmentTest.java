@@ -15,6 +15,25 @@ import static org.junit.jupiter.api.Assumptions.assumeFalse;
 class SsoAdminAccountAssignmentTest {
 
     @Test
+    @DisplayName("adds an IAM Identity Center Region through the AWS SDK")
+    void addRegionUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses the emulator IAM Identity Center instance");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient()) {
+            String instanceArn = sso.listInstances(request -> {}).instances().get(0).instanceArn();
+            var added = sso.addRegion(request -> request
+                    .instanceArn(instanceArn)
+                    .regionName("ap-southeast-3"));
+
+            assertThat(added.statusAsString()).isEqualTo("ADDING");
+            assertThatThrownBy(() -> sso.addRegion(request -> request
+                    .instanceArn(instanceArn)
+                    .regionName("ap-southeast-3")))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ConflictException.class);
+        }
+    }
+
+    @Test
     @DisplayName("creates and describes account assignments through the AWS SDK")
     void accountAssignmentLifecycleUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only account and principal identifiers");
