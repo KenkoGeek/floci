@@ -168,6 +168,33 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void deleteInstanceAccessControlAttributeConfigurationRemovesAbacConfiguration() {
+        ObjectNode create = mapper.createObjectNode();
+        create.put("InstanceArn", service.getInstanceArn());
+        create.putObject("InstanceAccessControlAttributeConfiguration")
+                .putArray("AccessControlAttributes")
+                .addObject()
+                .put("Key", "Department")
+                .putObject("Value")
+                .putArray("Source")
+                .add("${path:enterprise.department}");
+        service.createInstanceAccessControlAttributeConfiguration(create);
+
+        ObjectNode request = mapper.createObjectNode();
+        request.put("InstanceArn", service.getInstanceArn());
+        service.deleteInstanceAccessControlAttributeConfiguration(request);
+
+        assertError("ResourceNotFoundException",
+                () -> service.getInstanceAccessControlAttributeConfiguration(service.getInstanceArn()));
+        assertError("ResourceNotFoundException",
+                () -> service.deleteInstanceAccessControlAttributeConfiguration(request));
+
+        InstanceAccessControlAttributeConfiguration recreated =
+                service.createInstanceAccessControlAttributeConfiguration(create);
+        assertEquals("ENABLED", recreated.status());
+    }
+
+    @Test
     void deleteInstanceRequiresOwnerAndAllowsRecreation() {
         SsoAdminService emptyService = emptyService();
         ObjectNode create = mapper.createObjectNode();

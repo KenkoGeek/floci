@@ -382,6 +382,15 @@ public class SsoAdminService implements Resettable {
                 .orElseThrow(() -> notFound("Instance access control attribute configuration not found for: " + instanceArn));
     }
 
+    public synchronized void deleteInstanceAccessControlAttributeConfiguration(JsonNode request) {
+        String instanceArn = required(request, "InstanceArn");
+        requireInstance(instanceArn);
+        if (accessControlAttributeConfigurations.get(instanceArn).isEmpty()) {
+            throw notFound("Instance access control attribute configuration not found for: " + instanceArn);
+        }
+        accessControlAttributeConfigurations.delete(instanceArn);
+    }
+
     public synchronized SsoInstance createInstance(JsonNode request, String callerAccountId, String region) {
         validateAccountId(callerAccountId);
         validateRegionName(region);

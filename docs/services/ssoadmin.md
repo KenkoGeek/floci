@@ -14,6 +14,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | `CreateInstance` | Creates a standalone account instance with AWS-compatible singleton, idempotency, tags, and instance metadata. |
 | `DeleteInstance` | Deletes an owned IAM Identity Center instance with AWS-compatible empty response semantics and local dependent-resource cleanup. |
 | `CreateInstanceAccessControlAttributeConfiguration` | Enables ABAC and stores up to 50 IAM Identity Center access control attributes. |
+| `DeleteInstanceAccessControlAttributeConfiguration` | Disables ABAC for an IAM Identity Center instance and removes its access control attribute configuration. |
 | `CreateTrustedTokenIssuer` | Creates an OIDC JWT trusted token issuer with idempotency, tags, and AWS-compatible validation. |
 | `AddRegion` | Adds a Region to the local IAM Identity Center instance and reports the initial `ADDING` status. |
 | `CreateApplication` | Creates a customer managed OAuth 2.0 application with AWS-compatible idempotency, portal options, status, and tags. |

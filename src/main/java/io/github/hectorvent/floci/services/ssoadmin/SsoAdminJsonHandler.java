@@ -31,6 +31,7 @@ public class SsoAdminJsonHandler {
             case "CreateInstance" -> createInstance(request, callerAccountId, region);
             case "DeleteInstance" -> deleteInstance(request, callerAccountId);
             case "CreateInstanceAccessControlAttributeConfiguration" -> createInstanceAccessControlAttributeConfiguration(request);
+            case "DeleteInstanceAccessControlAttributeConfiguration" -> deleteInstanceAccessControlAttributeConfiguration(request);
             case "CreateTrustedTokenIssuer" -> createTrustedTokenIssuer(request, callerAccountId);
             case "AddRegion" -> addRegion(request);
             case "CreateApplication" -> createApplication(request, callerAccountId, region);
@@ -115,6 +116,11 @@ public class SsoAdminJsonHandler {
 
     private Response createInstanceAccessControlAttributeConfiguration(JsonNode request) {
         service.createInstanceAccessControlAttributeConfiguration(request);
+        return Response.ok().build();
+    }
+
+    private Response deleteInstanceAccessControlAttributeConfiguration(JsonNode request) {
+        service.deleteInstanceAccessControlAttributeConfiguration(request);
         return Response.ok().build();
     }
 
