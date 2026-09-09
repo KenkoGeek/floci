@@ -149,6 +149,12 @@ public class BedrockControlPlaneController {
         return execute("GetAccountDataRetention", null, Map.of(), headers);
     }
 
+    @PUT
+    @Path("/data-retention")
+    public Response putAccountDataRetention(String body, @Context HttpHeaders headers) {
+        return execute("PutAccountDataRetention", body, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
