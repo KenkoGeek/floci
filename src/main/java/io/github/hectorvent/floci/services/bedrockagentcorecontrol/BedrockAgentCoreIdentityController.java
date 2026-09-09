@@ -145,6 +145,20 @@ public class BedrockAgentCoreIdentityController {
         }
     }
 
+    @POST
+    @Path("/GetApiKeyCredentialProvider")
+    public Response getApiKeyCredentialProvider(@Context HttpHeaders headers, String body) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            ObjectNode req = object(body);
+            ObjectNode out = credentialProviderService.getApiKey(text(req, "name"), region);
+            out.remove("tags");
+            return Response.ok(out).build();
+        } catch (Exception e) {
+            return error(e, "getting API key credential provider");
+        }
+    }
+
     private ObjectNode identityNode(WorkloadIdentity identity, boolean full) {
         ObjectNode node = objectMapper.createObjectNode();
         node.put("name", identity.getName());

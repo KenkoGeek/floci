@@ -90,6 +90,14 @@ public class BedrockAgentCoreCredentialProviderService {
         return item.deepCopy();
     }
 
+    public ObjectNode getApiKey(String name, String region) {
+        validateName(name);
+        return storage.get(key("apikey", region, name))
+                .map(ObjectNode::deepCopy)
+                .orElseThrow(() -> new AwsException("ResourceNotFoundException",
+                        "API key credential provider not found: " + name, 404));
+    }
+
     private String credentialProviderArn(String region, String name) {
         return "arn:aws:acps:" + region + ":" + regionResolver.getAccountId()
                 + ":token-vault/default/apikeycredentialprovider/" + name;

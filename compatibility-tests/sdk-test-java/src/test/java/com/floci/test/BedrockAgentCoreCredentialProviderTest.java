@@ -52,4 +52,16 @@ class BedrockAgentCoreCredentialProviderTest {
         assertThat(response.apiKeySecretArn().secretArn()).contains(":secretsmanager:");
         assertThat(response.apiKeySecretJsonKey()).isEqualTo("apiKey");
     }
+
+    @Test
+    @Order(2)
+    void getApiKeyCredentialProvider() {
+        var response = client.getApiKeyCredentialProvider(builder -> builder.name(apiKeyProviderName));
+
+        assertThat(response.name()).isEqualTo(apiKeyProviderName);
+        assertThat(response.apiKeySecretSourceAsString()).isEqualTo("MANAGED");
+        assertThat(response.credentialProviderArn()).contains(":apikeycredentialprovider/");
+        assertThat(response.createdTime()).isNotNull();
+        assertThat(response.lastUpdatedTime()).isNotNull();
+    }
 }
