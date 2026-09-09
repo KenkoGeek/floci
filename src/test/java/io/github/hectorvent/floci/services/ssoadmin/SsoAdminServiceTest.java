@@ -150,6 +150,8 @@ class SsoAdminServiceTest {
         assertEquals("Department", created.accessControlAttributes().get(0).key());
         assertEquals("${path:enterprise.department}", created.accessControlAttributes().get(0).source());
         assertEquals(created, service.getInstanceAccessControlAttributeConfiguration(service.getInstanceArn()));
+        ObjectNode describeRequest = mapper.createObjectNode().put("InstanceArn", service.getInstanceArn());
+        assertEquals(created, service.describeInstanceAccessControlAttributeConfiguration(describeRequest));
         assertError("ConflictException", () -> service.createInstanceAccessControlAttributeConfiguration(request));
     }
 

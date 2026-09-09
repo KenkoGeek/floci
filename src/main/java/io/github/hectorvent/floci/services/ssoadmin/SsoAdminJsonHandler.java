@@ -33,6 +33,7 @@ public class SsoAdminJsonHandler {
             case "DescribeInstance" -> describeInstance(request);
             case "DeleteInstance" -> deleteInstance(request, callerAccountId);
             case "CreateInstanceAccessControlAttributeConfiguration" -> createInstanceAccessControlAttributeConfiguration(request);
+            case "DescribeInstanceAccessControlAttributeConfiguration" -> describeInstanceAccessControlAttributeConfiguration(request);
             case "DeleteInstanceAccessControlAttributeConfiguration" -> deleteInstanceAccessControlAttributeConfiguration(request);
             case "CreateTrustedTokenIssuer" -> createTrustedTokenIssuer(request, callerAccountId);
             case "DeleteTrustedTokenIssuer" -> deleteTrustedTokenIssuer(request);
@@ -140,6 +141,23 @@ public class SsoAdminJsonHandler {
     private Response createInstanceAccessControlAttributeConfiguration(JsonNode request) {
         service.createInstanceAccessControlAttributeConfiguration(request);
         return Response.ok().build();
+    }
+
+    private Response describeInstanceAccessControlAttributeConfiguration(JsonNode request) {
+        var configuration = service.describeInstanceAccessControlAttributeConfiguration(request);
+        ObjectNode response = mapper.createObjectNode();
+        ObjectNode configurationNode = response.putObject("InstanceAccessControlAttributeConfiguration");
+        ArrayNode attributes = configurationNode.putArray("AccessControlAttributes");
+        configuration.accessControlAttributes().forEach(attribute -> {
+            ObjectNode attributeNode = attributes.addObject();
+            attributeNode.put("Key", attribute.key());
+            attributeNode.putObject("Value").putArray("Source").add(attribute.source());
+        });
+        response.put("Status", configuration.status());
+        if (configuration.statusReason() != null) {
+            response.put("StatusReason", configuration.statusReason());
+        }
+        return Response.ok(response).build();
     }
 
     private Response deleteInstanceAccessControlAttributeConfiguration(JsonNode request) {

@@ -309,6 +309,15 @@ class SsoAdminAccountAssignmentTest {
                                     .value(value -> value.source("${path:enterprise.department}")))));
 
             assertThat(response.sdkHttpResponse().isSuccessful()).isTrue();
+
+            var described = sso.describeInstanceAccessControlAttributeConfiguration(request -> request.instanceArn(instanceArn));
+            assertThat(described.statusAsString()).isEqualTo("ENABLED");
+            assertThat(described.instanceAccessControlAttributeConfiguration().accessControlAttributes())
+                    .singleElement().satisfies(attribute -> {
+                        assertThat(attribute.key()).isEqualTo("Department");
+                        assertThat(attribute.value().source()).containsExactly("${path:enterprise.department}");
+                    });
+
             assertThatThrownBy(() -> sso.createInstanceAccessControlAttributeConfiguration(request -> request
                     .instanceArn(instanceArn)
                     .instanceAccessControlAttributeConfiguration(configuration -> configuration
