@@ -557,6 +557,12 @@ public class BedrockControlPlaneController {
         return execute("GetAutomatedReasoningPolicy", null, Map.of("policyArn", policyArn), headers);
     }
 
+    @GET
+    @Path("/automated-reasoning-policies")
+    public Response listAutomatedReasoningPolicies(@Context HttpHeaders headers) {
+        return execute("ListAutomatedReasoningPolicies", null, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
