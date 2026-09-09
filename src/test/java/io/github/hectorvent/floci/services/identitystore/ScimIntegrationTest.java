@@ -320,6 +320,89 @@ class ScimIntegrationTest {
     }
 
     @Test
+    void patchUserUpdatesSupportedAttributesAndReturnsUser() {
+        String userId = given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"externalId\":\"patch-user-old\",\"userName\":\"patch-user@example.com\","
+                        + "\"displayName\":\"Patch User Old\","
+                        + "\"name\":{\"givenName\":\"Patch\",\"familyName\":\"User\"},"
+                        + "\"emails\":[{\"value\":\"old@example.com\",\"primary\":true}]}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(201)
+                .extract().path("id");
+
+        given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],\"Operations\":["
+                        + "{\"op\":\"replace\",\"path\":\"active\",\"value\":\"false\"},"
+                        + "{\"op\":\"replace\",\"value\":{\"displayName\":\"Patch User New\","
+                        + "\"externalId\":\"patch-user-new\"}},"
+                        + "{\"op\":\"replace\",\"path\":\"emails\",\"value\":["
+                        + "{\"value\":\"new@example.com\",\"type\":\"work\",\"primary\":true}]}]}")
+            .when()
+                .patch("/" + TENANT + "/scim/v2/Users/" + userId)
+            .then()
+                .statusCode(200)
+                .body("id", equalTo(userId))
+                .body("active", equalTo(false))
+                .body("displayName", equalTo("Patch User New"))
+                .body("externalId", equalTo("patch-user-new"))
+                .body("emails[0].value", equalTo("new@example.com"));
+    }
+
+    @Test
+    void patchUserRejectsUnsupportedAndRepeatedProtectedChanges() {
+        String userId = given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"userName\":\"patch-user-validation@example.com\",\"displayName\":\"Patch Validation\","
+                        + "\"name\":{\"givenName\":\"Patch\",\"familyName\":\"Validation\"}}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(201)
+                .extract().path("id");
+
+        given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],\"Operations\":["
+                        + "{\"op\":\"replace\",\"path\":\"active\",\"value\":true},"
+                        + "{\"op\":\"replace\",\"path\":\"active\",\"value\":false}]}")
+            .when()
+                .patch("/" + TENANT + "/scim/v2/Users/" + userId)
+            .then()
+                .statusCode(400)
+                .body("status", equalTo("400"));
+
+        given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],\"Operations\":["
+                        + "{\"op\":\"remove\",\"path\":\"active\"}]}")
+            .when()
+                .patch("/" + TENANT + "/scim/v2/Users/" + userId)
+            .then()
+                .statusCode(400)
+                .body("status", equalTo("400"));
+
+        given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],\"Operations\":["
+                        + "{\"op\":\"replace\",\"path\":\"password\",\"value\":\"nope\"}]}")
+            .when()
+                .patch("/" + TENANT + "/scim/v2/Users/" + userId)
+            .then()
+                .statusCode(400)
+                .body("status", equalTo("400"));
+    }
+
+    @Test
     void patchGroupUpdatesAttributesAndMemberships() {
         String firstUserId = given()
                 .contentType("application/json")

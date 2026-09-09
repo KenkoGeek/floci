@@ -57,6 +57,9 @@ public class ScimController {
             "^(userName|externalId|groups\\.value|id) eq \\\"([^\\\"]*)\\\"$");
     private static final Pattern DOUBLE_USER_FILTER = Pattern.compile(
             "^(id|manager) eq \\\"([^\\\"]*)\\\" and (id|manager) eq \\\"([^\\\"]*)\\\"$");
+    private static final List<String> PATCH_USER_ATTRIBUTES = List.of(
+            "userName", "active", "externalId", "displayName", "nickName", "profileUrl", "title", "userType",
+            "preferredLanguage", "locale", "timezone", "name", "enterprise", "emails", "addresses", "phoneNumbers");
     private static final Pattern PREFIXED_TENANT = Pattern.compile(
             "([0-9a-f]{10})-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
             Pattern.CASE_INSENSITIVE);
@@ -302,6 +305,28 @@ public class ScimController {
             request.put("UserId", userId);
             identityStoreService.deleteUser(request);
             return Response.noContent().build();
+        } catch (AwsException exception) {
+            return scimError(scimStatus(exception), exception.getMessage());
+        }
+    }
+
+    @PATCH
+    @Path("/Users/{userId}")
+    public Response patchUser(@PathParam("tenantId") String tenantId,
+                              @PathParam("userId") String userId,
+                              @HeaderParam("Authorization") String authorization,
+                              String body) {
+        try {
+            requireBearer(authorization);
+            String identityStoreId = resolveIdentityStore(tenantId);
+            JsonNode request = parseObject(body);
+            validatePatchSchema(request);
+            validatePatchUser(identityStoreId, userId, request);
+            applyPatchUser(identityStoreId, userId, request);
+            ObjectNode describe = mapper.createObjectNode();
+            describe.put("IdentityStoreId", identityStoreId);
+            describe.put("UserId", userId);
+            return Response.ok(userResponse(identityStoreService.describeUser(describe))).build();
         } catch (AwsException exception) {
             return scimError(scimStatus(exception), exception.getMessage());
         }
@@ -717,6 +742,239 @@ public class ScimController {
                 || !PATCH_OP_SCHEMA.equals(schemas.get(0).textValue())) {
             throw validation("schemas must contain only the SCIM PatchOp schema.");
         }
+    }
+
+    private void validatePatchUser(String identityStoreId, String userId, JsonNode request) {
+        ObjectNode describe = mapper.createObjectNode();
+        describe.put("IdentityStoreId", identityStoreId);
+        describe.put("UserId", userId);
+        identityStoreService.describeUser(describe);
+
+        JsonNode operations = request.get("Operations");
+        if (operations == null || !operations.isArray() || operations.isEmpty()) {
+            throw validation("Operations must contain at least one patch operation.");
+        }
+        int userNameChanges = 0;
+        int activeChanges = 0;
+        for (JsonNode operation : operations) {
+            if (operation == null || !operation.isObject()) {
+                throw validation("Each patch operation must be an object.");
+            }
+            String op = requiredText(operation, "op");
+            if (!List.of("add", "replace", "remove").contains(op)) {
+                throw validation("Unsupported patch operation: " + op);
+            }
+            String path = optionalText(operation, "path");
+            JsonNode value = operation.get("value");
+            if ("remove".equals(op) && (path == null || path.isBlank())) {
+                throw validation("path is required for remove operations.");
+            }
+            if (!"remove".equals(op) && (value == null || value.isNull())) {
+                throw validation("value is required for add and replace operations.");
+            }
+            if (path == null) {
+                if (!value.isObject() || value.isEmpty()) {
+                    throw validation("A patch operation without path must provide an object value.");
+                }
+                var fields = value.fields();
+                while (fields.hasNext()) {
+                    var entry = fields.next();
+                    validatePatchUserAttribute(identityStoreId, userId, op, entry.getKey(), entry.getValue());
+                    if ("userName".equals(entry.getKey())) {
+                        userNameChanges++;
+                    } else if ("active".equals(entry.getKey())) {
+                        activeChanges++;
+                    }
+                }
+            } else {
+                validatePatchUserAttribute(identityStoreId, userId, op, path, value);
+                if ("userName".equals(path)) {
+                    userNameChanges++;
+                } else if ("active".equals(path)) {
+                    activeChanges++;
+                }
+            }
+        }
+        if (userNameChanges > 1 || activeChanges > 1) {
+            throw validation("Multiple patch operations on userName or active are not supported.");
+        }
+    }
+
+    private void validatePatchUserAttribute(String identityStoreId, String userId, String op, String path, JsonNode value) {
+        if (!PATCH_USER_ATTRIBUTES.contains(path)) {
+            throw validation("The user attribute cannot be patched: " + path);
+        }
+        if ("remove".equals(op) && ("userName".equals(path) || "active".equals(path))) {
+            throw validation(path + " cannot be removed.");
+        }
+        if ("active".equals(path)) {
+            patchBoolean(value, "active");
+            return;
+        }
+        if ("userName".equals(path)) {
+            String userName = requirePatchText(value, "userName");
+            boolean duplicate = identityStoreService.listUsersForScim(identityStoreId).stream()
+                    .anyMatch(user -> userName.equals(user.userName()) && !userId.equals(user.userId()));
+            if (duplicate) {
+                throw new AwsException("ConflictException", "A user with UserName " + userName + " already exists.", 400);
+            }
+            return;
+        }
+        if ("externalId".equals(path)) {
+            if (!"remove".equals(op)) {
+                requirePatchText(value, "externalId");
+            }
+            return;
+        }
+        if (List.of("displayName", "nickName", "profileUrl", "title", "userType", "preferredLanguage", "locale", "timezone")
+                .contains(path)) {
+            if (!"remove".equals(op)) {
+                requirePatchText(value, path);
+            }
+            return;
+        }
+        if ("name".equals(path)) {
+            if (!"remove".equals(op)) {
+                validatePatchName(value);
+            }
+            return;
+        }
+        if ("enterprise".equals(path)) {
+            if (!"remove".equals(op)) {
+                validatePatchEnterprise(value);
+            }
+            return;
+        }
+        if (List.of("emails", "addresses", "phoneNumbers").contains(path) && !"remove".equals(op)) {
+            ObjectNode wrapper = mapper.createObjectNode();
+            wrapper.set(path, value.deepCopy());
+            validateSingleValueArray(wrapper, path, "emails".equals(path), true);
+        }
+    }
+
+    private void validatePatchName(JsonNode value) {
+        if (value == null || !value.isObject()) {
+            throw validation("name must be an object.");
+        }
+        for (String field : List.of("formatted", "familyName", "givenName", "middleName", "honorificPrefix", "honorificSuffix")) {
+            JsonNode fieldValue = value.get(field);
+            if (fieldValue != null && !fieldValue.isNull() && !fieldValue.isTextual()) {
+                throw validation("name." + field + " must be a string.");
+            }
+        }
+    }
+
+    private void validatePatchEnterprise(JsonNode value) {
+        if (value == null || !value.isObject()) {
+            throw validation("enterprise must be an object.");
+        }
+        JsonNode manager = value.get("manager");
+        if (manager != null && !manager.isNull()) {
+            if (!manager.isObject()) {
+                throw validation("enterprise.manager must be an object.");
+            }
+            if (manager.has("displayName")) {
+                throw validation("manager.displayName is not supported.");
+            }
+        }
+    }
+
+    private void applyPatchUser(String identityStoreId, String userId, JsonNode request) {
+        for (JsonNode operation : request.get("Operations")) {
+            String op = operation.path("op").textValue();
+            String path = optionalText(operation, "path");
+            JsonNode value = operation.get("value");
+            if (path == null) {
+                var fields = value.fields();
+                while (fields.hasNext()) {
+                    var entry = fields.next();
+                    applyPatchUserAttribute(identityStoreId, userId, op, entry.getKey(), entry.getValue());
+                }
+            } else {
+                applyPatchUserAttribute(identityStoreId, userId, op, path, value);
+            }
+        }
+    }
+
+    private void applyPatchUserAttribute(String identityStoreId, String userId, String op, String path, JsonNode value) {
+        ObjectNode update = mapper.createObjectNode();
+        update.put("IdentityStoreId", identityStoreId);
+        update.put("UserId", userId);
+        ObjectNode attributeOperation = update.putArray("Operations").addObject();
+        switch (path) {
+            case "active" -> {
+                attributeOperation.put("AttributePath", "userStatus");
+                attributeOperation.put("AttributeValue", patchBoolean(value, "active") ? "ENABLED" : "DISABLED");
+            }
+            case "externalId" -> {
+                attributeOperation.put("AttributePath", "externalIds");
+                if ("remove".equals(op)) {
+                    attributeOperation.putNull("AttributeValue");
+                } else {
+                    ArrayNode externalIds = mapper.createArrayNode();
+                    externalIds.addObject().put("Issuer", USER_SCHEMA).put("Id", value.textValue());
+                    attributeOperation.set("AttributeValue", externalIds);
+                }
+            }
+            case "name" -> {
+                attributeOperation.put("AttributePath", "name");
+                attributeOperation.set("AttributeValue", "remove".equals(op) ? mapper.nullNode() : scimNameToIdentityStore(value));
+            }
+            case "enterprise" -> {
+                attributeOperation.put("AttributePath", IDENTITYSTORE_ENTERPRISE_EXTENSION);
+                attributeOperation.set("AttributeValue", "remove".equals(op) ? mapper.nullNode() : value.deepCopy());
+            }
+            case "emails", "addresses", "phoneNumbers" -> {
+                attributeOperation.put("AttributePath", path);
+                if ("remove".equals(op)) {
+                    attributeOperation.putNull("AttributeValue");
+                } else {
+                    ObjectNode source = mapper.createObjectNode();
+                    source.set(path, value.deepCopy());
+                    ObjectNode converted = mapper.createObjectNode();
+                    if ("emails".equals(path)) {
+                        copyObjectArray(source, converted, path, "Emails",
+                                Map.of("value", "Value", "type", "Type", "primary", "Primary"));
+                    } else if ("addresses".equals(path)) {
+                        copyObjectArray(source, converted, path, "Addresses",
+                                Map.ofEntries(Map.entry("formatted", "Formatted"), Map.entry("streetAddress", "StreetAddress"),
+                                        Map.entry("locality", "Locality"), Map.entry("region", "Region"),
+                                        Map.entry("postalCode", "PostalCode"), Map.entry("country", "Country"),
+                                        Map.entry("type", "Type"), Map.entry("primary", "Primary")));
+                    } else {
+                        copyObjectArray(source, converted, path, "PhoneNumbers",
+                                Map.of("value", "Value", "type", "Type", "primary", "Primary"));
+                    }
+                    attributeOperation.set("AttributeValue", converted.elements().next());
+                }
+            }
+            default -> {
+                attributeOperation.put("AttributePath", path);
+                attributeOperation.set("AttributeValue", "remove".equals(op) ? mapper.nullNode() : value.deepCopy());
+            }
+        }
+        identityStoreService.updateUser(update);
+    }
+
+    private ObjectNode scimNameToIdentityStore(JsonNode value) {
+        ObjectNode out = mapper.createObjectNode();
+        copyText(value, out, "formatted", "Formatted");
+        copyText(value, out, "familyName", "FamilyName");
+        copyText(value, out, "givenName", "GivenName");
+        copyText(value, out, "middleName", "MiddleName");
+        copyText(value, out, "honorificPrefix", "HonorificPrefix");
+        copyText(value, out, "honorificSuffix", "HonorificSuffix");
+        return out;
+    }
+
+    private static boolean patchBoolean(JsonNode value, String field) {
+        if (value != null && value.isBoolean()) {
+            return value.booleanValue();
+        }
+        if (value != null && value.isTextual() && ("true".equals(value.textValue()) || "false".equals(value.textValue()))) {
+            return Boolean.parseBoolean(value.textValue());
+        }
+        throw validation(field + " patch value must be true or false.");
     }
 
     private void validatePatchGroup(String identityStoreId, String groupId, JsonNode request) {
