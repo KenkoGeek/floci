@@ -44,3 +44,4 @@ Each task is checked against the Amazon Bedrock API Reference and the AWS SDK fo
 | BR-038 | `CreateModelImportJob` | `POST /model-import-jobs` | SDK marshaller binding verified; diff-check |
 | BR-039 | `GetModelImportJob` | `GET /model-import-jobs/{jobIdentifier}` | SDK marshaller binding verified; diff-check |
 | BR-040 | `ListModelImportJobs` | `GET /model-import-jobs` | SDK marshaller binding verified; diff-check |
+| BR-041 | `GetImportedModel` | `GET /imported-models/{modelIdentifier}` | SDK marshaller binding verified; diff-check |
