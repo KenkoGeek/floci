@@ -578,6 +578,17 @@ public class SsoAdminService implements Resettable {
                 .orElseThrow(() -> notFound("Application assignment not found for the specified principal."));
     }
 
+    public String describeApplicationProvider(JsonNode request) {
+        String applicationProviderArn = required(request, "ApplicationProviderArn");
+        if (applicationProviderArn.length() > 1224 || !APPLICATION_PROVIDER_ARN.matcher(applicationProviderArn).matches()) {
+            throw validation("ApplicationProviderArn is invalid.");
+        }
+        if (!CUSTOM_APPLICATION_PROVIDER_ARN.equals(applicationProviderArn)) {
+            throw notFound("Application provider not found: " + applicationProviderArn);
+        }
+        return applicationProviderArn;
+    }
+
     public synchronized void deleteApplicationAssignment(JsonNode request) {
         String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
         getApplication(applicationArn);
