@@ -841,6 +841,14 @@ public class SsoAdminService implements Resettable {
         markPermissionSetProvisioningStale(arn);
     }
 
+    public PermissionsBoundary getPermissionsBoundary(String instanceArn, String permissionSetArn) {
+        PermissionSet permissionSet = getPermissionSet(instanceArn, permissionSetArn);
+        if (permissionSet.permissionsBoundary() == null) {
+            throw notFound("Permissions boundary not found for permission set: " + permissionSetArn);
+        }
+        return permissionSet.permissionsBoundary();
+    }
+
     public synchronized void putPermissionsBoundary(JsonNode request) {
         String instanceArn = required(request, "InstanceArn");
         String permissionSetArn = required(request, "PermissionSetArn");

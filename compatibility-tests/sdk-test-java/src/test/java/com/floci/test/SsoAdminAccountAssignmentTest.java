@@ -564,6 +564,11 @@ class SsoAdminAccountAssignmentTest {
                     .permissionsBoundary(boundary -> boundary
                             .managedPolicyArn("arn:aws:iam::aws:policy/PowerUserAccess")));
             assertThat(response.sdkHttpResponse().isSuccessful()).isTrue();
+            var boundary = sso.getPermissionsBoundaryForPermissionSet(request -> request
+                    .instanceArn(instanceArn)
+                    .permissionSetArn(permissionSetArn));
+            assertThat(boundary.permissionsBoundary().managedPolicyArn())
+                    .isEqualTo("arn:aws:iam::aws:policy/PowerUserAccess");
         }
     }
 
