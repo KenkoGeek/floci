@@ -37,6 +37,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | `DeleteInlinePolicyFromPermissionSet` | Deletes the inline policy. |
 | `GetInlinePolicyForPermissionSet` | Returns the inline IAM policy attached to a permission set, or an empty string when none is attached. |
 | `PutInlinePolicyToPermissionSet` | Creates or replaces the inline policy. |
+| `PutPermissionsBoundaryToPermissionSet` | Attaches an AWS managed or customer managed IAM policy as the permissions boundary for a permission set. |
 | `ListAccountAssignments` | Lists account assignments with AWS-compatible pagination. |
 | `ListAccountAssignmentsForPrincipal` | Lists the AWS account and permission set assignments for a user or group, with AccountId filtering and AWS-compatible pagination. |
 | `ProvisionPermissionSet` | Provisions a permission set to one AWS account or refreshes all previously provisioned accounts, returning an AWS-compatible provisioning status. |
