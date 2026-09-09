@@ -25,3 +25,4 @@ Each task is checked against the Amazon Bedrock API Reference and the AWS SDK fo
 | BR-019 | `PutAccountDataRetention` | `PUT /data-retention` | SDK marshaller binding verified; diff-check |
 | BR-020 | `CreateGuardrail` | `POST /guardrails` | SDK marshaller binding verified; diff-check |
 | BR-021 | `CreateGuardrailVersion` | `POST /guardrails/{guardrailIdentifier}` | SDK marshaller binding verified; diff-check |
+| BR-022 | `DeleteGuardrail` | `DELETE /guardrails/{guardrailIdentifier}` | SDK marshaller binding verified; diff-check |
