@@ -233,6 +233,12 @@ public class BedrockControlPlaneController {
         return execute("DeleteInferenceProfile", null, Map.of("inferenceProfileIdentifier", inferenceProfileIdentifier), headers);
     }
 
+    @POST
+    @Path("/provisioned-model-throughput")
+    public Response createProvisionedModelThroughput(String body, @Context HttpHeaders headers) {
+        return execute("CreateProvisionedModelThroughput", body, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
