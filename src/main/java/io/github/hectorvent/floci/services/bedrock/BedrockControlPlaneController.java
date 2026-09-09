@@ -263,6 +263,12 @@ public class BedrockControlPlaneController {
         return execute("DeleteProvisionedModelThroughput", null, Map.of("provisionedModelId", provisionedModelId), headers);
     }
 
+    @POST
+    @Path("/model-import-jobs")
+    public Response createModelImportJob(String body, @Context HttpHeaders headers) {
+        return execute("CreateModelImportJob", body, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(

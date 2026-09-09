@@ -48,6 +48,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `ListProvisionedModelThroughputs` | `GET /provisioned-model-throughputs` | AWS-compatible control-plane emulation. |
 | `UpdateProvisionedModelThroughput` | `PATCH /provisioned-model-throughput/{provisionedModelId}` | AWS-compatible control-plane emulation. |
 | `DeleteProvisionedModelThroughput` | `DELETE /provisioned-model-throughput/{provisionedModelId}` | AWS-compatible control-plane emulation. |
+| `CreateModelImportJob` | `POST /model-import-jobs` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 
