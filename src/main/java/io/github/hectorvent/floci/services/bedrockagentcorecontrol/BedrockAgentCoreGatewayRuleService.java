@@ -100,6 +100,45 @@ public class BedrockAgentCoreGatewayRuleService {
                 maxResults, nextToken, 100, 100, "ValidationException");
     }
 
+    public ObjectNode update(String gatewayId, String ruleId, ObjectNode request, String region) {
+        ObjectNode rule = get(gatewayId, ruleId, region);
+        if (request.has("actions")) {
+            JsonNode actions = request.get("actions");
+            if (actions == null || !actions.isArray() || actions.isEmpty() || actions.size() > 2) {
+                throw new AwsException("ValidationException", "actions must contain between 1 and 2 items", 400);
+            }
+            rule.set("actions", actions.deepCopy());
+        }
+        if (request.has("conditions")) {
+            JsonNode conditions = request.get("conditions");
+            if (conditions == null || !conditions.isArray() || conditions.size() > 2) {
+                throw new AwsException("ValidationException", "conditions must contain at most 2 items", 400);
+            }
+            rule.set("conditions", conditions.deepCopy());
+        }
+        if (request.hasNonNull("description")) {
+            String description = request.get("description").asText();
+            if (description.length() < 1 || description.length() > 256) {
+                throw new AwsException("ValidationException", "description must be between 1 and 256 characters", 400);
+            }
+            rule.put("description", description);
+        }
+        if (request.has("priority")) {
+            if (!request.hasNonNull("priority") || !request.get("priority").canConvertToInt()) {
+                throw new AwsException("ValidationException", "priority must be an integer", 400);
+            }
+            int priority = request.get("priority").asInt();
+            if (priority < 1 || priority > 1_000_000) {
+                throw new AwsException("ValidationException", "priority must be between 1 and 1000000", 400);
+            }
+            rule.put("priority", priority);
+        }
+        rule.put("status", "ACTIVE");
+        rule.put("updatedAt", Instant.now().toString());
+        storage.put(key(region, gatewayId, ruleId), rule);
+        return rule.deepCopy();
+    }
+
     private static String key(String region, String gatewayId, String ruleId) {
         return prefix(region, gatewayId) + ruleId;
     }

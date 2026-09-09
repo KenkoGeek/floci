@@ -10,6 +10,7 @@ import io.github.hectorvent.floci.core.common.RegionResolver;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.PATCH;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
@@ -96,6 +97,22 @@ public class BedrockAgentCoreGatewayRuleController {
             return Response.ok(response).build();
         } catch (Exception e) {
             return error(e, "listing gateway rules");
+        }
+    }
+
+    @PATCH
+    @Path("/{gatewayIdentifier}/rules/{ruleId}")
+    public Response updateGatewayRule(@Context HttpHeaders headers,
+                                      @PathParam("gatewayIdentifier") String gatewayId,
+                                      @PathParam("ruleId") String ruleId,
+                                      String body) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            ObjectNode response = service.update(gatewayId, ruleId, object(body), region);
+            response.remove("clientToken");
+            return Response.status(202).entity(response).build();
+        } catch (Exception e) {
+            return error(e, "updating gateway rule");
         }
     }
 

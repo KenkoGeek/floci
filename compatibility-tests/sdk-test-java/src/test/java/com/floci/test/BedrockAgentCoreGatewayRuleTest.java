@@ -92,4 +92,25 @@ class BedrockAgentCoreGatewayRuleTest {
         assertThat(response.gatewayRules())
                 .anyMatch(rule -> ruleId.equals(rule.ruleId()));
     }
+
+    @Test
+    @Order(4)
+    void updateGatewayRule() {
+        Action action = Action.fromRouteToTarget(RouteToTargetAction.fromStaticRoute(
+                StaticRoute.builder().targetName("updated-target").build()));
+        UpdateGatewayRuleResponse response = client.updateGatewayRule(UpdateGatewayRuleRequest.builder()
+                .gatewayIdentifier(gatewayId)
+                .ruleId(ruleId)
+                .priority(2)
+                .actions(action)
+                .description("updated route")
+                .build());
+
+        assertThat(response.ruleId()).isEqualTo(ruleId);
+        assertThat(response.priority()).isEqualTo(2);
+        assertThat(response.description()).isEqualTo("updated route");
+        assertThat(response.actions()).hasSize(1);
+        assertThat(response.statusAsString()).isEqualTo("ACTIVE");
+        assertThat(response.updatedAt()).isNotNull();
+    }
 }
