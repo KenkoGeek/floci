@@ -141,6 +141,11 @@ public class MarketplaceService implements Resettable {
         requireCatalog(text(request,"Catalog",true)); String id=text(request,"AssessmentIdentifier",true); JsonNode a=assessments.get(id).orElse(null); if(a==null && id.contains("/")) a=assessments.get(id.substring(id.lastIndexOf('/')+1)).orElse(null); if(a==null) throw notFound("Assessment",id); return (ObjectNode)a.deepCopy();
     }
 
+    List<JsonNode> snapshotEntities(String region) {
+        completePending(region);
+        return entities.scan(key -> true).stream().map(value -> (JsonNode) value.deepCopy()).toList();
+    }
+
     private ArrayNode normalizeChanges(ArrayNode changes, String region) {
         ArrayNode out=mapper.createArrayNode(); for(JsonNode raw:changes){ ObjectNode c=raw.deepCopy(); text(c,"ChangeType",true); JsonNode entity=c.path("Entity"); if(!entity.isObject()) throw validation("Each change requires Entity."); String type=text(entity,"Type",true); String identifier=text(entity,"Identifier",false); if(identifier==null||identifier.isBlank()||identifier.equals("@1")){ identifier=idForType(type); ((ObjectNode)entity).put("Identifier",identifier); } c.put("EntityArn",arn(region,"AWSMarketplace/"+type+"/"+identifier)); out.add(c); } return out;
     }
