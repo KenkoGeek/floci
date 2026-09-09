@@ -320,6 +320,29 @@ class ScimIntegrationTest {
     }
 
     @Test
+    void listResourceTypesReturnsAwsScimCatalog() {
+        given()
+                .header("Authorization", BEARER)
+            .when()
+                .get("/" + TENANT + "/scim/v2/ResourceTypes")
+            .then()
+                .statusCode(200)
+                .body("schemas[0]", equalTo("urn:ietf:params:scim:api:messages:2.0:ListResponse"))
+                .body("totalResults", equalTo(2))
+                .body("itemsPerPage", equalTo(2))
+                .body("startIndex", equalTo(1))
+                .body("Resources.id", hasItem("User"))
+                .body("Resources.id", hasItem("Group"))
+                .body("Resources.find { it.id == 'User' }.endpoint", equalTo("/Users"))
+                .body("Resources.find { it.id == 'User' }.schema", equalTo("urn:ietf:params:scim:schemas:core:2.0:User"))
+                .body("Resources.find { it.id == 'User' }.schemaExtensions[0].schema",
+                        equalTo("urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"))
+                .body("Resources.find { it.id == 'User' }.schemaExtensions[0].required", equalTo(true))
+                .body("Resources.find { it.id == 'User' }.meta.resourceType", equalTo("ResourceType"))
+                .body("Resources.find { it.id == 'User' }.meta.location", notNullValue());
+    }
+
+    @Test
     void listSchemasReturnsAwsScimCatalog() {
         given()
                 .header("Authorization", BEARER)

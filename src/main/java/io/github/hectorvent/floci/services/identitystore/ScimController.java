@@ -44,6 +44,7 @@ public class ScimController {
     private static final String IDENTITYSTORE_ENTERPRISE_EXTENSION = "aws:identitystore:enterprise";
     private static final String ERROR_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:Error";
     private static final String LIST_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:ListResponse";
+    private static final String RESOURCE_TYPE_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:ResourceType";
     private static final Pattern CURSOR_PATTERN = Pattern.compile("[-a-zA-Z0-9+=/:_]*");
     private static final Pattern SINGLE_GROUP_FILTER = Pattern.compile(
             "^(displayName|externalId|members\\.value|id) eq \\\"([^\\\"]*)\\\"$");
@@ -69,6 +70,28 @@ public class ScimController {
         this.identityStoreService = identityStoreService;
         this.ssoAdminService = ssoAdminService;
         this.mapper = mapper;
+    }
+
+    @GET
+    @Path("/ResourceTypes")
+    public Response listResourceTypes(@PathParam("tenantId") String tenantId,
+                                      @HeaderParam("Authorization") String authorization,
+                                      @Context UriInfo uriInfo) {
+        try {
+            requireBearer(authorization);
+            resolveIdentityStore(tenantId);
+            ObjectNode response = mapper.createObjectNode();
+            response.putArray("schemas").add(LIST_SCHEMA);
+            response.put("totalResults", 2);
+            response.put("itemsPerPage", 2);
+            response.put("startIndex", 1);
+            ArrayNode resources = response.putArray("Resources");
+            resources.add(resourceType("User", "/Users", "User Account", USER_SCHEMA, true, tenantId, uriInfo));
+            resources.add(resourceType("Group", "/Groups", "Group", GROUP_SCHEMA, false, tenantId, uriInfo));
+            return Response.ok(response).build();
+        } catch (AwsException exception) {
+            return scimError(scimStatus(exception), exception.getMessage());
+        }
     }
 
     @GET
@@ -630,6 +653,27 @@ public class ScimController {
                 }
             }
         }
+    }
+
+    private ObjectNode resourceType(String id, String endpoint, String description, String schemaId,
+                                    boolean enterpriseExtension, String tenantId, UriInfo uriInfo) {
+        ObjectNode resourceType = mapper.createObjectNode();
+        resourceType.putArray("schemas").add(RESOURCE_TYPE_SCHEMA);
+        resourceType.put("id", id);
+        resourceType.put("name", id);
+        resourceType.put("endpoint", endpoint);
+        resourceType.put("description", description);
+        resourceType.put("schema", schemaId);
+        if (enterpriseExtension) {
+            ObjectNode extension = resourceType.putArray("schemaExtensions").addObject();
+            extension.put("schema", ENTERPRISE_USER_SCHEMA);
+            extension.put("required", true);
+        }
+        ObjectNode meta = resourceType.putObject("meta");
+        meta.put("resourceType", "ResourceType");
+        meta.put("location", uriInfo.getBaseUriBuilder()
+                .path(tenantId).path("scim").path("v2").path("ResourceTypes").path(id).build().toString());
+        return resourceType;
     }
 
     private ObjectNode scimSchema(String schemaId) {
