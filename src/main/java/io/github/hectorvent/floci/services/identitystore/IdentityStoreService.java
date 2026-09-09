@@ -181,6 +181,28 @@ public class IdentityStoreService implements Resettable {
         return listUsersAll(requireStore(storeId), null);
     }
 
+    synchronized User replaceUserForScim(String storeId, String userId, JsonNode request) {
+        storeId = requireStore(storeId);
+        userId = requireResourceId(userId, "UserId");
+        String finalUserId = userId;
+        User user = requireUser(storeId, finalUserId);
+        ObjectNode attributes = copyAttributes(request, Set.of("IdentityStoreId"));
+        String userName = optionalTextLength(attributes, "UserName", 1, 128);
+        if (userName != null) {
+            requireNotReserved(userName);
+            boolean duplicate = listUsersAll(storeId, userName).stream()
+                    .anyMatch(candidate -> !candidate.userId().equals(finalUserId));
+            if (duplicate) {
+                throw conflict("A user with UserName " + userName + " already exists.");
+            }
+        }
+        optionalTextLength(attributes, "DisplayName", 1, 1024);
+        user.setAttributes(attributes);
+        user.setUpdatedAt(Instant.now().toString());
+        users.putForAccount(GLOBAL_PARTITION, userKey(storeId, userId), user);
+        return user;
+    }
+
     public User describeUser(JsonNode request) {
         String storeId = requireStore(required(request, "IdentityStoreId"));
         return requireUser(storeId, requireResourceId(required(request, "UserId"), "UserId"));
