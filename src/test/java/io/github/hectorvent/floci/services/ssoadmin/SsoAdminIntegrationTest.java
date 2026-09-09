@@ -77,6 +77,30 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void attachCustomerManagedPolicyReferenceReturnsAnEmptyAwsResponse() {
+        String permissionSetArn = given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.CreatePermissionSet")
+                .body("{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\",\"Name\":\"CustomerPolicyIntegration\"}")
+            .when().post("/")
+            .then().statusCode(200)
+            .extract().path("PermissionSet.PermissionSetArn");
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.AttachCustomerManagedPolicyReferenceToPermissionSet")
+            .body("{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\",\"PermissionSetArn\":\"" + permissionSetArn
+                    + "\",\"CustomerManagedPolicyReference\":{\"Name\":\"PlatformPolicy\",\"Path\":\"/platform/\"}}")
+        .when()
+            .post("/")
+        .then()
+            .statusCode(200)
+            .body(org.hamcrest.Matchers.is(org.hamcrest.Matchers.emptyOrNullString()));
+    }
+
+    @Test
     void unknownAction_returnsUnknownOperationException() {
         given()
             .contentType("application/x-amz-json-1.1")

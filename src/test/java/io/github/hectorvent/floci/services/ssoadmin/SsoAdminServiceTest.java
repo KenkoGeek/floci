@@ -72,6 +72,46 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void attachesCustomerManagedPolicyReferencesWithAwsValidationRules() {
+        PermissionSet permissionSet = createPermissionSet("CustomerPolicyAdmins");
+        ObjectNode request = mapper.createObjectNode();
+        request.put("InstanceArn", service.getInstanceArn());
+        request.put("PermissionSetArn", permissionSet.arn());
+        request.putObject("CustomerManagedPolicyReference").put("Name", "PlatformPolicy");
+
+        service.attachCustomerManagedPolicyReference(request);
+
+        PermissionSet stored = service.getPermissionSet(service.getInstanceArn(), permissionSet.arn());
+        assertEquals(1, stored.customerManagedPolicies().size());
+        assertEquals("/", stored.customerManagedPolicies().values().iterator().next().path());
+
+        ObjectNode caseInsensitiveDuplicate = request.deepCopy();
+        caseInsensitiveDuplicate.withObject("CustomerManagedPolicyReference").put("Name", "platformpolicy");
+        assertError("ConflictException", () -> service.attachCustomerManagedPolicyReference(caseInsensitiveDuplicate));
+
+        ObjectNode invalidPath = request.deepCopy();
+        invalidPath.withObject("CustomerManagedPolicyReference").put("Name", "OtherPolicy").put("Path", "missing-slash");
+        assertError("ValidationException", () -> service.attachCustomerManagedPolicyReference(invalidPath));
+    }
+
+    @Test
+    void customerManagedPoliciesShareTheDocumentedManagedPolicyQuota() {
+        PermissionSet permissionSet = createPermissionSet("QuotaPolicyAdmins");
+        for (int i = 0; i < 24; i++) {
+            service.attachPolicy(service.getInstanceArn(), permissionSet.arn(),
+                    "arn:aws:iam::aws:policy/TestPolicy" + i);
+        }
+        ObjectNode customer = mapper.createObjectNode();
+        customer.put("InstanceArn", service.getInstanceArn());
+        customer.put("PermissionSetArn", permissionSet.arn());
+        customer.putObject("CustomerManagedPolicyReference").put("Name", "CustomerPolicy");
+        service.attachCustomerManagedPolicyReference(customer);
+
+        assertError("ServiceQuotaExceededException", () -> service.attachPolicy(service.getInstanceArn(), permissionSet.arn(),
+                "arn:aws:iam::aws:policy/OverQuotaPolicy"));
+    }
+
+    @Test
     void managedPolicyPaginationHonorsMaxResultsAndNextToken() {
         PermissionSet permissionSet = createPermissionSet("PlatformAdmins");
         service.attachPolicy(service.getInstanceArn(), permissionSet.arn(), "arn:aws:iam::aws:policy/ReadOnlyAccess");

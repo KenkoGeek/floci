@@ -6,4 +6,11 @@ import java.util.Map;
 
 @RegisterForReflection
 public record PermissionSet(String arn, String name, String description, String sessionDuration,
-                            Map<String, String> managedPolicies, String inlinePolicy) {}
+                            Map<String, String> managedPolicies,
+                            Map<String, CustomerManagedPolicyReference> customerManagedPolicies,
+                            String inlinePolicy) {
+    public PermissionSet {
+        managedPolicies = managedPolicies == null ? new java.util.LinkedHashMap<>() : managedPolicies;
+        customerManagedPolicies = customerManagedPolicies == null ? new java.util.LinkedHashMap<>() : customerManagedPolicies;
+    }
+}
