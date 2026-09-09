@@ -45,6 +45,7 @@ public class ScimController {
     private static final String ERROR_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:Error";
     private static final String LIST_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:ListResponse";
     private static final String RESOURCE_TYPE_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:ResourceType";
+    private static final String SERVICE_PROVIDER_CONFIG_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig";
     private static final Pattern CURSOR_PATTERN = Pattern.compile("[-a-zA-Z0-9+=/:_]*");
     private static final Pattern SINGLE_GROUP_FILTER = Pattern.compile(
             "^(displayName|externalId|members\\.value|id) eq \\\"([^\\\"]*)\\\"$");
@@ -70,6 +71,40 @@ public class ScimController {
         this.identityStoreService = identityStoreService;
         this.ssoAdminService = ssoAdminService;
         this.mapper = mapper;
+    }
+
+    @GET
+    @Path("/ServiceProviderConfig")
+    public Response serviceProviderConfig(@PathParam("tenantId") String tenantId,
+                                          @HeaderParam("Authorization") String authorization) {
+        try {
+            requireBearer(authorization);
+            resolveIdentityStore(tenantId);
+            ObjectNode response = mapper.createObjectNode();
+            response.putArray("schemas").add(SERVICE_PROVIDER_CONFIG_SCHEMA);
+            response.put("documentationUri", "https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-identity-source-idp.html");
+            ObjectNode auth = response.putArray("authenticationSchemes").addObject();
+            auth.put("type", "oauthbearertoken");
+            auth.put("name", "OAuth Bearer Token");
+            auth.put("description", "Authentication scheme using the OAuth Bearer Token Standard");
+            auth.put("specUri", "https://www.rfc-editor.org/info/rfc6750");
+            auth.put("documentationUri", "https://docs.aws.amazon.com/singlesignon/latest/userguide/provision-automatically.html");
+            auth.put("primary", true);
+            response.putObject("patch").put("supported", true);
+            ObjectNode bulk = response.putObject("bulk");
+            bulk.put("supported", false);
+            bulk.put("maxOperations", 1);
+            bulk.put("maxPayloadSize", 1048576);
+            ObjectNode filter = response.putObject("filter");
+            filter.put("supported", true);
+            filter.put("maxResults", 50);
+            response.putObject("changePassword").put("supported", false);
+            response.putObject("sort").put("supported", false);
+            response.putObject("etag").put("supported", false);
+            return Response.ok(response).build();
+        } catch (AwsException exception) {
+            return scimError(scimStatus(exception), exception.getMessage());
+        }
     }
 
     @GET

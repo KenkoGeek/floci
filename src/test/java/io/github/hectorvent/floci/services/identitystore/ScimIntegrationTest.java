@@ -320,6 +320,28 @@ class ScimIntegrationTest {
     }
 
     @Test
+    void serviceProviderConfigMatchesAwsScimCapabilities() {
+        given()
+                .header("Authorization", BEARER)
+            .when()
+                .get("/" + TENANT + "/scim/v2/ServiceProviderConfig")
+            .then()
+                .statusCode(200)
+                .body("schemas[0]", equalTo("urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"))
+                .body("authenticationSchemes[0].type", equalTo("oauthbearertoken"))
+                .body("authenticationSchemes[0].primary", equalTo(true))
+                .body("patch.supported", equalTo(true))
+                .body("bulk.supported", equalTo(false))
+                .body("bulk.maxOperations", equalTo(1))
+                .body("bulk.maxPayloadSize", equalTo(1048576))
+                .body("filter.supported", equalTo(true))
+                .body("filter.maxResults", equalTo(50))
+                .body("changePassword.supported", equalTo(false))
+                .body("sort.supported", equalTo(false))
+                .body("etag.supported", equalTo(false));
+    }
+
+    @Test
     void listResourceTypesReturnsAwsScimCatalog() {
         given()
                 .header("Authorization", BEARER)
