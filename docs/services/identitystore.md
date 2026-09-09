@@ -42,6 +42,14 @@ Groups, users, and group memberships are persisted through `StorageFactory` and 
 
 Deleting a user or group removes its related local group memberships so subsequent membership queries do not retain dangling references.
 
+## IAM Identity Center SCIM
+
+Floci also accepts IAM Identity Center SCIM v2 requests under `/{tenant_id}/scim/v2`. SCIM requests require the AWS-supported `Authorization: Bearer <token>` authentication shape. Because Floci does not provision real IAM Identity Center access tokens, any non-empty bearer token is accepted locally; the tenant still must resolve to an existing IAM Identity Center identity store.
+
+`CreateGroup` is supported through `POST /{tenant_id}/scim/v2/Groups`. It requires `displayName`, accepts `externalId`, supports up to 100 user members in one request, returns the AWS SCIM `201` group representation, and persists the group and memberships into the same Identity Store state used by the JSON 1.1 API. A tenant ID beginning with a ten-character identity-store prefix resolves to `d-<prefix>`; legacy UUID-form identity stores may use the UUID directly. Invalid tenants and missing bearer authorization return SCIM `401` errors.
+
+SCIM validation failures use the standard `urn:ietf:params:scim:api:messages:2.0:Error` response shape. See the [IAM Identity Center SCIM implementation](https://docs.aws.amazon.com/singlesignon/latest/developerguide/what-is-scim.html) and [CreateGroup](https://docs.aws.amazon.com/singlesignon/latest/developerguide/creategroup.html) documentation.
+
 ## AWS-compatible failures
 
 Floci validates identity store and resource identifier formats, filter shapes, pagination bounds, membership references, alternate-identifier unions, duplicate user/group names, duplicate memberships, reserved names, operation counts, and local user/group quotas. Deterministic failures use modeled AWS errors including `ValidationException`, `ConflictException`, `ResourceNotFoundException`, and `ServiceQuotaExceededException`.
