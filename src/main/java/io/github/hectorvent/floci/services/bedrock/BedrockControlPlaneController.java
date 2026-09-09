@@ -89,6 +89,12 @@ public class BedrockControlPlaneController {
         return execute("DeleteFoundationModelAgreement", body, Map.of(), headers);
     }
 
+    @GET
+    @Path("/logging/modelinvocations")
+    public Response getModelInvocationLoggingConfiguration(@Context HttpHeaders headers) {
+        return execute("GetModelInvocationLoggingConfiguration", null, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(

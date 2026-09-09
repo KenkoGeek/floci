@@ -19,6 +19,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `GetFoundationModel` | `GET /foundation-models/{modelIdentifier}` | AWS-compatible control-plane emulation. |
 | `ListFoundationModels` | `GET /foundation-models` | AWS-compatible control-plane emulation. |
 | `DeleteFoundationModelAgreement` | `POST /delete-foundation-model-agreement` | AWS-compatible control-plane emulation. |
+| `GetModelInvocationLoggingConfiguration` | `GET /logging/modelinvocations` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 
