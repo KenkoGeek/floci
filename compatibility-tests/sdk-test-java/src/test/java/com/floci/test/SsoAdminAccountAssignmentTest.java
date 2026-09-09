@@ -441,6 +441,13 @@ class SsoAdminAccountAssignmentTest {
             assertThat(response.permissionSetProvisioningStatus().accountId()).isEqualTo("123456789012");
             assertThat(response.permissionSetProvisioningStatus().permissionSetArn()).isEqualTo(permissionSetArn);
             assertThat(response.permissionSetProvisioningStatus().requestId()).isNotBlank();
+
+            var described = sso.describePermissionSetProvisioningStatus(request -> request
+                    .instanceArn(instanceArn)
+                    .provisionPermissionSetRequestId(response.permissionSetProvisioningStatus().requestId()));
+            assertThat(described.permissionSetProvisioningStatus().requestId())
+                    .isEqualTo(response.permissionSetProvisioningStatus().requestId());
+            assertThat(described.permissionSetProvisioningStatus().statusAsString()).isEqualTo("SUCCEEDED");
         }
     }
 
