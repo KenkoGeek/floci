@@ -18,6 +18,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | `DescribeInstanceAccessControlAttributeConfiguration` | Returns the IAM Identity Center ABAC attribute configuration and its creation status for an instance. |
 | `DeleteInstanceAccessControlAttributeConfiguration` | Disables ABAC for an IAM Identity Center instance and removes its access control attribute configuration. |
 | `CreateTrustedTokenIssuer` | Creates an OIDC JWT trusted token issuer with idempotency, tags, and AWS-compatible validation. |
+| `DescribeTrustedTokenIssuer` | Returns the trusted token issuer name, ARN, OIDC JWT configuration, and issuer type. |
 | `DeleteTrustedTokenIssuer` | Deletes a trusted token issuer, validates its AWS ARN, and clears local idempotency mappings. |
 | `AddRegion` | Adds a Region to the local IAM Identity Center instance and reports the initial `ADDING` status. |
 | `DescribeRegion` | Returns the enabled Region name, status, added date, and primary-Region flag for an IAM Identity Center instance. |

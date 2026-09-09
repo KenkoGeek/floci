@@ -351,6 +351,22 @@ class SsoAdminIntegrationTest {
         .then()
             .statusCode(200)
             .body("TrustedTokenIssuerArn", equalTo(arn));
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.DescribeTrustedTokenIssuer")
+            .body("{\"TrustedTokenIssuerArn\":\"" + arn + "\"}")
+        .when().post("/")
+        .then()
+            .statusCode(200)
+            .body("Name", equalTo("IntegrationIssuer"))
+            .body("TrustedTokenIssuerArn", equalTo(arn))
+            .body("TrustedTokenIssuerType", equalTo("OIDC_JWT"))
+            .body("TrustedTokenIssuerConfiguration.OidcJwtConfiguration.ClaimAttributePath", equalTo("sub"))
+            .body("TrustedTokenIssuerConfiguration.OidcJwtConfiguration.IdentityStoreAttributePath", equalTo("userName"))
+            .body("TrustedTokenIssuerConfiguration.OidcJwtConfiguration.IssuerUrl", equalTo("https://issuer.example.com"))
+            .body("TrustedTokenIssuerConfiguration.OidcJwtConfiguration.JwksRetrievalOption", equalTo("OPEN_ID_DISCOVERY"));
     }
 
     @Test

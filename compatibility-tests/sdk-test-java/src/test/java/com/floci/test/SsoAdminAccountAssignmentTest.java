@@ -294,6 +294,13 @@ class SsoAdminAccountAssignmentTest {
                                     .jwksRetrievalOption("OPEN_ID_DISCOVERY"))));
             assertThat(replay.trustedTokenIssuerArn()).isEqualTo(created.trustedTokenIssuerArn());
 
+            var described = sso.describeTrustedTokenIssuer(request -> request
+                    .trustedTokenIssuerArn(created.trustedTokenIssuerArn()));
+            assertThat(described.name()).isEqualTo("SdkIssuer");
+            assertThat(described.trustedTokenIssuerTypeAsString()).isEqualTo("OIDC_JWT");
+            assertThat(described.trustedTokenIssuerConfiguration().oidcJwtConfiguration().issuerUrl())
+                    .isEqualTo("https://issuer.example.com");
+
             var deleteResponse = sso.deleteTrustedTokenIssuer(request -> request
                     .trustedTokenIssuerArn(created.trustedTokenIssuerArn()));
             assertThat(deleteResponse.sdkHttpResponse().isSuccessful()).isTrue();
