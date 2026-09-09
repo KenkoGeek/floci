@@ -885,6 +885,11 @@ class SsoAdminServiceTest {
         service.putPermissionsBoundary(customer);
         assertEquals("BoundaryPolicy", service.getPermissionSet(service.getInstanceArn(), permissionSet.arn())
                 .permissionsBoundary().customerManagedPolicyReference().name());
+        service.deletePermissionsBoundary(service.getInstanceArn(), permissionSet.arn());
+        assertError("ResourceNotFoundException",
+                () -> service.getPermissionsBoundary(service.getInstanceArn(), permissionSet.arn()));
+        assertError("ResourceNotFoundException",
+                () -> service.deletePermissionsBoundary(service.getInstanceArn(), permissionSet.arn()));
 
         ObjectNode invalid = managed.deepCopy();
         invalid.withObject("PermissionsBoundary")

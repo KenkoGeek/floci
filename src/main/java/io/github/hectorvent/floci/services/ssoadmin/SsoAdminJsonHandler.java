@@ -52,6 +52,7 @@ public class SsoAdminJsonHandler {
             case "ListCustomerManagedPolicyReferencesInPermissionSet" -> listCustomerManagedPolicyReferences(request);
             case "DetachManagedPolicyFromPermissionSet" -> detachManagedPolicy(request);
             case "DeleteInlinePolicyFromPermissionSet" -> deleteInlinePolicy(request);
+            case "DeletePermissionsBoundaryFromPermissionSet" -> deletePermissionsBoundary(request);
             case "GetInlinePolicyForPermissionSet" -> getInlinePolicy(request);
             case "GetPermissionsBoundaryForPermissionSet" -> getPermissionsBoundary(request);
             case "PutInlinePolicyToPermissionSet" -> putInlinePolicy(request);
@@ -255,6 +256,13 @@ public class SsoAdminJsonHandler {
     private Response deleteInlinePolicy(JsonNode request) {
         service.deleteInlinePolicy(SsoAdminService.required(request, "InstanceArn"), SsoAdminService.required(request, "PermissionSetArn"));
         return Response.ok(mapper.createObjectNode()).build();
+    }
+
+    private Response deletePermissionsBoundary(JsonNode request) {
+        service.deletePermissionsBoundary(
+                SsoAdminService.required(request, "InstanceArn"),
+                SsoAdminService.required(request, "PermissionSetArn"));
+        return Response.ok().build();
     }
 
     private Response getInlinePolicy(JsonNode request) {

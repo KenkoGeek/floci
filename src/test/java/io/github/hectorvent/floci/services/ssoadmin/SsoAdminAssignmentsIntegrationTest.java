@@ -98,10 +98,14 @@ class SsoAdminAssignmentsIntegrationTest {
                 + "\",\"PermissionsBoundary\":{\"ManagedPolicyArn\":\"arn:aws:iam::aws:policy/PowerUserAccess\"}}";
         json("SWBExternalService.PutPermissionsBoundaryToPermissionSet", body)
                 .then().statusCode(200).body(equalTo(""));
-        json("SWBExternalService.GetPermissionsBoundaryForPermissionSet",
-                "{\"InstanceArn\":\"" + instanceArn + "\",\"PermissionSetArn\":\"" + permissionSetArn + "\"}")
+        String getBody = "{\"InstanceArn\":\"" + instanceArn + "\",\"PermissionSetArn\":\"" + permissionSetArn + "\"}";
+        json("SWBExternalService.GetPermissionsBoundaryForPermissionSet", getBody)
                 .then().statusCode(200)
                 .body("PermissionsBoundary.ManagedPolicyArn", equalTo("arn:aws:iam::aws:policy/PowerUserAccess"));
+        json("SWBExternalService.DeletePermissionsBoundaryFromPermissionSet", getBody)
+                .then().statusCode(200).body(equalTo(""));
+        json("SWBExternalService.GetPermissionsBoundaryForPermissionSet", getBody)
+                .then().statusCode(400).body("__type", equalTo("ResourceNotFoundException"));
     }
 
     @Test

@@ -849,6 +849,17 @@ public class SsoAdminService implements Resettable {
         return permissionSet.permissionsBoundary();
     }
 
+    public synchronized void deletePermissionsBoundary(String instanceArn, String permissionSetArn) {
+        PermissionSet current = getPermissionSet(instanceArn, permissionSetArn);
+        if (current.permissionsBoundary() == null) {
+            throw notFound("Permissions boundary not found for permission set: " + permissionSetArn);
+        }
+        permissionSets.put(permissionSetArn, new PermissionSet(current.arn(), current.name(), current.description(),
+                current.sessionDuration(), new LinkedHashMap<>(current.managedPolicies()),
+                new LinkedHashMap<>(current.customerManagedPolicies()), current.inlinePolicy(), null));
+        markPermissionSetProvisioningStale(permissionSetArn);
+    }
+
     public synchronized void putPermissionsBoundary(JsonNode request) {
         String instanceArn = required(request, "InstanceArn");
         String permissionSetArn = required(request, "PermissionSetArn");
