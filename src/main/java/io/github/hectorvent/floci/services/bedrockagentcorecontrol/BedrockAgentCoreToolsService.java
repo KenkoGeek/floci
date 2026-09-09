@@ -72,6 +72,27 @@ public class BedrockAgentCoreToolsService {
         return browser.deepCopy();
     }
 
+    public ObjectNode getBrowser(String browserId, String region) {
+        if ("aws.browser.v1".equals(browserId)) {
+            ObjectNode browser = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+            browser.put("browserId", browserId);
+            browser.put("browserArn", regionResolver.buildArn("bedrock-agentcore", region, "browser/" + browserId));
+            browser.put("name", browserId);
+            browser.put("status", "READY");
+            browser.put("createdAt", "1970-01-01T00:00:00Z");
+            browser.put("lastUpdatedAt", "1970-01-01T00:00:00Z");
+            browser.putObject("networkConfiguration").put("networkMode", "PUBLIC");
+            return browser;
+        }
+        if (browserId == null || !browserId.matches("[a-zA-Z][a-zA-Z0-9_]{0,47}-[a-zA-Z0-9]{10}")) {
+            throw new AwsException("ValidationException", "browserId does not satisfy the required pattern", 400);
+        }
+        return storage.get(key("browser", region, browserId))
+                .map(ObjectNode::deepCopy)
+                .orElseThrow(() -> new AwsException("ResourceNotFoundException",
+                        "Browser not found: " + browserId, 404));
+    }
+
     private ObjectNode findByClientToken(String family, String region, String clientToken) {
         return storage.scan(k -> k.startsWith(prefix(family, region))).stream()
                 .filter(node -> clientToken.equals(optionalText(node, "clientToken")))

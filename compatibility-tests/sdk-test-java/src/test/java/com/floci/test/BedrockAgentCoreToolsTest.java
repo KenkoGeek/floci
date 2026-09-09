@@ -12,6 +12,8 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.BrowserNetw
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.BrowserNetworkMode;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CreateBrowserRequest;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CreateBrowserResponse;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetBrowserRequest;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetBrowserResponse;
 
 import java.util.UUID;
 
@@ -53,5 +55,19 @@ class BedrockAgentCoreToolsTest {
         assertThat(response.browserArn()).contains(":bedrock-agentcore:").contains(":browser-custom/");
         assertThat(response.statusAsString()).isEqualTo("READY");
         assertThat(response.createdAt()).isNotNull();
+    }
+
+    @Test
+    @Order(2)
+    void getBrowser() {
+        GetBrowserResponse response = client.getBrowser(GetBrowserRequest.builder()
+                .browserId(browserId)
+                .build());
+
+        assertThat(response.browserId()).isEqualTo(browserId);
+        assertThat(response.name()).isEqualTo(browserName);
+        assertThat(response.browserArn()).contains(":browser-custom/");
+        assertThat(response.networkConfiguration().networkModeAsString()).isEqualTo("PUBLIC");
+        assertThat(response.statusAsString()).isEqualTo("READY");
     }
 }

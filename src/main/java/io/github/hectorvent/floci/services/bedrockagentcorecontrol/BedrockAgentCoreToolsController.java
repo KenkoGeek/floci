@@ -8,8 +8,10 @@ import io.github.hectorvent.floci.core.common.AwsException;
 import io.github.hectorvent.floci.core.common.RegionResolver;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
 import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.HttpHeaders;
@@ -52,6 +54,21 @@ public class BedrockAgentCoreToolsController {
             return Response.status(202).entity(response).build();
         } catch (Exception e) {
             return error(e, "creating browser");
+        }
+    }
+
+    @GET
+    @Path("/browsers/{browserId}")
+    public Response getBrowser(@Context HttpHeaders headers, @PathParam("browserId") String browserId) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            ObjectNode browser = service.getBrowser(browserId, region);
+            ObjectNode response = browser.deepCopy();
+            response.remove("clientToken");
+            response.remove("tags");
+            return Response.ok(response).build();
+        } catch (Exception e) {
+            return error(e, "getting browser");
         }
     }
 
