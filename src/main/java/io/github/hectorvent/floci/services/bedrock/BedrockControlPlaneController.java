@@ -485,6 +485,12 @@ public class BedrockControlPlaneController {
         return execute("DeleteCustomModelDeployment", null, Map.of("customModelDeploymentIdentifier", customModelDeploymentIdentifier), headers);
     }
 
+    @POST
+    @Path("/evaluation-jobs")
+    public Response createEvaluationJob(String body, @Context HttpHeaders headers) {
+        return execute("CreateEvaluationJob", body, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
