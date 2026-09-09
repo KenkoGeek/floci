@@ -36,7 +36,9 @@ public class MarketplaceReportingController {
     private JsonNode parse(String body) {
         try {
             JsonNode node = mapper.readTree(body == null || body.isBlank() ? "{}" : body);
-            if (node == null || !node.isObject()) throw badRequest("Request body must be a JSON object.");
+            if (node == null || !node.isObject()) {
+                throw badRequest("Request body must be a JSON object.");
+            }
             return node;
         } catch (AwsException e) { throw e; }
         catch (Exception e) { throw badRequest("Request body is not valid JSON."); }

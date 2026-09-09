@@ -76,7 +76,9 @@ public class MarketplaceMeteringService implements Resettable {
 
         String clientToken = optionalText(request, "ClientToken");
         if (clientToken != null) {
-            if (clientToken.length() > 64) throw invalidProduct("ClientToken must be at most 64 characters.");
+            if (clientToken.length() > 64) {
+                throw invalidProduct("ClientToken must be at most 64 characters.");
+            }
             JsonNode prior = clientTokens.get("meter/" + clientToken).orElse(null);
             if (prior != null) {
                 if (!prior.path("request").equals(request)) {
@@ -140,7 +142,9 @@ public class MarketplaceMeteringService implements Resettable {
             String recordId;
             if (prior != null) {
                 recordId = prior.path("recordId").asText();
-                if (prior.path("quantity").asInt() != quantity) status = "DuplicateRecord";
+                if (prior.path("quantity").asInt() != quantity) {
+                    status = "DuplicateRecord";
+                }
             } else {
                 recordId = "mr-" + compactId();
                 ObjectNode stored = mapper.createObjectNode().put("recordId", recordId).put("quantity", quantity);
@@ -180,7 +184,9 @@ public class MarketplaceMeteringService implements Resettable {
         }
         String token = tokenNode.asText();
         JsonNode existing = customerMappings.get(token).orElse(null);
-        if (existing != null) return (ObjectNode) existing.deepCopy();
+        if (existing != null) {
+            return (ObjectNode) existing.deepCopy();
+        }
 
         byte[] hash = sha256(token);
         long number = 0;
@@ -200,7 +206,9 @@ public class MarketplaceMeteringService implements Resettable {
         for (JsonNode entity : catalog.snapshotEntities(region)) {
             if (entity.path("EntityType").asText().contains("Product")) {
                 JsonNode details = entity.path("DetailsDocument");
-                if (details.hasNonNull("ProductCode")) return details.path("ProductCode").asText();
+                if (details.hasNonNull("ProductCode")) {
+                    return details.path("ProductCode").asText();
+                }
                 return entity.path("EntityId").asText();
             }
         }
@@ -208,7 +216,9 @@ public class MarketplaceMeteringService implements Resettable {
     }
 
     private void validateAllocations(JsonNode allocations, int quantity) {
-        if (allocations == null || allocations.isNull()) return;
+        if (allocations == null || allocations.isNull()) {
+            return;
+        }
         if (!allocations.isArray() || allocations.isEmpty() || allocations.size() > 2500) {
             throw new AwsException("InvalidUsageAllocationsException", "UsageAllocations must contain between 1 and 2500 items.", 400);
         }
@@ -217,22 +227,30 @@ public class MarketplaceMeteringService implements Resettable {
             int allocated = integer(allocation, "AllocatedUsageQuantity", 0, Integer.MAX_VALUE, null); sum += allocated;
             JsonNode tags = allocation.get("Tags");
             if (tags != null) {
-                if (!tags.isArray() || tags.size() > 5) throw new AwsException("InvalidTagException", "Each usage allocation supports at most 5 tags.", 400);
+                if (!tags.isArray() || tags.size() > 5) {
+                    throw new AwsException("InvalidTagException", "Each usage allocation supports at most 5 tags.", 400);
+                }
                 List<String> canonical = new ArrayList<>();
                 for (JsonNode tag : tags) {
                     String key = tagText(tag, "Key", 1, 100); String value = tagText(tag, "Value", 1, 256);
                     canonical.add(key + "=" + value);
                 }
                 canonical.sort(String::compareTo); String signature = String.join("&", canonical);
-                if (!tagSets.add(signature)) throw new AwsException("InvalidUsageAllocationsException", "Usage allocations must have unique tag sets.", 400);
+                if (!tagSets.add(signature)) {
+                    throw new AwsException("InvalidUsageAllocationsException", "Usage allocations must have unique tag sets.", 400);
+                }
             }
         }
-        if (sum != quantity) throw new AwsException("InvalidUsageAllocationsException", "Allocated usage quantity must equal UsageQuantity.", 400);
+        if (sum != quantity) {
+            throw new AwsException("InvalidUsageAllocationsException", "Allocated usage quantity must equal UsageQuantity.", 400);
+        }
     }
 
     private static Instant timestamp(JsonNode node, String field, int maxAgeHours) {
         JsonNode value = node.get(field);
-        if (value == null || !value.isNumber()) throw new AwsException("TimestampOutOfBoundsException", field + " is required.", 400);
+        if (value == null || !value.isNumber()) {
+            throw new AwsException("TimestampOutOfBoundsException", field + " is required.", 400);
+        }
         long millis = Math.round(value.asDouble() * 1000d); Instant instant = Instant.ofEpochMilli(millis); Instant now = Instant.now();
         if (instant.isBefore(now.minus(maxAgeHours, ChronoUnit.HOURS)) || instant.isAfter(now.plus(5, ChronoUnit.MINUTES))) {
             throw new AwsException("TimestampOutOfBoundsException", "Timestamp is outside the accepted metering window.", 400);
@@ -249,40 +267,60 @@ public class MarketplaceMeteringService implements Resettable {
     private static String productCode(JsonNode node, boolean required) {
         String value = optionalText(node, "ProductCode");
         if (value == null) {
-            if (required) throw invalidProduct("ProductCode is required.");
+            if (required) {
+                throw invalidProduct("ProductCode is required.");
+            }
             return null;
         }
-        if (!PRODUCT_CODE.matcher(value).matches()) throw invalidProduct("ProductCode is invalid.");
+        if (!PRODUCT_CODE.matcher(value).matches()) {
+            throw invalidProduct("ProductCode is invalid.");
+        }
         return value;
     }
 
     private static int integer(JsonNode node, String field, int min, int max, Integer fallback) {
         JsonNode value = node.get(field);
         if (value == null || value.isNull()) {
-            if (fallback != null) return fallback;
+            if (fallback != null) {
+                return fallback;
+            }
             throw new AwsException("InvalidUsageAllocationsException", field + " is required.", 400);
         }
-        if (!value.canConvertToInt()) throw new AwsException("InvalidUsageAllocationsException", field + " must be an integer.", 400);
+        if (!value.canConvertToInt()) {
+            throw new AwsException("InvalidUsageAllocationsException", field + " must be an integer.", 400);
+        }
         int result = value.asInt();
-        if (result < min || result > max) throw new AwsException("InvalidUsageAllocationsException", field + " is out of range.", 400);
+        if (result < min || result > max) {
+            throw new AwsException("InvalidUsageAllocationsException", field + " is out of range.", 400);
+        }
         return result;
     }
 
     private static String text(JsonNode node, String field, int min, int max) {
         String value = optionalText(node, field);
-        if (value == null || value.length() < min || value.length() > max) throw new AwsException("InvalidUsageDimensionException", field + " is required or out of range.", 400);
+        if (value == null || value.length() < min || value.length() > max) {
+            throw new AwsException("InvalidUsageDimensionException", field + " is required or out of range.", 400);
+        }
         return value;
     }
     private static String optionalText(JsonNode node, String field) {
         JsonNode value = node == null ? null : node.get(field);
-        if (value == null || value.isNull()) return null;
-        if (!value.isTextual()) throw new AwsException("InvalidUsageDimensionException", field + " must be a string.", 400);
+        if (value == null || value.isNull()) {
+            return null;
+        }
+        if (!value.isTextual()) {
+            throw new AwsException("InvalidUsageDimensionException", field + " must be a string.", 400);
+        }
         return value.asText();
     }
     private static String optionalMeteringText(JsonNode node, String field, String errorCode) {
         JsonNode value = node == null ? null : node.get(field);
-        if (value == null || value.isNull()) return null;
-        if (!value.isTextual() || value.asText().isBlank()) throw new AwsException(errorCode, field + " must be a non-empty string.", 400);
+        if (value == null || value.isNull()) {
+            return null;
+        }
+        if (!value.isTextual() || value.asText().isBlank()) {
+            throw new AwsException(errorCode, field + " must be a non-empty string.", 400);
+        }
         return value.asText();
     }
     private static String tagText(JsonNode node, String field, int min, int max) {

@@ -23,7 +23,7 @@ class MarketplaceDeploymentIntegrationTest {
                 .then().statusCode(200).body("deploymentParameterId", notNullValue())
                 .body("tags.env", equalTo("test")).extract().response();
         String arn = response.path("resourceArn");
-        given().header("Authorization", auth()).get("/tags/" + encode(arn)).then().statusCode(200)
+        given().urlEncodingEnabled(false).header("Authorization", auth()).get("/tags/" + encode(arn)).then().statusCode(200)
                 .body("tags.env", equalTo("test"));
     }
 

@@ -6,13 +6,10 @@ import io.github.hectorvent.floci.core.common.AwsException;
 import io.github.hectorvent.floci.core.common.RequestContext;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
-import jakarta.ws.rs.DELETE;
-import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
-import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
@@ -39,27 +36,6 @@ public class MarketplaceDeploymentController {
                                            String body) {
         return Response.ok(service.putDeploymentParameter(
                 catalog, productId, parse(body), region(), accountId())).build();
-    }
-
-    @GET
-    @Path("/tags/{resourceArn:.+}")
-    public Response listTagsForResource(@PathParam("resourceArn") String resourceArn) {
-        return Response.ok(service.listTagsForResource(resourceArn)).build();
-    }
-
-    @POST
-    @Path("/tags/{resourceArn:.+}")
-    public Response tagResource(@PathParam("resourceArn") String resourceArn, String body) {
-        service.tagResource(resourceArn, parse(body));
-        return Response.noContent().build();
-    }
-
-    @DELETE
-    @Path("/tags/{resourceArn:.+}")
-    public Response untagResource(@PathParam("resourceArn") String resourceArn,
-                                  @QueryParam("tagKeys") java.util.List<String> tagKeys) {
-        service.untagResource(resourceArn, tagKeys);
-        return Response.noContent().build();
     }
 
     private JsonNode parse(String body) {

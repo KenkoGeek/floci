@@ -56,7 +56,9 @@ public class MarketplaceReportingService {
 
     private static String text(JsonNode request, String field) {
         JsonNode value = request == null ? null : request.get(field);
-        if (value == null || !value.isTextual() || value.asText().isBlank()) throw badRequest(field + " is required.");
+        if (value == null || !value.isTextual() || value.asText().isBlank()) {
+            throw badRequest(field + " is required.");
+        }
         return value.asText();
     }
 

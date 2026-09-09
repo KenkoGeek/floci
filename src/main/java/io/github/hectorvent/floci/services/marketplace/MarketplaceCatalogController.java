@@ -87,7 +87,9 @@ public class MarketplaceCatalogController {
     private JsonNode parse(String body) {
         try {
             JsonNode value = mapper.readTree(body == null || body.isBlank() ? "{}" : body);
-            if (value == null || !value.isObject()) throw validation("Request body must be a JSON object.");
+            if (value == null || !value.isObject()) {
+                throw validation("Request body must be a JSON object.");
+            }
             return value;
         } catch (AwsException e) { throw e; }
         catch (Exception e) { throw validation("Request body is not valid JSON."); }
