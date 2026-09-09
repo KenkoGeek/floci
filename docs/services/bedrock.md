@@ -58,6 +58,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `GetCustomModel` | `GET /custom-models/{modelIdentifier}` | AWS-compatible control-plane emulation. |
 | `ListCustomModels` | `GET /custom-models` | AWS-compatible control-plane emulation. |
 | `DeleteCustomModel` | `DELETE /custom-models/{modelIdentifier}` | AWS-compatible control-plane emulation. |
+| `CreateModelCustomizationJob` | `POST /model-customization-jobs` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 

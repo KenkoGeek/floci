@@ -323,6 +323,12 @@ public class BedrockControlPlaneController {
         return execute("DeleteCustomModel", null, Map.of("modelIdentifier", modelIdentifier), headers);
     }
 
+    @POST
+    @Path("/model-customization-jobs")
+    public Response createModelCustomizationJob(String body, @Context HttpHeaders headers) {
+        return execute("CreateModelCustomizationJob", body, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
