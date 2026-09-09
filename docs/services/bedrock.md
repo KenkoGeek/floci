@@ -65,6 +65,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `CreateModelCopyJob` | `POST /model-copy-jobs` | AWS-compatible control-plane emulation. |
 | `GetModelCopyJob` | `GET /model-copy-jobs/{jobArn}` | AWS-compatible control-plane emulation. |
 | `ListModelCopyJobs` | `GET /model-copy-jobs` | AWS-compatible control-plane emulation. |
+| `CreateModelInvocationJob` | `POST /model-invocation-job` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 

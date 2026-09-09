@@ -365,6 +365,12 @@ public class BedrockControlPlaneController {
         return execute("ListModelCopyJobs", null, Map.of(), headers);
     }
 
+    @POST
+    @Path("/model-invocation-job")
+    public Response createModelInvocationJob(String body, @Context HttpHeaders headers) {
+        return execute("CreateModelInvocationJob", body, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
