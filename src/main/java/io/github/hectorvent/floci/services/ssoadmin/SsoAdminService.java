@@ -1008,6 +1008,31 @@ public class SsoAdminService implements Resettable {
                 .orElseThrow(() -> notFound("Permission set provisioning operation not found: " + requestId));
     }
 
+    public PaginatedResult<PermissionSetProvisioningOperation> listPermissionSetProvisioningStatus(JsonNode request) {
+        String instanceArn = required(request, "InstanceArn");
+        SsoInstance instance = requireInstance(instanceArn);
+        if (instance.accountInstance()) {
+            throw accessDenied("Permission sets are only available from an organization instance.");
+        }
+        String statusFilter = null;
+        JsonNode filter = request == null ? null : request.get("Filter");
+        if (filter != null && !filter.isNull()) {
+            if (!filter.isObject() || filter.size() > 1 || !filter.has("Status")) {
+                throw validation("Filter may contain only Status.");
+            }
+            statusFilter = required(filter, "Status");
+            if (!Set.of("IN_PROGRESS", "FAILED", "SUCCEEDED").contains(statusFilter)) {
+                throw validation("Filter.Status is invalid.");
+            }
+        }
+        String finalStatusFilter = statusFilter;
+        List<PermissionSetProvisioningOperation> operations = permissionSetProvisioningOperations.scan(key -> true).stream()
+                .filter(operation -> finalStatusFilter == null || finalStatusFilter.equals(operation.status()))
+                .toList();
+        return Pagination.paginate(operations, PermissionSetProvisioningOperation::requestId,
+                optionalMaxResults(request), text(request, "NextToken"), 50, 100, "ValidationException");
+    }
+
     public AssignmentOperation getAssignmentOperation(String instanceArn, String requestId) {
         requireInstance(instanceArn);
         if (requestId == null || !requestId.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {

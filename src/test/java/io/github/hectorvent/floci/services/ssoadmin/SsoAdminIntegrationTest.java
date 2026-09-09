@@ -478,6 +478,13 @@ class SsoAdminIntegrationTest {
             .then().statusCode(200)
                 .body("PermissionSetProvisioningStatus.RequestId", equalTo(requestId))
                 .body("PermissionSetProvisioningStatus.Status", equalTo("SUCCEEDED"));
+
+        given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.ListPermissionSetProvisioningStatus")
+                .body("{\"InstanceArn\":\"" + instanceArn + "\",\"Filter\":{\"Status\":\"SUCCEEDED\"}}")
+            .when().post("/")
+            .then().statusCode(200)
+                .body("PermissionSetsProvisioningStatus.RequestId", org.hamcrest.Matchers.hasItem(requestId));
     }
 
     @Test

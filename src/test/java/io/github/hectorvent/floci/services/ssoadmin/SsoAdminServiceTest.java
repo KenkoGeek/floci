@@ -661,6 +661,16 @@ class SsoAdminServiceTest {
         assertEquals("SUCCEEDED", allOperation.status());
         assertTrue(allOperation.accountId() == null);
 
+        ObjectNode listStatus = mapper.createObjectNode();
+        listStatus.put("InstanceArn", service.getInstanceArn());
+        listStatus.put("MaxResults", 1);
+        listStatus.putObject("Filter").put("Status", "SUCCEEDED");
+        var statusPage = service.listPermissionSetProvisioningStatus(listStatus);
+        assertEquals(1, statusPage.items().size());
+        assertNotNull(statusPage.nextToken());
+        listStatus.putObject("Filter").put("Status", "INVALID");
+        assertError("ValidationException", () -> service.listPermissionSetProvisioningStatus(listStatus));
+
         ObjectNode invalid = single.deepCopy();
         invalid.put("TargetType", "ORGANIZATION");
         assertError("ValidationException", () -> service.provisionPermissionSet(invalid));
