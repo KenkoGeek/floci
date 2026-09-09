@@ -43,6 +43,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | `CreateAccountAssignment` | Creates an account assignment and operation record. |
 | `DeleteAccountAssignment` | Deletes an account assignment and returns a persisted deletion operation status. |
 | `DescribeAccountAssignmentCreationStatus` | Describes account-assignment creation status. |
+| `DescribeAccountAssignmentDeletionStatus` | Describes a persisted account-assignment deletion request by its AWS-compatible UUID request identifier. |
 <!-- floci:actions:end -->
 
 State is isolated by caller account through Floci storage.

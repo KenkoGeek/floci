@@ -558,7 +558,7 @@ class SsoAdminIntegrationTest {
                 .header("X-Amz-Target", "SWBExternalService.CreateAccountAssignment")
                 .body(assignmentRequest).when().post("/").then().statusCode(200);
 
-        given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
+        String deletionRequestId = given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
                 .header("X-Amz-Target", "SWBExternalService.DeleteAccountAssignment")
                 .body(assignmentRequest)
             .when().post("/")
@@ -566,7 +566,16 @@ class SsoAdminIntegrationTest {
                 .statusCode(200)
                 .body("AccountAssignmentDeletionStatus.Status", equalTo("SUCCEEDED"))
                 .body("AccountAssignmentDeletionStatus.RequestId", matchesPattern("[0-9a-f-]{36}"))
-                .body("AccountAssignmentDeletionStatus.CreatedDate", org.hamcrest.Matchers.greaterThan(0.0f));
+                .body("AccountAssignmentDeletionStatus.CreatedDate", org.hamcrest.Matchers.greaterThan(0.0f))
+                .extract().path("AccountAssignmentDeletionStatus.RequestId");
+
+        given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.DescribeAccountAssignmentDeletionStatus")
+                .body("{\"InstanceArn\":\"" + instanceArn + "\",\"AccountAssignmentDeletionRequestId\":\"" + deletionRequestId + "\"}")
+            .when().post("/")
+            .then().statusCode(200)
+                .body("AccountAssignmentDeletionStatus.RequestId", equalTo(deletionRequestId))
+                .body("AccountAssignmentDeletionStatus.Status", equalTo("SUCCEEDED"));
     }
 
     @Test
