@@ -65,6 +65,46 @@ class SsoAdminAccountAssignmentTest {
     }
 
     @Test
+    @DisplayName("creates OAuth applications through the AWS SDK")
+    void createApplicationUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses the emulator IAM Identity Center instance");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient()) {
+            String instanceArn = sso.listInstances(request -> {}).instances().get(0).instanceArn();
+            var created = sso.createApplication(request -> request
+                    .instanceArn(instanceArn)
+                    .applicationProviderArn("arn:aws:sso::aws:applicationProvider/custom")
+                    .name("Floci OAuth SDK")
+                    .clientToken("sdk-create-application-token")
+                    .status("DISABLED")
+                    .portalOptions(options -> options
+                            .visibility("ENABLED")
+                            .signInOptions(signIn -> signIn
+                                    .origin("APPLICATION")
+                                    .applicationUrl("https://example.com/login")))
+                    .tags(tag -> tag.key("Environment").value("test")));
+
+            assertThat(created.applicationArn()).matches(
+                    "arn:aws:sso::000000000000:application/ssoins-7223b02a5d9f7c8e/apl-[0-9a-f]{16}");
+            assertThat(created.identityStoreArn())
+                    .isEqualTo("arn:aws:identitystore::000000000000:identitystore/d-9067f2a3c1");
+            var replay = sso.createApplication(request -> request
+                    .instanceArn(instanceArn)
+                    .applicationProviderArn("arn:aws:sso::aws:applicationProvider/custom")
+                    .name("Floci OAuth SDK")
+                    .clientToken("sdk-create-application-token")
+                    .status("DISABLED")
+                    .portalOptions(options -> options
+                            .visibility("ENABLED")
+                            .signInOptions(signIn -> signIn
+                                    .origin("APPLICATION")
+                                    .applicationUrl("https://example.com/login")))
+                    .tags(tag -> tag.key("Environment").value("test")));
+            assertThat(replay.applicationArn()).isEqualTo(created.applicationArn());
+        }
+    }
+
+    @Test
     @DisplayName("creates and describes account assignments through the AWS SDK")
     void accountAssignmentLifecycleUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only account and principal identifiers");

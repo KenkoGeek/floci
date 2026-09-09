@@ -101,6 +101,38 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void createApplicationReturnsAwsIdentifiersAndIsIdempotent() {
+        String request = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
+                + "\"ApplicationProviderArn\":\"arn:aws:sso::aws:applicationProvider/custom\","
+                + "\"Name\":\"Integration OAuth\",\"ClientToken\":\"integration-token\"}";
+
+        String applicationArn = given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.CreateApplication")
+            .body(request)
+        .when()
+            .post("/")
+        .then()
+            .statusCode(200)
+            .body("InstanceArn", equalTo("arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e"))
+            .body("IdentityStoreArn", equalTo("arn:aws:identitystore::000000000000:identitystore/d-9067f2a3c1"))
+            .body("ApplicationArn", matchesPattern("arn:aws:sso::000000000000:application/ssoins-7223b02a5d9f7c8e/apl-[0-9a-f]{16}"))
+            .extract().path("ApplicationArn");
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.CreateApplication")
+            .body(request)
+        .when()
+            .post("/")
+        .then()
+            .statusCode(200)
+            .body("ApplicationArn", equalTo(applicationArn));
+    }
+
+    @Test
     void unknownAction_returnsUnknownOperationException() {
         given()
             .contentType("application/x-amz-json-1.1")

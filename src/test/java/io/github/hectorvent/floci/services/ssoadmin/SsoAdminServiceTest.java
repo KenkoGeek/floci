@@ -8,6 +8,7 @@ import io.github.hectorvent.floci.services.ssoadmin.model.Assignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
 import io.github.hectorvent.floci.services.ssoadmin.model.RegionMetadata;
+import io.github.hectorvent.floci.services.ssoadmin.model.SsoApplication;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -30,7 +31,52 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, PermissionSet>(),
                 new InMemoryStorage<String, Assignment>(),
                 new InMemoryStorage<String, AssignmentOperation>(),
-                new InMemoryStorage<String, RegionMetadata>());
+                new InMemoryStorage<String, RegionMetadata>(),
+                new InMemoryStorage<String, SsoApplication>(),
+                new InMemoryStorage<String, String>());
+    }
+
+    @Test
+    void createApplicationSupportsOAuthProviderPortalOptionsTagsAndIdempotency() {
+        ObjectNode request = mapper.createObjectNode();
+        request.put("InstanceArn", service.getInstanceArn());
+        request.put("ApplicationProviderArn", "arn:aws:sso::aws:applicationProvider/custom");
+        request.put("Name", "Platform Portal");
+        request.put("Description", "Platform OAuth application");
+        request.put("ClientToken", "token-123456");
+        request.put("Status", "DISABLED");
+        request.putObject("PortalOptions").put("Visibility", "ENABLED")
+                .putObject("SignInOptions").put("Origin", "APPLICATION").put("ApplicationUrl", "https://example.com/login");
+        request.putArray("Tags").addObject().put("Key", "Environment").put("Value", "dev");
+
+        SsoApplication created = service.createApplication(request, ACCOUNT_ID, "us-east-1");
+        assertTrue(created.applicationArn().matches("arn:aws:sso::123456789012:application/ssoins-7223b02a5d9f7c8e/apl-[0-9a-f]{16}"));
+        assertEquals("arn:aws:identitystore::123456789012:identitystore/d-9067f2a3c1", created.identityStoreArn());
+        assertEquals("DISABLED", created.status());
+        assertEquals("APPLICATION", created.portalOptions().signInOptions().origin());
+        assertEquals(created.applicationArn(), service.createApplication(request, ACCOUNT_ID, "us-east-1").applicationArn());
+
+        ObjectNode mismatch = request.deepCopy();
+        mismatch.put("Name", "Different Name");
+        assertError("IdempotentParameterMismatch", () -> service.createApplication(mismatch, ACCOUNT_ID, "us-east-1"));
+    }
+
+    @Test
+    void createApplicationRejectsUnsupportedProvidersAndInvalidPortalOptions() {
+        ObjectNode request = mapper.createObjectNode();
+        request.put("InstanceArn", service.getInstanceArn());
+        request.put("ApplicationProviderArn", "arn:aws:sso::aws:applicationProvider/custom");
+        request.put("Name", "Portal");
+        request.putObject("PortalOptions").putObject("SignInOptions").put("Origin", "APPLICATION");
+        assertError("ValidationException", () -> service.createApplication(request, ACCOUNT_ID, "us-east-1"));
+
+        request.remove("PortalOptions");
+        request.putArray("Tags").addObject().put("Key", "bad*").put("Value", "value");
+        assertError("ValidationException", () -> service.createApplication(request, ACCOUNT_ID, "us-east-1"));
+
+        request.remove("Tags");
+        request.put("ApplicationProviderArn", "arn:aws:sso::aws:applicationProvider/aws-managed");
+        assertError("ResourceNotFoundException", () -> service.createApplication(request, ACCOUNT_ID, "us-east-1"));
     }
 
     @Test
