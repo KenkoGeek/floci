@@ -78,6 +78,36 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `RegisterMarketplaceModelEndpoint` | - |
 | `DeregisterMarketplaceModelEndpoint` | - |
 | `CreatePromptRouter` | - |
+| `DeletePromptRouter` | - |
+| `GetPromptRouter` | - |
+| `ListPromptRouters` | - |
+| `CreateCustomModelDeployment` | - |
+| `GetCustomModelDeployment` | - |
+| `ListCustomModelDeployments` | - |
+| `UpdateCustomModelDeployment` | - |
+| `DeleteCustomModelDeployment` | - |
+| `CreateEvaluationJob` | - |
+| `GetEvaluationJob` | - |
+| `ListEvaluationJobs` | - |
+| `StopEvaluationJob` | - |
+| `BatchDeleteEvaluationJob` | - |
+| `CreateAdvancedPromptOptimizationJob` | - |
+| `GetAdvancedPromptOptimizationJob` | - |
+| `ListAdvancedPromptOptimizationJobs` | - |
+| `StopAdvancedPromptOptimizationJob` | - |
+| `BatchDeleteAdvancedPromptOptimizationJob` | - |
+| `CreateAutomatedReasoningPolicy` | - |
+| `GetAutomatedReasoningPolicy` | - |
+| `ListAutomatedReasoningPolicies` | - |
+| `UpdateAutomatedReasoningPolicy` | - |
+| `DeleteAutomatedReasoningPolicy` | - |
+| `CreateAutomatedReasoningPolicyTestCase` | - |
+| `GetAutomatedReasoningPolicyTestCase` | - |
+| `ListAutomatedReasoningPolicyTestCases` | - |
+| `UpdateAutomatedReasoningPolicyTestCase` | - |
+| `DeleteAutomatedReasoningPolicyTestCase` | - |
+| `CreateAutomatedReasoningPolicyVersion` | - |
+| `ExportAutomatedReasoningPolicyVersion` | - |
 <!-- floci:actions:end -->
 
 ### Cloud Launchpad model access flow

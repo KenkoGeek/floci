@@ -51,7 +51,18 @@ public class BedrockControlPlaneService implements Resettable {
             Map.entry("CreateMarketplaceModelEndpoint", List.of("endpointConfig", "endpointName", "modelSourceIdentifier")),
             Map.entry("UpdateMarketplaceModelEndpoint", List.of("endpointConfig")),
             Map.entry("RegisterMarketplaceModelEndpoint", List.of("modelSourceIdentifier")),
-            Map.entry("CreatePromptRouter", List.of("fallbackModel", "models", "promptRouterName", "routingCriteria")));
+            Map.entry("CreatePromptRouter", List.of("fallbackModel", "models", "promptRouterName", "routingCriteria")),
+            Map.entry("CreateCustomModelDeployment", List.of("clientRequestToken", "modelDeploymentName")),
+            Map.entry("UpdateCustomModelDeployment", List.of("modelArn")),
+            Map.entry("CreateEvaluationJob", List.of("applicationType", "inferenceConfig", "jobDescription", "jobTags", "roleArn")),
+            Map.entry("BatchDeleteEvaluationJob", List.of("jobIdentifiers")),
+            Map.entry("CreateAdvancedPromptOptimizationJob", List.of("clientToken", "jobDescription", "modelConfigurations", "outputConfig")),
+            Map.entry("BatchDeleteAdvancedPromptOptimizationJob", List.of("jobIdentifiers")),
+            Map.entry("CreateAutomatedReasoningPolicy", List.of("clientRequestToken")),
+            Map.entry("UpdateAutomatedReasoningPolicy", List.of("description")),
+            Map.entry("CreateAutomatedReasoningPolicyTestCase", List.of("clientRequestToken", "guardContent")),
+            Map.entry("UpdateAutomatedReasoningPolicyTestCase", List.of("clientRequestToken", "guardContent", "lastUpdatedAt")),
+            Map.entry("CreateAutomatedReasoningPolicyVersion", List.of("clientRequestToken")));
 
     private static final Map<String, Integer> SUCCESS_STATUSES = Map.ofEntries(
             Map.entry("PutUseCaseForModelAccess", 201),
@@ -67,7 +78,14 @@ public class BedrockControlPlaneService implements Resettable {
             Map.entry("CreateModelImportJob", 201),
             Map.entry("CreateCustomModel", 202),
             Map.entry("CreateModelCustomizationJob", 201),
-            Map.entry("CreateModelCopyJob", 201));
+            Map.entry("CreateModelCopyJob", 201),
+            Map.entry("CreateCustomModelDeployment", 202),
+            Map.entry("UpdateCustomModelDeployment", 202),
+            Map.entry("CreateEvaluationJob", 202),
+            Map.entry("BatchDeleteEvaluationJob", 202),
+            Map.entry("BatchDeleteAdvancedPromptOptimizationJob", 202),
+            Map.entry("DeleteAutomatedReasoningPolicy", 202),
+            Map.entry("DeleteAutomatedReasoningPolicyTestCase", 202));
 
     private static void validateRequiredFields(String operation, ObjectNode request) {
         for (String field : REQUIRED_BODY_FIELDS.getOrDefault(operation, List.of())) {
@@ -821,7 +839,11 @@ public class BedrockControlPlaneService implements Resettable {
 
     private Result stopGeneric(String family, String identifier, String region) {
         ObjectNode resource = findGeneric(family, identifier, region).deepCopy();
-        resource.put("status", "Stopped");
+        if ("advanced-prompt-optimization-job".equals(family)) {
+            resource.put("jobStatus", "Stopped");
+        } else {
+            resource.put("status", "Stopped");
+        }
         resource.put("lastModifiedTime", Instant.now().toString());
         storeGeneric(family, genericId(family, resource, identifier), resource, region);
         return ok(objectMapper.createObjectNode());
@@ -877,8 +899,17 @@ public class BedrockControlPlaneService implements Resettable {
         if ("inference-profile".equals(family) && resource.hasNonNull("inferenceProfileId")) return resource.path("inferenceProfileId").asText();
         if ("provisioned-throughput".equals(family) && resource.hasNonNull("provisionedModelId")) return resource.path("provisionedModelId").asText();
         if ("marketplace-endpoint".equals(family)) return endpointKey(resource);
+        if ("prompt-router".equals(family) && resource.hasNonNull("promptRouterArn")) return arnResourceId(resource.path("promptRouterArn").asText());
+        if ("custom-model-deployment".equals(family) && resource.hasNonNull("customModelDeploymentArn")) return arnResourceId(resource.path("customModelDeploymentArn").asText());
+        if (("evaluation-job".equals(family) || "advanced-prompt-optimization-job".equals(family)) && resource.hasNonNull("jobArn")) return arnResourceId(resource.path("jobArn").asText());
+        if ("automated-reasoning-policy".equals(family) && resource.hasNonNull("policyId")) return resource.path("policyId").asText();
         if (resource.hasNonNull("jobIdentifier")) return resource.path("jobIdentifier").asText();
         return fallback;
+    }
+
+    private static String arnResourceId(String arn) {
+        int slash = arn.lastIndexOf('/');
+        return slash >= 0 ? arn.substring(slash + 1) : arn;
     }
 
     private String endpointKey(ObjectNode endpoint) {
