@@ -191,6 +191,12 @@ public class BedrockControlPlaneController {
         return execute("UpdateGuardrail", body, Map.of("guardrailIdentifier", guardrailIdentifier), headers);
     }
 
+    @GET
+    @Path("/enforcedGuardrailsConfiguration")
+    public Response listEnforcedGuardrailsConfiguration(@Context HttpHeaders headers) {
+        return execute("ListEnforcedGuardrailsConfiguration", null, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
