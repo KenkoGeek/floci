@@ -317,6 +317,10 @@ public class SsoAdminService implements Resettable {
         return issuer;
     }
 
+    public TrustedTokenIssuer describeTrustedTokenIssuer(JsonNode request) {
+        return getTrustedTokenIssuer(required(request, "TrustedTokenIssuerArn"));
+    }
+
     public TrustedTokenIssuer getTrustedTokenIssuer(String trustedTokenIssuerArn) {
         validateTrustedTokenIssuerArn(trustedTokenIssuerArn);
         return trustedTokenIssuers.get(trustedTokenIssuerArn)

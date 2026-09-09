@@ -87,6 +87,8 @@ class SsoAdminServiceTest {
         assertEquals("https://issuer.example.com", created.oidcJwtConfiguration().issuerUrl());
         assertEquals(created, service.createTrustedTokenIssuer(request, ACCOUNT_ID));
         assertEquals(created, service.getTrustedTokenIssuer(created.trustedTokenIssuerArn()));
+        ObjectNode describe = mapper.createObjectNode().put("TrustedTokenIssuerArn", created.trustedTokenIssuerArn());
+        assertEquals(created, service.describeTrustedTokenIssuer(describe));
 
         ObjectNode mismatch = request.deepCopy();
         mismatch.put("Name", "IssuerTwo");

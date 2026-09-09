@@ -36,6 +36,7 @@ public class SsoAdminJsonHandler {
             case "DescribeInstanceAccessControlAttributeConfiguration" -> describeInstanceAccessControlAttributeConfiguration(request);
             case "DeleteInstanceAccessControlAttributeConfiguration" -> deleteInstanceAccessControlAttributeConfiguration(request);
             case "CreateTrustedTokenIssuer" -> createTrustedTokenIssuer(request, callerAccountId);
+            case "DescribeTrustedTokenIssuer" -> describeTrustedTokenIssuer(request);
             case "DeleteTrustedTokenIssuer" -> deleteTrustedTokenIssuer(request);
             case "AddRegion" -> addRegion(request);
             case "DescribeRegion" -> describeRegion(request);
@@ -170,6 +171,22 @@ public class SsoAdminJsonHandler {
         var issuer = service.createTrustedTokenIssuer(request, callerAccountId);
         return Response.ok(mapper.createObjectNode()
                 .put("TrustedTokenIssuerArn", issuer.trustedTokenIssuerArn())).build();
+    }
+
+    private Response describeTrustedTokenIssuer(JsonNode request) {
+        var issuer = service.describeTrustedTokenIssuer(request);
+        ObjectNode response = mapper.createObjectNode();
+        response.put("Name", issuer.name());
+        response.put("TrustedTokenIssuerArn", issuer.trustedTokenIssuerArn());
+        ObjectNode configuration = response.putObject("TrustedTokenIssuerConfiguration");
+        var oidc = issuer.oidcJwtConfiguration();
+        ObjectNode oidcNode = configuration.putObject("OidcJwtConfiguration");
+        oidcNode.put("ClaimAttributePath", oidc.claimAttributePath());
+        oidcNode.put("IdentityStoreAttributePath", oidc.identityStoreAttributePath());
+        oidcNode.put("IssuerUrl", oidc.issuerUrl());
+        oidcNode.put("JwksRetrievalOption", oidc.jwksRetrievalOption());
+        response.put("TrustedTokenIssuerType", issuer.trustedTokenIssuerType());
+        return Response.ok(response).build();
     }
 
     private Response deleteTrustedTokenIssuer(JsonNode request) {
