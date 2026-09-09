@@ -13,6 +13,8 @@ import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAuthenticat
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationGrant;
 import io.github.hectorvent.floci.services.ssoadmin.model.InstanceAccessControlAttributeConfiguration;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
+import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSetProvisioning;
+import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSetProvisioningOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.RegionMetadata;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoApplication;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoInstance;
@@ -52,6 +54,8 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, Assignment>(),
                 new InMemoryStorage<String, AssignmentOperation>(),
                 new InMemoryStorage<String, AssignmentDeletionOperation>(),
+                new InMemoryStorage<String, PermissionSetProvisioning>(),
+                new InMemoryStorage<String, PermissionSetProvisioningOperation>(),
                 new InMemoryStorage<String, RegionMetadata>(),
                 new InMemoryStorage<String, SsoApplication>(),
                 new InMemoryStorage<String, String>(),
@@ -630,6 +634,46 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void provisionPermissionSetSupportsSingleAndAllProvisionedAccounts() {
+        PermissionSet permissionSet = createPermissionSet("ProvisionAdmins");
+
+        ObjectNode single = mapper.createObjectNode();
+        single.put("InstanceArn", service.getInstanceArn());
+        single.put("PermissionSetArn", permissionSet.arn());
+        single.put("TargetType", "AWS_ACCOUNT");
+        single.put("TargetId", ACCOUNT_ID);
+        PermissionSetProvisioningOperation operation = service.provisionPermissionSet(single);
+        assertEquals("SUCCEEDED", operation.status());
+        assertEquals(ACCOUNT_ID, operation.accountId());
+        assertEquals(permissionSet.arn(), operation.permissionSetArn());
+        assertTrue(operation.createdDateEpochMillis() > 0);
+
+        ObjectNode assignment = assignmentRequest(permissionSet.arn());
+        service.createAssignment(assignment);
+        ObjectNode all = mapper.createObjectNode();
+        all.put("InstanceArn", service.getInstanceArn());
+        all.put("PermissionSetArn", permissionSet.arn());
+        all.put("TargetType", "ALL_PROVISIONED_ACCOUNTS");
+        PermissionSetProvisioningOperation allOperation = service.provisionPermissionSet(all);
+        assertEquals("SUCCEEDED", allOperation.status());
+        assertTrue(allOperation.accountId() == null);
+
+        ObjectNode invalid = single.deepCopy();
+        invalid.put("TargetType", "ORGANIZATION");
+        assertError("ValidationException", () -> service.provisionPermissionSet(invalid));
+
+        ObjectNode invalidAll = all.deepCopy();
+        invalidAll.put("TargetId", ACCOUNT_ID);
+        assertError("ValidationException", () -> service.provisionPermissionSet(invalidAll));
+
+        SsoAdminService accountInstanceService = emptyService();
+        SsoInstance accountInstance = accountInstanceService.createInstance(mapper.createObjectNode(), ACCOUNT_ID, "us-east-1");
+        ObjectNode accountInstanceRequest = single.deepCopy();
+        accountInstanceRequest.put("InstanceArn", accountInstance.instanceArn());
+        assertError("AccessDeniedException", () -> accountInstanceService.provisionPermissionSet(accountInstanceRequest));
+    }
+
+    @Test
     void assignmentValidationAndDuplicateDetectionAreModeled() {
         PermissionSet permissionSet = createPermissionSet("AssignmentAdmins");
         ObjectNode request = assignmentRequest(permissionSet.arn());
@@ -693,6 +737,8 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, Assignment>(),
                 new InMemoryStorage<String, AssignmentOperation>(),
                 new InMemoryStorage<String, AssignmentDeletionOperation>(),
+                new InMemoryStorage<String, PermissionSetProvisioning>(),
+                new InMemoryStorage<String, PermissionSetProvisioningOperation>(),
                 new InMemoryStorage<String, RegionMetadata>(),
                 new InMemoryStorage<String, SsoApplication>(),
                 new InMemoryStorage<String, String>(),

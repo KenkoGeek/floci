@@ -23,6 +23,8 @@ import io.github.hectorvent.floci.services.ssoadmin.model.CustomerManagedPolicyR
 import io.github.hectorvent.floci.services.ssoadmin.model.InstanceAccessControlAttributeConfiguration;
 import io.github.hectorvent.floci.services.ssoadmin.model.OidcJwtIssuerConfiguration;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
+import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSetProvisioning;
+import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSetProvisioningOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.RegionMetadata;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoApplication;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoInstance;
@@ -85,6 +87,8 @@ public class SsoAdminService implements Resettable {
     private final StorageBackend<String, Assignment> assignments;
     private final StorageBackend<String, AssignmentOperation> assignmentOperations;
     private final StorageBackend<String, AssignmentDeletionOperation> assignmentDeletionOperations;
+    private final StorageBackend<String, PermissionSetProvisioning> permissionSetProvisionings;
+    private final StorageBackend<String, PermissionSetProvisioningOperation> permissionSetProvisioningOperations;
     private final StorageBackend<String, RegionMetadata> regions;
     private final StorageBackend<String, SsoApplication> applications;
     private final StorageBackend<String, String> applicationClientTokens;
@@ -111,6 +115,8 @@ public class SsoAdminService implements Resettable {
                 storageFactory.create("ssoadmin", "ssoadmin-assignments.json", new TypeReference<Map<String, Assignment>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-assignment-operations.json", new TypeReference<Map<String, AssignmentOperation>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-assignment-deletion-operations.json", new TypeReference<Map<String, AssignmentDeletionOperation>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-permission-set-provisionings.json", new TypeReference<Map<String, PermissionSetProvisioning>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-permission-set-provisioning-operations.json", new TypeReference<Map<String, PermissionSetProvisioningOperation>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-regions.json", new TypeReference<Map<String, RegionMetadata>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-applications.json", new TypeReference<Map<String, SsoApplication>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-application-client-tokens.json", new TypeReference<Map<String, String>>() {}),
@@ -134,6 +140,8 @@ public class SsoAdminService implements Resettable {
                     StorageBackend<String, Assignment> assignments,
                     StorageBackend<String, AssignmentOperation> assignmentOperations,
                     StorageBackend<String, AssignmentDeletionOperation> assignmentDeletionOperations,
+                    StorageBackend<String, PermissionSetProvisioning> permissionSetProvisionings,
+                    StorageBackend<String, PermissionSetProvisioningOperation> permissionSetProvisioningOperations,
                     StorageBackend<String, RegionMetadata> regions,
                     StorageBackend<String, SsoApplication> applications,
                     StorageBackend<String, String> applicationClientTokens,
@@ -155,6 +163,8 @@ public class SsoAdminService implements Resettable {
         this.assignments = assignments;
         this.assignmentOperations = assignmentOperations;
         this.assignmentDeletionOperations = assignmentDeletionOperations;
+        this.permissionSetProvisionings = permissionSetProvisionings;
+        this.permissionSetProvisioningOperations = permissionSetProvisioningOperations;
         this.regions = regions;
         this.applications = applications;
         this.applicationClientTokens = applicationClientTokens;
@@ -432,6 +442,8 @@ public class SsoAdminService implements Resettable {
         assignments.clear();
         assignmentOperations.clear();
         assignmentDeletionOperations.clear();
+        permissionSetProvisionings.clear();
+        permissionSetProvisioningOperations.clear();
         accessControlAttributeConfigurations.delete(instanceArn);
         for (String key : new java.util.ArrayList<>(trustedTokenIssuers.keys())) {
             TrustedTokenIssuer issuer = trustedTokenIssuers.get(key).orElse(null);
@@ -818,14 +830,55 @@ public class SsoAdminService implements Resettable {
                 optionalMaxResults(request), text(request, "NextToken"), 50, 100, "ValidationException");
     }
 
+    public synchronized PermissionSetProvisioningOperation provisionPermissionSet(JsonNode request) {
+        String instanceArn = required(request, "InstanceArn");
+        SsoInstance instance = requireInstance(instanceArn);
+        if (instance.accountInstance()) {
+            throw accessDenied("Permission sets can only be provisioned from an organization instance.");
+        }
+        String permissionSetArn = required(request, "PermissionSetArn");
+        getPermissionSet(instanceArn, permissionSetArn);
+        String targetType = required(request, "TargetType");
+        String targetId = text(request, "TargetId");
+        if ("AWS_ACCOUNT".equals(targetType)) {
+            targetId = validateAccountId(required(request, "TargetId"));
+            ensurePermissionSetProvisioned(permissionSetArn, targetId);
+        } else if ("ALL_PROVISIONED_ACCOUNTS".equals(targetType)) {
+            if (targetId != null) {
+                throw validation("TargetId must not be provided when TargetType is ALL_PROVISIONED_ACCOUNTS.");
+            }
+            permissionSetProvisionings.scan(key -> true).stream()
+                    .filter(provisioning -> permissionSetArn.equals(provisioning.permissionSetArn()))
+                    .map(PermissionSetProvisioning::accountId)
+                    .distinct()
+                    .forEach(accountId -> ensurePermissionSetProvisioned(permissionSetArn, accountId));
+        } else {
+            throw validation("TargetType must be AWS_ACCOUNT or ALL_PROVISIONED_ACCOUNTS.");
+        }
+        String requestId = UUID.randomUUID().toString();
+        PermissionSetProvisioningOperation operation = new PermissionSetProvisioningOperation(
+                requestId, "SUCCEEDED", System.currentTimeMillis(), targetId, permissionSetArn, null);
+        permissionSetProvisioningOperations.put(requestId, operation);
+        return operation;
+    }
+
+    private void ensurePermissionSetProvisioned(String permissionSetArn, String accountId) {
+        String key = permissionSetArn + "::" + accountId;
+        permissionSetProvisionings.put(key, new PermissionSetProvisioning(permissionSetArn, accountId, "SUCCEEDED"));
+    }
+
     public synchronized AssignmentOperation createAssignment(JsonNode request) {
-        requireInstance(required(request, "InstanceArn"));
+        String instanceArn = required(request, "InstanceArn");
+        SsoInstance instance = requireInstance(instanceArn);
+        if (instance.accountInstance()) {
+            throw accessDenied("Account assignments can only be created from an organization instance.");
+        }
         String account = validateAccountId(required(request, "TargetId"));
         if (!"AWS_ACCOUNT".equals(required(request, "TargetType"))) {
             throw validation("TargetType must be AWS_ACCOUNT.");
         }
         String permission = required(request, "PermissionSetArn");
-        getPermissionSet(INSTANCE_ARN, permission);
+        getPermissionSet(instanceArn, permission);
         String principal = validatePrincipalId(required(request, "PrincipalId"));
         String principalType = required(request, "PrincipalType");
         if (!PRINCIPAL_TYPES.contains(principalType)) {
@@ -837,6 +890,7 @@ public class SsoAdminService implements Resettable {
         }
         Assignment assignment = new Assignment(account, permission, principal, principalType);
         assignments.put(key, assignment);
+        ensurePermissionSetProvisioned(permission, account);
         String requestId = UUID.randomUUID().toString();
         AssignmentOperation operation = new AssignmentOperation(requestId, "SUCCEEDED", account, permission,
                 principal, principalType, null);
@@ -1155,6 +1209,8 @@ public class SsoAdminService implements Resettable {
         assignments.clear();
         assignmentOperations.clear();
         assignmentDeletionOperations.clear();
+        permissionSetProvisionings.clear();
+        permissionSetProvisioningOperations.clear();
         regions.clear();
         applications.clear();
         applicationClientTokens.clear();
