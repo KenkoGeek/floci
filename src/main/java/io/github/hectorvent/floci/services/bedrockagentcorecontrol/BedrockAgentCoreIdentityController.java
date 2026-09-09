@@ -240,6 +240,34 @@ public class BedrockAgentCoreIdentityController {
         }
     }
 
+    @POST
+    @Path("/ListOauth2CredentialProviders")
+    public Response listOauth2CredentialProviders(@Context HttpHeaders headers, String body) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            ObjectNode req = object(body);
+            Integer maxResults = req.hasNonNull("maxResults") ? req.get("maxResults").asInt() : null;
+            String nextToken = text(req, "nextToken");
+            PaginatedResult<ObjectNode> result = credentialProviderService.listOauth2(maxResults, nextToken, region);
+            ObjectNode out = objectMapper.createObjectNode();
+            ArrayNode providers = out.putArray("credentialProviders");
+            for (ObjectNode item : result.items()) {
+                ObjectNode summary = providers.addObject();
+                summary.put("name", item.path("name").asText());
+                summary.put("credentialProviderArn", item.path("credentialProviderArn").asText());
+                summary.put("credentialProviderVendor", item.path("credentialProviderVendor").asText());
+                summary.put("createdTime", item.path("createdTime").asLong());
+                summary.put("lastUpdatedTime", item.path("lastUpdatedTime").asLong());
+            }
+            if (result.nextToken() != null) {
+                out.put("nextToken", result.nextToken());
+            }
+            return Response.ok(out).build();
+        } catch (Exception e) {
+            return error(e, "listing OAuth2 credential providers");
+        }
+    }
+
     private ObjectNode identityNode(WorkloadIdentity identity, boolean full) {
         ObjectNode node = objectMapper.createObjectNode();
         node.put("name", identity.getName());

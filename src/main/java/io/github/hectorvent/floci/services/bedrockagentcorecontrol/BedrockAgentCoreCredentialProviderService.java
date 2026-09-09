@@ -232,6 +232,14 @@ public class BedrockAgentCoreCredentialProviderService {
                         "OAuth2 credential provider not found: " + name, 404));
     }
 
+    public PaginatedResult<ObjectNode> listOauth2(Integer maxResults, String nextToken, String region) {
+        List<ObjectNode> items = storage.scan(k -> k.startsWith(prefix("oauth2", region))).stream()
+                .map(ObjectNode::deepCopy)
+                .toList();
+        return Pagination.paginate(items, node -> node.path("name").asText(),
+                maxResults, nextToken, 20, 20, "ValidationException");
+    }
+
     private String credentialProviderArn(String region, String name) {
         return "arn:aws:acps:" + region + ":" + regionResolver.getAccountId()
                 + ":token-vault/default/apikeycredentialprovider/" + name;
