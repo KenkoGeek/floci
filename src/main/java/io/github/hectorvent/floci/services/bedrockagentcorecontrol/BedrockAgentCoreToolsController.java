@@ -62,6 +62,23 @@ public class BedrockAgentCoreToolsController {
     }
 
     @PUT
+    @Path("/code-interpreters")
+    public Response createCodeInterpreter(@Context HttpHeaders headers, String body) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            ObjectNode interpreter = service.createCodeInterpreter(object(body), region);
+            ObjectNode response = objectMapper.createObjectNode();
+            copyText(interpreter, response, "codeInterpreterArn");
+            copyText(interpreter, response, "codeInterpreterId");
+            copyText(interpreter, response, "createdAt");
+            copyText(interpreter, response, "status");
+            return Response.status(202).entity(response).build();
+        } catch (Exception e) {
+            return error(e, "creating code interpreter");
+        }
+    }
+
+    @PUT
     @Path("/browser-profiles")
     public Response createBrowserProfile(@Context HttpHeaders headers, String body) {
         String region = regionResolver.resolveRegion(headers);

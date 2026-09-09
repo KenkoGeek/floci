@@ -129,6 +129,43 @@ public class BedrockAgentCoreToolsService {
         return profile.deepCopy();
     }
 
+    public ObjectNode createCodeInterpreter(ObjectNode request, String region) {
+        String name = requiredText(request, "name");
+        if (!TOOL_NAME.matcher(name).matches()) {
+            throw new AwsException("ValidationException",
+                    "name must match [a-zA-Z][a-zA-Z0-9_]{0,47}", 400);
+        }
+        JsonNode networkConfiguration = request.get("networkConfiguration");
+        if (networkConfiguration == null || !networkConfiguration.isObject()) {
+            throw new AwsException("ValidationException", "networkConfiguration is required", 400);
+        }
+        String clientToken = optionalText(request, "clientToken");
+        if (clientToken != null) {
+            if (clientToken.length() < 33 || clientToken.length() > 256
+                    || !clientToken.matches("[a-zA-Z0-9](-*[a-zA-Z0-9]){0,256}")) {
+                throw new AwsException("ValidationException", "clientToken does not satisfy length or pattern constraints", 400);
+            }
+            ObjectNode existing = findByClientToken("code-interpreter", region, clientToken);
+            if (existing != null) {
+                return existing.deepCopy();
+            }
+        }
+        if (findByName("code-interpreter", region, name) != null) {
+            throw new AwsException("ConflictException", "Code interpreter already exists: " + name, 409);
+        }
+        String id = name + "-" + random(10);
+        Instant now = Instant.now();
+        ObjectNode interpreter = request.deepCopy();
+        interpreter.put("codeInterpreterId", id);
+        interpreter.put("codeInterpreterArn", regionResolver.buildArn(
+                "bedrock-agentcore", region, "code-interpreter-custom/" + id));
+        interpreter.put("status", "READY");
+        interpreter.put("createdAt", now.toString());
+        interpreter.put("lastUpdatedAt", now.toString());
+        storage.put(key("code-interpreter", region, id), interpreter);
+        return interpreter.deepCopy();
+    }
+
     public ObjectNode getBrowserProfile(String profileId, String region) {
         if (profileId == null || !profileId.matches("[a-zA-Z][a-zA-Z0-9_]{0,47}-[a-zA-Z0-9]{10}")) {
             throw new AwsException("ValidationException", "profileId does not satisfy the required pattern", 400);

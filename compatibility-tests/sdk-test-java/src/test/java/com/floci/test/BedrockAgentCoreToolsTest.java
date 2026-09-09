@@ -23,12 +23,15 @@ class BedrockAgentCoreToolsTest {
     private static String browserId;
     private static String profileName;
     private static String profileId;
+    private static String codeInterpreterName;
+    private static String codeInterpreterId;
 
     @BeforeAll
     static void setup() {
         client = TestFixtures.bedrockAgentCoreControlClient();
         browserName = "browser" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
         profileName = "profile" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        codeInterpreterName = "code" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
     }
 
     @AfterAll
@@ -143,5 +146,22 @@ class BedrockAgentCoreToolsTest {
         assertThat(response.profileId()).isEqualTo(profileId);
         assertThat(response.statusAsString()).isEqualTo("DELETING");
         assertThat(response.lastUpdatedAt()).isNotNull();
+    }
+
+    @Test
+    @Order(9)
+    void createCodeInterpreter() {
+        CreateCodeInterpreterResponse response = client.createCodeInterpreter(CreateCodeInterpreterRequest.builder()
+                .name(codeInterpreterName)
+                .networkConfiguration(CodeInterpreterNetworkConfiguration.builder()
+                        .networkMode(CodeInterpreterNetworkMode.PUBLIC)
+                        .build())
+                .build());
+
+        codeInterpreterId = response.codeInterpreterId();
+        assertThat(codeInterpreterId).startsWith(codeInterpreterName + "-");
+        assertThat(response.codeInterpreterArn()).contains(":code-interpreter-custom/");
+        assertThat(response.statusAsString()).isEqualTo("READY");
+        assertThat(response.createdAt()).isNotNull();
     }
 }
