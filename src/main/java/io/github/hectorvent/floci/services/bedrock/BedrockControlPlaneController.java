@@ -155,6 +155,12 @@ public class BedrockControlPlaneController {
         return execute("PutAccountDataRetention", body, Map.of(), headers);
     }
 
+    @POST
+    @Path("/guardrails")
+    public Response createGuardrail(String body, @Context HttpHeaders headers) {
+        return execute("CreateGuardrail", body, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(

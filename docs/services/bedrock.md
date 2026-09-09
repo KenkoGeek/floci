@@ -30,6 +30,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `DeleteResourcePolicy` | `DELETE /resource-policy/{resourceArn}` | AWS-compatible control-plane emulation. |
 | `GetAccountDataRetention` | `GET /data-retention` | AWS-compatible control-plane emulation. |
 | `PutAccountDataRetention` | `PUT /data-retention` | AWS-compatible control-plane emulation. |
+| `CreateGuardrail` | `POST /guardrails` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 
