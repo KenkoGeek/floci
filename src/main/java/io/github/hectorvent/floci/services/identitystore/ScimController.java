@@ -54,6 +54,24 @@ public class ScimController {
     }
 
     @DELETE
+    @Path("/Users/{userId}")
+    public Response deleteUser(@PathParam("tenantId") String tenantId,
+                               @PathParam("userId") String userId,
+                               @HeaderParam("Authorization") String authorization) {
+        try {
+            requireBearer(authorization);
+            String identityStoreId = resolveIdentityStore(tenantId);
+            ObjectNode request = mapper.createObjectNode();
+            request.put("IdentityStoreId", identityStoreId);
+            request.put("UserId", userId);
+            identityStoreService.deleteUser(request);
+            return Response.noContent().build();
+        } catch (AwsException exception) {
+            return scimError(scimStatus(exception), exception.getMessage());
+        }
+    }
+
+    @DELETE
     @Path("/Groups/{groupId}")
     public Response deleteGroup(@PathParam("tenantId") String tenantId,
                                 @PathParam("groupId") String groupId,
