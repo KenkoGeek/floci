@@ -53,6 +53,7 @@ public class SsoAdminJsonHandler {
             case "ListAccountAssignments" -> listAccountAssignments(request);
             case "ListAccountAssignmentsForPrincipal" -> listAccountAssignmentsForPrincipal(request, callerAccountId);
             case "ProvisionPermissionSet" -> provisionPermissionSet(request);
+            case "ListPermissionSetsProvisionedToAccount" -> listPermissionSetsProvisionedToAccount(request);
             case "CreateAccountAssignment" -> createAccountAssignment(request);
             case "DeleteAccountAssignment" -> deleteAccountAssignment(request);
             case "DescribeAccountAssignmentCreationStatus" -> describeAssignment(request);
@@ -269,6 +270,17 @@ public class SsoAdminJsonHandler {
         status.put("PermissionSetArn", operation.permissionSetArn());
         if (operation.failureReason() != null) {
             status.put("FailureReason", operation.failureReason());
+        }
+        return Response.ok(response).build();
+    }
+
+    private Response listPermissionSetsProvisionedToAccount(JsonNode request) {
+        var page = service.listPermissionSetsProvisionedToAccount(request);
+        ObjectNode response = mapper.createObjectNode();
+        ArrayNode permissionSets = response.putArray("PermissionSets");
+        page.items().forEach(permissionSets::add);
+        if (page.nextToken() != null) {
+            response.put("NextToken", page.nextToken());
         }
         return Response.ok(response).build();
     }

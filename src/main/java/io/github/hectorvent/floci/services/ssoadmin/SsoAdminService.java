@@ -711,6 +711,7 @@ public class SsoAdminService implements Resettable {
                 new LinkedHashMap<>(current.managedPolicies()),
                 new LinkedHashMap<>(current.customerManagedPolicies()), current.inlinePolicy());
         permissionSets.put(updated.arn(), updated);
+        markPermissionSetProvisioningStale(updated.arn());
         return updated;
     }
 
@@ -725,6 +726,7 @@ public class SsoAdminService implements Resettable {
         }
         current.managedPolicies().put(policyArn, policyArn.substring(policyArn.lastIndexOf('/') + 1));
         permissionSets.put(arn, current);
+        markPermissionSetProvisioningStale(arn);
     }
 
     public synchronized void attachCustomerManagedPolicyReference(JsonNode request) {
@@ -752,6 +754,7 @@ public class SsoAdminService implements Resettable {
         }
         current.customerManagedPolicies().put(key, new CustomerManagedPolicyReference(name, path));
         permissionSets.put(current.arn(), current);
+        markPermissionSetProvisioningStale(current.arn());
     }
 
     public synchronized void detachPolicy(String instanceArn, String arn, String policyArn) {
@@ -761,6 +764,7 @@ public class SsoAdminService implements Resettable {
             throw conflict("The managed policy is not attached to the permission set.");
         }
         permissionSets.put(arn, current);
+        markPermissionSetProvisioningStale(arn);
     }
 
     public synchronized void putInlinePolicy(String instanceArn, String arn, String policy) {
@@ -769,6 +773,7 @@ public class SsoAdminService implements Resettable {
         permissionSets.put(arn, new PermissionSet(current.arn(), current.name(), current.description(),
                 current.sessionDuration(), new LinkedHashMap<>(current.managedPolicies()),
                 new LinkedHashMap<>(current.customerManagedPolicies()), policy));
+        markPermissionSetProvisioningStale(arn);
     }
 
     public synchronized void deleteInlinePolicy(String instanceArn, String arn) {
@@ -776,6 +781,7 @@ public class SsoAdminService implements Resettable {
         permissionSets.put(arn, new PermissionSet(current.arn(), current.name(), current.description(),
                 current.sessionDuration(), new LinkedHashMap<>(current.managedPolicies()),
                 new LinkedHashMap<>(current.customerManagedPolicies()), null));
+        markPermissionSetProvisioningStale(arn);
     }
 
     public PaginatedResult<Assignment> listAssignments(JsonNode request) {
@@ -864,7 +870,41 @@ public class SsoAdminService implements Resettable {
 
     private void ensurePermissionSetProvisioned(String permissionSetArn, String accountId) {
         String key = permissionSetArn + "::" + accountId;
-        permissionSetProvisionings.put(key, new PermissionSetProvisioning(permissionSetArn, accountId, "SUCCEEDED"));
+        permissionSetProvisionings.put(key, new PermissionSetProvisioning(
+                permissionSetArn, accountId, "LATEST_PERMISSION_SET_PROVISIONED"));
+    }
+
+    public PaginatedResult<String> listPermissionSetsProvisionedToAccount(JsonNode request) {
+        String instanceArn = required(request, "InstanceArn");
+        SsoInstance instance = requireInstance(instanceArn);
+        if (instance.accountInstance()) {
+            throw accessDenied("Permission sets are only available from an organization instance.");
+        }
+        String accountId = validateAccountId(required(request, "AccountId"));
+        String provisioningStatus = text(request, "ProvisioningStatus");
+        if (provisioningStatus != null
+                && !Set.of("LATEST_PERMISSION_SET_PROVISIONED", "LATEST_PERMISSION_SET_NOT_PROVISIONED")
+                        .contains(provisioningStatus)) {
+            throw validation("ProvisioningStatus is invalid.");
+        }
+        List<String> permissionSetArns = permissionSetProvisionings.scan(key -> true).stream()
+                .filter(provisioning -> accountId.equals(provisioning.accountId()))
+                .filter(provisioning -> provisioningStatus == null || provisioningStatus.equals(provisioning.status()))
+                .map(PermissionSetProvisioning::permissionSetArn)
+                .distinct()
+                .toList();
+        return Pagination.paginate(permissionSetArns, value -> value,
+                optionalMaxResults(request), text(request, "NextToken"), 50, 100, "ValidationException");
+    }
+
+    private void markPermissionSetProvisioningStale(String permissionSetArn) {
+        for (PermissionSetProvisioning provisioning : permissionSetProvisionings.scan(key -> true)) {
+            if (permissionSetArn.equals(provisioning.permissionSetArn())) {
+                permissionSetProvisionings.put(permissionSetArn + "::" + provisioning.accountId(),
+                        new PermissionSetProvisioning(permissionSetArn, provisioning.accountId(),
+                                "LATEST_PERMISSION_SET_NOT_PROVISIONED"));
+            }
+        }
     }
 
     public synchronized AssignmentOperation createAssignment(JsonNode request) {
