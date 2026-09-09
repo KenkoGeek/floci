@@ -158,6 +158,72 @@ public class BedrockAgentCoreCredentialProviderService {
         storage.delete(key("apikey", region, name));
     }
 
+    public ObjectNode createOauth2(ObjectNode request, String region) {
+        String name = requiredName(request);
+        String key = key("oauth2", region, name);
+        if (storage.get(key).isPresent()) {
+            throw new AwsException("ConflictException", "OAuth2 credential provider already exists: " + name, 409);
+        }
+        String vendor = text(request, "credentialProviderVendor");
+        validateOauthVendor(vendor);
+        JsonNode configInput = request.get("oauth2ProviderConfigInput");
+        if (configInput == null || !configInput.isObject() || configInput.size() != 1) {
+            throw new AwsException("ValidationException",
+                    "oauth2ProviderConfigInput must contain exactly one provider configuration", 400);
+        }
+        Map.Entry<String, JsonNode> configEntry = configInput.fields().next();
+        if (!configEntry.getKey().equals(expectedOauthConfigKey(vendor))) {
+            throw new AwsException("ValidationException",
+                    "oauth2ProviderConfigInput does not match credentialProviderVendor", 400);
+        }
+        if (!configEntry.getValue().isObject()) {
+            throw new AwsException("ValidationException", "OAuth2 provider configuration must be an object", 400);
+        }
+        ObjectNode config = ((ObjectNode) configEntry.getValue()).deepCopy();
+        validateOauthProviderConfig(vendor, config);
+        String source = text(config, "clientSecretSource");
+        if (source == null) {
+            source = "MANAGED";
+        }
+        if (!source.equals("MANAGED") && !source.equals("EXTERNAL")) {
+            throw new AwsException("ValidationException", "clientSecretSource must be MANAGED or EXTERNAL", 400);
+        }
+        JsonNode secretConfig = config.get("clientSecretConfig");
+        if (source.equals("EXTERNAL")) {
+            validateSecretReference(secretConfig, "clientSecretConfig");
+        }
+        String clientSecret = text(config, "clientSecret");
+        if (clientSecret != null && clientSecret.length() > 2048) {
+            throw new AwsException("ValidationException", "clientSecret exceeds maximum length of 2048", 400);
+        }
+        validateTags(request.get("tags"));
+
+        Instant now = Instant.now();
+        ObjectNode item = JsonNodeFactory.instance.objectNode();
+        item.put("name", name);
+        item.put("credentialProviderArn", oauthCredentialProviderArn(region, name));
+        item.put("credentialProviderVendor", vendor);
+        item.put("callbackUrl", "https://bedrock-agentcore." + region + ".amazonaws.com/oauth2/callback");
+        item.put("clientSecretSource", source);
+        if (source.equals("EXTERNAL")) {
+            item.putObject("clientSecretArn").put("secretArn", secretConfig.path("secretId").asText());
+            item.put("clientSecretJsonKey", secretConfig.path("jsonKey").asText());
+        } else {
+            item.putObject("clientSecretArn").put("secretArn", managedOauthSecretArn(region, name));
+            item.put("clientSecretJsonKey", "clientSecret");
+        }
+        ObjectNode outputUnion = item.putObject("oauth2ProviderConfigOutput");
+        outputUnion.set(configEntry.getKey(), oauthOutputConfig(vendor, config));
+        item.put("status", "READY");
+        item.put("createdTime", now.getEpochSecond());
+        item.put("lastUpdatedTime", now.getEpochSecond());
+        if (request.has("tags")) {
+            item.set("tags", request.get("tags").deepCopy());
+        }
+        storage.put(key, item);
+        return item.deepCopy();
+    }
+
     private String credentialProviderArn(String region, String name) {
         return "arn:aws:acps:" + region + ":" + regionResolver.getAccountId()
                 + ":token-vault/default/apikeycredentialprovider/" + name;
@@ -166,6 +232,125 @@ public class BedrockAgentCoreCredentialProviderService {
     private String managedSecretArn(String region, String name) {
         return "arn:aws:secretsmanager:" + region + ":" + regionResolver.getAccountId()
                 + ":secret:agentcore-" + name;
+    }
+
+    private String oauthCredentialProviderArn(String region, String name) {
+        return "arn:aws:acps:" + region + ":" + regionResolver.getAccountId()
+                + ":token-vault/default/oauth2credentialprovider/" + name;
+    }
+
+    private String managedOauthSecretArn(String region, String name) {
+        return "arn:aws:secretsmanager:" + region + ":" + regionResolver.getAccountId()
+                + ":secret:agentcore-oauth2-" + name;
+    }
+
+    private static ObjectNode oauthOutputConfig(String vendor, ObjectNode config) {
+        ObjectNode output = JsonNodeFactory.instance.objectNode();
+        if (config.hasNonNull("clientId")) {
+            output.put("clientId", config.get("clientId").asText());
+        }
+        if ("CustomOauth2".equals(vendor)) {
+            if (config.has("oauthDiscovery")) {
+                output.set("oauthDiscovery", config.get("oauthDiscovery").deepCopy());
+            }
+            for (String field : List.of("clientAuthenticationMethod", "onBehalfOfTokenExchangeConfig",
+                    "privateEndpoint", "privateEndpointOverrides", "privateKeyJwtConfig")) {
+                if (config.has(field)) {
+                    output.set(field, config.get(field).deepCopy());
+                }
+            }
+        } else {
+            output.set("oauthDiscovery", syntheticOauthDiscovery(vendor));
+        }
+        return output;
+    }
+
+    private static ObjectNode syntheticOauthDiscovery(String vendor) {
+        ObjectNode discovery = JsonNodeFactory.instance.objectNode();
+        ObjectNode metadata = discovery.putObject("authorizationServerMetadata");
+        String slug = vendor.replace("Oauth2", "").toLowerCase();
+        metadata.put("issuer", "https://" + slug + ".oauth.local");
+        metadata.put("authorizationEndpoint", "https://" + slug + ".oauth.local/authorize");
+        metadata.put("tokenEndpoint", "https://" + slug + ".oauth.local/token");
+        return discovery;
+    }
+
+    private static void validateOauthVendor(String vendor) {
+        if (vendor == null || !java.util.Set.of(
+                "GoogleOauth2", "GithubOauth2", "SlackOauth2", "SalesforceOauth2", "MicrosoftOauth2",
+                "CustomOauth2", "AtlassianOauth2", "LinkedinOauth2", "XOauth2", "OktaOauth2",
+                "OneLoginOauth2", "PingOneOauth2", "FacebookOauth2", "YandexOauth2", "RedditOauth2",
+                "ZoomOauth2", "TwitchOauth2", "SpotifyOauth2", "DropboxOauth2", "NotionOauth2",
+                "HubspotOauth2", "CyberArkOauth2", "FusionAuthOauth2", "Auth0Oauth2", "CognitoOauth2")
+                .contains(vendor)) {
+            throw new AwsException("ValidationException", "credentialProviderVendor is invalid", 400);
+        }
+    }
+
+    private static String expectedOauthConfigKey(String vendor) {
+        return switch (vendor) {
+            case "GoogleOauth2" -> "googleOauth2ProviderConfig";
+            case "GithubOauth2" -> "githubOauth2ProviderConfig";
+            case "SlackOauth2" -> "slackOauth2ProviderConfig";
+            case "SalesforceOauth2" -> "salesforceOauth2ProviderConfig";
+            case "MicrosoftOauth2" -> "microsoftOauth2ProviderConfig";
+            case "CustomOauth2" -> "customOauth2ProviderConfig";
+            case "AtlassianOauth2" -> "atlassianOauth2ProviderConfig";
+            case "LinkedinOauth2" -> "linkedinOauth2ProviderConfig";
+            default -> "includedOauth2ProviderConfig";
+        };
+    }
+
+    private static void validateOauthProviderConfig(String vendor, ObjectNode config) {
+        if ("CustomOauth2".equals(vendor)) {
+            JsonNode discovery = config.get("oauthDiscovery");
+            if (discovery == null || !discovery.isObject() || discovery.size() != 1) {
+                throw new AwsException("ValidationException",
+                        "custom OAuth2 configuration requires exactly one oauthDiscovery member", 400);
+            }
+            if (discovery.has("discoveryUrl")) {
+                String discoveryUrl = discovery.path("discoveryUrl").asText();
+                if (!discoveryUrl.matches(".+/\\.well-known/(openid-configuration|oauth-authorization-server)")) {
+                    throw new AwsException("ValidationException", "oauthDiscovery.discoveryUrl is invalid", 400);
+                }
+            } else if (discovery.has("authorizationServerMetadata")) {
+                JsonNode metadata = discovery.get("authorizationServerMetadata");
+                if (metadata == null || !metadata.isObject()
+                        || !metadata.hasNonNull("issuer")
+                        || !metadata.hasNonNull("authorizationEndpoint")
+                        || !metadata.hasNonNull("tokenEndpoint")) {
+                    throw new AwsException("ValidationException",
+                            "authorizationServerMetadata requires issuer, authorizationEndpoint, and tokenEndpoint", 400);
+                }
+            } else {
+                throw new AwsException("ValidationException", "oauthDiscovery union member is invalid", 400);
+            }
+        } else {
+            String clientId = text(config, "clientId");
+            if (clientId == null || clientId.length() < 1 || clientId.length() > 256) {
+                throw new AwsException("ValidationException", "clientId must be between 1 and 256 characters", 400);
+            }
+        }
+        String clientId = text(config, "clientId");
+        if (clientId != null && clientId.length() > 256) {
+            throw new AwsException("ValidationException", "clientId must not exceed 256 characters", 400);
+        }
+    }
+
+    private static void validateSecretReference(JsonNode secretConfig, String fieldName) {
+        if (secretConfig == null || !secretConfig.isObject()
+                || !secretConfig.hasNonNull("secretId") || !secretConfig.hasNonNull("jsonKey")) {
+            throw new AwsException("ValidationException",
+                    fieldName + " with secretId and jsonKey is required", 400);
+        }
+        String secretId = secretConfig.path("secretId").asText();
+        String jsonKey = secretConfig.path("jsonKey").asText();
+        if (secretId.length() < 1 || secretId.length() > 2048) {
+            throw new AwsException("ValidationException", "secretId must be between 1 and 2048 characters", 400);
+        }
+        if (jsonKey.length() < 1 || jsonKey.length() > 128) {
+            throw new AwsException("ValidationException", "jsonKey must be between 1 and 128 characters", 400);
+        }
     }
 
     private static String requiredName(ObjectNode request) {

@@ -10,6 +10,10 @@ import org.junit.jupiter.api.MethodOrderer;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CreateApiKeyCredentialProviderRequest;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CreateApiKeyCredentialProviderResponse;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CreateOauth2CredentialProviderRequest;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CreateOauth2CredentialProviderResponse;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CredentialProviderVendorType;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.Oauth2ProviderConfigInput;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.SecretSourceType;
 
 import java.util.UUID;
@@ -22,11 +26,13 @@ class BedrockAgentCoreCredentialProviderTest {
 
     private static BedrockAgentCoreControlClient client;
     private static String apiKeyProviderName;
+    private static String oauth2ProviderName;
 
     @BeforeAll
     static void setup() {
         client = TestFixtures.bedrockAgentCoreControlClient();
         apiKeyProviderName = "api_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        oauth2ProviderName = "oauth_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
     }
 
     @AfterAll
@@ -92,5 +98,25 @@ class BedrockAgentCoreCredentialProviderTest {
     void deleteApiKeyCredentialProvider() {
         var response = client.deleteApiKeyCredentialProvider(builder -> builder.name(apiKeyProviderName));
         assertThat(response.sdkHttpResponse().statusCode()).isEqualTo(204);
+    }
+
+    @Test
+    @Order(6)
+    void createOauth2CredentialProvider() {
+        CreateOauth2CredentialProviderResponse response = client.createOauth2CredentialProvider(
+                CreateOauth2CredentialProviderRequest.builder()
+                        .name(oauth2ProviderName)
+                        .credentialProviderVendor(CredentialProviderVendorType.GITHUB_OAUTH2)
+                        .oauth2ProviderConfigInput(Oauth2ProviderConfigInput.fromGithubOauth2ProviderConfig(builder -> builder
+                                .clientId("client-id")
+                                .clientSecret("client-value")
+                                .clientSecretSource(SecretSourceType.MANAGED)))
+                        .build());
+
+        assertThat(response.name()).isEqualTo(oauth2ProviderName);
+        assertThat(response.credentialProviderArn()).contains(":oauth2credentialprovider/");
+        assertThat(response.clientSecretSourceAsString()).isEqualTo("MANAGED");
+        assertThat(response.statusAsString()).isEqualTo("READY");
+        assertThat(response.oauth2ProviderConfigOutput().githubOauth2ProviderConfig().clientId()).isEqualTo("client-id");
     }
 }
