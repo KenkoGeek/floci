@@ -531,6 +531,25 @@ class SsoAdminAccountAssignmentTest {
     }
 
     @Test
+    @DisplayName("gets inline permission-set policies through the AWS SDK")
+    void getInlinePolicyUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only permission-set lifecycle");
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient()) {
+            String instanceArn = sso.listInstances(request -> {}).instances().get(0).instanceArn();
+            String permissionSetArn = sso.createPermissionSet(request -> request
+                            .instanceArn(instanceArn).name("GetInlinePolicySdkAdmins"))
+                    .permissionSet().permissionSetArn();
+            assertThat(sso.getInlinePolicyForPermissionSet(request -> request
+                    .instanceArn(instanceArn).permissionSetArn(permissionSetArn)).inlinePolicy()).isEmpty();
+            String policy = "{\"Version\":\"2012-10-17\",\"Statement\":[]}";
+            sso.putInlinePolicyToPermissionSet(request -> request
+                    .instanceArn(instanceArn).permissionSetArn(permissionSetArn).inlinePolicy(policy));
+            assertThat(sso.getInlinePolicyForPermissionSet(request -> request
+                    .instanceArn(instanceArn).permissionSetArn(permissionSetArn)).inlinePolicy()).isEqualTo(policy);
+        }
+    }
+
+    @Test
     @DisplayName("deletes permission sets through the AWS SDK")
     void deletePermissionSetUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only permission-set lifecycle");
