@@ -9,6 +9,7 @@ import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentDeletionOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAccessScope;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAssignment;
+import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAuthenticationMethod;
 import io.github.hectorvent.floci.services.ssoadmin.model.InstanceAccessControlAttributeConfiguration;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
 import io.github.hectorvent.floci.services.ssoadmin.model.RegionMetadata;
@@ -33,11 +34,13 @@ class SsoAdminServiceTest {
     private SsoAdminService service;
     private OrganizationsService organizationsService;
     private InMemoryStorage<String, ApplicationAccessScope> applicationAccessScopes;
+    private InMemoryStorage<String, ApplicationAuthenticationMethod> applicationAuthenticationMethods;
 
     @BeforeEach
     void setUp() {
         organizationsService = org.mockito.Mockito.mock(OrganizationsService.class);
         applicationAccessScopes = new InMemoryStorage<>();
+        applicationAuthenticationMethods = new InMemoryStorage<>();
         service = new SsoAdminService(
                 new InMemoryStorage<String, PermissionSet>(),
                 new InMemoryStorage<String, Assignment>(),
@@ -48,6 +51,7 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, ApplicationAssignment>(),
                 applicationAccessScopes,
+                applicationAuthenticationMethods,
                 new InMemoryStorage<String, SsoInstance>(),
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, InstanceAccessControlAttributeConfiguration>(),
@@ -256,6 +260,27 @@ class SsoAdminServiceTest {
         ObjectNode invalid = request.deepCopy();
         invalid.put("Scope", "bad scope");
         assertError("ValidationException", () -> service.deleteApplicationAccessScope(invalid));
+    }
+
+    @Test
+    void deleteApplicationAuthenticationMethodDeletesIamMethodAndValidatesType() {
+        SsoApplication application = createApplication("Authentication App", "authentication-app-token");
+        String key = SsoAdminService.applicationAuthenticationMethodKey(application.applicationArn(), "IAM");
+        ObjectNode method = mapper.createObjectNode();
+        method.putObject("Iam").putObject("ActorPolicy").put("Version", "2012-10-17");
+        applicationAuthenticationMethods.put(key, new ApplicationAuthenticationMethod(
+                application.applicationArn(), "IAM", method));
+
+        ObjectNode request = mapper.createObjectNode();
+        request.put("ApplicationArn", application.applicationArn());
+        request.put("AuthenticationMethodType", "IAM");
+        service.deleteApplicationAuthenticationMethod(request);
+        assertTrue(applicationAuthenticationMethods.get(key).isEmpty());
+        assertError("ResourceNotFoundException", () -> service.deleteApplicationAuthenticationMethod(request));
+
+        ObjectNode invalidType = request.deepCopy();
+        invalidType.put("AuthenticationMethodType", "SAML");
+        assertError("ValidationException", () -> service.deleteApplicationAuthenticationMethod(invalidType));
     }
 
     @Test
@@ -557,6 +582,7 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, ApplicationAssignment>(),
                 new InMemoryStorage<String, ApplicationAccessScope>(),
+                new InMemoryStorage<String, ApplicationAuthenticationMethod>(),
                 new InMemoryStorage<String, SsoInstance>(),
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, InstanceAccessControlAttributeConfiguration>(),
