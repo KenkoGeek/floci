@@ -401,6 +401,12 @@ public class BedrockControlPlaneController {
         return execute("GetMarketplaceModelEndpoint", null, Map.of("endpointArn", endpointArn), headers);
     }
 
+    @GET
+    @Path("/marketplace-model/endpoints")
+    public Response listMarketplaceModelEndpoints(@Context HttpHeaders headers) {
+        return execute("ListMarketplaceModelEndpoints", null, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
