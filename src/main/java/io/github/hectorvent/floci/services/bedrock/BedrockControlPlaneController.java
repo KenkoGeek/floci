@@ -539,6 +539,12 @@ public class BedrockControlPlaneController {
         return execute("StopAdvancedPromptOptimizationJob", body, Map.of("jobIdentifier", jobIdentifier), headers);
     }
 
+    @POST
+    @Path("/advanced-prompt-optimization-job/batch-delete")
+    public Response batchDeleteAdvancedPromptOptimizationJob(String body, @Context HttpHeaders headers) {
+        return execute("BatchDeleteAdvancedPromptOptimizationJob", body, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
