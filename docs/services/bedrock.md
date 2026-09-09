@@ -53,6 +53,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `ListModelImportJobs` | `GET /model-import-jobs` | AWS-compatible control-plane emulation. |
 | `GetImportedModel` | `GET /imported-models/{modelIdentifier}` | AWS-compatible control-plane emulation. |
 | `ListImportedModels` | `GET /imported-models` | AWS-compatible control-plane emulation. |
+| `DeleteImportedModel` | `DELETE /imported-models/{modelIdentifier}` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 

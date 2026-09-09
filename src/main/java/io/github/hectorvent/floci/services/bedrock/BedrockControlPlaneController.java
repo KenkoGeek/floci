@@ -293,6 +293,12 @@ public class BedrockControlPlaneController {
         return execute("ListImportedModels", null, Map.of(), headers);
     }
 
+    @DELETE
+    @Path("/imported-models/{modelIdentifier:.+}")
+    public Response deleteImportedModel(@PathParam("modelIdentifier") String modelIdentifier, @Context HttpHeaders headers) {
+        return execute("DeleteImportedModel", null, Map.of("modelIdentifier", modelIdentifier), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
