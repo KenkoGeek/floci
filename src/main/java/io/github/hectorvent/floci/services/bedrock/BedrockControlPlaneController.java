@@ -239,6 +239,12 @@ public class BedrockControlPlaneController {
         return execute("CreateProvisionedModelThroughput", body, Map.of(), headers);
     }
 
+    @GET
+    @Path("/provisioned-model-throughput/{provisionedModelId:.+}")
+    public Response getProvisionedModelThroughput(@PathParam("provisionedModelId") String provisionedModelId, @Context HttpHeaders headers) {
+        return execute("GetProvisionedModelThroughput", null, Map.of("provisionedModelId", provisionedModelId), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
