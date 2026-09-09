@@ -5,14 +5,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.hectorvent.floci.core.common.AwsErrorResponse;
 import io.github.hectorvent.floci.core.common.AwsException;
+import io.github.hectorvent.floci.core.common.Pagination;
 import io.github.hectorvent.floci.core.common.RegionResolver;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
 import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
@@ -69,6 +72,44 @@ public class BedrockAgentCoreToolsController {
             return Response.ok(response).build();
         } catch (Exception e) {
             return error(e, "getting browser");
+        }
+    }
+
+    @POST
+    @Path("/browsers")
+    public Response listBrowsers(@Context HttpHeaders headers,
+                                 @QueryParam("maxResults") String maxResultsParam,
+                                 @QueryParam("nextToken") String nextToken,
+                                 @QueryParam("type") String type) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            Integer maxResults = Pagination.parseMaxResults(maxResultsParam, "ValidationException");
+            var result = service.listBrowsers(maxResults, nextToken, type, region);
+            ObjectNode response = objectMapper.createObjectNode();
+            var summaries = response.putArray("browserSummaries");
+            for (ObjectNode browser : result.items()) {
+                ObjectNode summary = summaries.addObject();
+                copyText(browser, summary, "browserArn");
+                copyText(browser, summary, "browserId");
+                copyText(browser, summary, "createdAt");
+                copyText(browser, summary, "description");
+                copyText(browser, summary, "lastUpdatedAt");
+                copyText(browser, summary, "name");
+                copyText(browser, summary, "status");
+            }
+            if (result.nextToken() != null) {
+                response.put("nextToken", result.nextToken());
+            }
+            return Response.ok(response).build();
+        } catch (Exception e) {
+            return error(e, "listing browsers");
+        }
+    }
+
+    private static void copyText(ObjectNode source, ObjectNode target, String field) {
+        JsonNode value = source.get(field);
+        if (value != null && !value.isNull()) {
+            target.set(field, value.deepCopy());
         }
     }
 

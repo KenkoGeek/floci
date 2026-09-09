@@ -14,6 +14,9 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CreateBrows
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CreateBrowserResponse;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetBrowserRequest;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetBrowserResponse;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.ListBrowsersRequest;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.ListBrowsersResponse;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.ResourceType;
 
 import java.util.UUID;
 
@@ -69,5 +72,17 @@ class BedrockAgentCoreToolsTest {
         assertThat(response.browserArn()).contains(":browser-custom/");
         assertThat(response.networkConfiguration().networkModeAsString()).isEqualTo("PUBLIC");
         assertThat(response.statusAsString()).isEqualTo("READY");
+    }
+
+    @Test
+    @Order(3)
+    void listBrowsers() {
+        ListBrowsersResponse response = client.listBrowsers(ListBrowsersRequest.builder()
+                .type(ResourceType.CUSTOM)
+                .maxResults(100)
+                .build());
+
+        assertThat(response.browserSummaries())
+                .anyMatch(summary -> browserId.equals(summary.browserId()));
     }
 }

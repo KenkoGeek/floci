@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.hectorvent.floci.core.common.AwsException;
+import io.github.hectorvent.floci.core.common.Pagination;
+import io.github.hectorvent.floci.core.common.PaginatedResult;
 import io.github.hectorvent.floci.core.common.RegionResolver;
 import io.github.hectorvent.floci.core.storage.StorageBackend;
 import io.github.hectorvent.floci.core.storage.StorageFactory;
@@ -11,6 +13,8 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Pattern;
@@ -91,6 +95,24 @@ public class BedrockAgentCoreToolsService {
                 .map(ObjectNode::deepCopy)
                 .orElseThrow(() -> new AwsException("ResourceNotFoundException",
                         "Browser not found: " + browserId, 404));
+    }
+
+    public PaginatedResult<ObjectNode> listBrowsers(Integer maxResults, String nextToken, String type, String region) {
+        if (type != null && !type.isBlank() && !"SYSTEM".equals(type) && !"CUSTOM".equals(type)) {
+            throw new AwsException("ValidationException", "type must be SYSTEM or CUSTOM", 400);
+        }
+        List<ObjectNode> browsers = new ArrayList<>();
+        if (type == null || type.isBlank() || "SYSTEM".equals(type)) {
+            browsers.add(getBrowser("aws.browser.v1", region));
+        }
+        if (type == null || type.isBlank() || "CUSTOM".equals(type)) {
+            storage.scan(k -> k.startsWith(prefix("browser", region))).stream()
+                    .map(ObjectNode::deepCopy)
+                    .forEach(browsers::add);
+        }
+        return Pagination.paginate(browsers,
+                node -> node.path("browserId").asText(), maxResults, nextToken,
+                100, 100, "ValidationException");
     }
 
     private ObjectNode findByClientToken(String family, String region, String clientToken) {
