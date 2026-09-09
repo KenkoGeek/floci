@@ -23,6 +23,7 @@ import io.github.hectorvent.floci.services.ssoadmin.model.CustomerManagedPolicyR
 import io.github.hectorvent.floci.services.ssoadmin.model.InstanceAccessControlAttributeConfiguration;
 import io.github.hectorvent.floci.services.ssoadmin.model.OidcJwtIssuerConfiguration;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
+import io.github.hectorvent.floci.services.ssoadmin.model.PermissionsBoundary;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSetProvisioning;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSetProvisioningOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.RegionMetadata;
@@ -691,7 +692,7 @@ public class SsoAdminService implements Resettable {
         }
         String arn = "arn:aws:sso:::permissionSet/ssoins-7223b02a5d9f7c8e/ps-" + shortId();
         PermissionSet permissionSet = new PermissionSet(arn, name, description, sessionDuration,
-                new LinkedHashMap<>(), new LinkedHashMap<>(), null);
+                new LinkedHashMap<>(), new LinkedHashMap<>(), null, null);
         permissionSets.put(arn, permissionSet);
         return permissionSet;
     }
@@ -730,7 +731,7 @@ public class SsoAdminService implements Resettable {
                 ? validateSession(required(request, "SessionDuration")) : current.sessionDuration();
         PermissionSet updated = new PermissionSet(current.arn(), current.name(), description, session,
                 new LinkedHashMap<>(current.managedPolicies()),
-                new LinkedHashMap<>(current.customerManagedPolicies()), current.inlinePolicy());
+                new LinkedHashMap<>(current.customerManagedPolicies()), current.inlinePolicy(), current.permissionsBoundary());
         permissionSets.put(updated.arn(), updated);
         markPermissionSetProvisioningStale(updated.arn());
         return updated;
@@ -828,7 +829,7 @@ public class SsoAdminService implements Resettable {
         validateInlinePolicy(policy);
         permissionSets.put(arn, new PermissionSet(current.arn(), current.name(), current.description(),
                 current.sessionDuration(), new LinkedHashMap<>(current.managedPolicies()),
-                new LinkedHashMap<>(current.customerManagedPolicies()), policy));
+                new LinkedHashMap<>(current.customerManagedPolicies()), policy, current.permissionsBoundary()));
         markPermissionSetProvisioningStale(arn);
     }
 
@@ -836,8 +837,51 @@ public class SsoAdminService implements Resettable {
         PermissionSet current = getPermissionSet(instanceArn, arn);
         permissionSets.put(arn, new PermissionSet(current.arn(), current.name(), current.description(),
                 current.sessionDuration(), new LinkedHashMap<>(current.managedPolicies()),
-                new LinkedHashMap<>(current.customerManagedPolicies()), null));
+                new LinkedHashMap<>(current.customerManagedPolicies()), null, current.permissionsBoundary()));
         markPermissionSetProvisioningStale(arn);
+    }
+
+    public synchronized void putPermissionsBoundary(JsonNode request) {
+        String instanceArn = required(request, "InstanceArn");
+        String permissionSetArn = required(request, "PermissionSetArn");
+        PermissionSet current = getPermissionSet(instanceArn, permissionSetArn);
+        JsonNode boundaryNode = request.get("PermissionsBoundary");
+        if (boundaryNode == null || !boundaryNode.isObject()) {
+            throw validation("PermissionsBoundary must be an object.");
+        }
+        boolean hasCustomerReference = boundaryNode.hasNonNull("CustomerManagedPolicyReference");
+        boolean hasManagedPolicyArn = boundaryNode.hasNonNull("ManagedPolicyArn");
+        if (hasCustomerReference == hasManagedPolicyArn) {
+            throw validation("PermissionsBoundary must specify exactly one of CustomerManagedPolicyReference or ManagedPolicyArn.");
+        }
+
+        PermissionsBoundary boundary;
+        if (hasManagedPolicyArn) {
+            String managedPolicyArn = required(boundaryNode, "ManagedPolicyArn");
+            validateManagedPolicyArn(managedPolicyArn);
+            boundary = new PermissionsBoundary(null, managedPolicyArn);
+        } else {
+            JsonNode referenceNode = boundaryNode.get("CustomerManagedPolicyReference");
+            if (!referenceNode.isObject()) {
+                throw validation("PermissionsBoundary.CustomerManagedPolicyReference must be an object.");
+            }
+            String name = required(referenceNode, "Name");
+            if (name.length() > 128 || !CUSTOMER_MANAGED_POLICY_NAME.matcher(name).matches()) {
+                throw validation("CustomerManagedPolicyReference.Name is invalid.");
+            }
+            String path = text(referenceNode, "Path");
+            if (path == null) {
+                path = "/";
+            } else if (path.length() > 512 || !CUSTOMER_MANAGED_POLICY_PATH.matcher(path).matches()) {
+                throw validation("CustomerManagedPolicyReference.Path is invalid.");
+            }
+            boundary = new PermissionsBoundary(new CustomerManagedPolicyReference(name, path), null);
+        }
+
+        permissionSets.put(permissionSetArn, new PermissionSet(current.arn(), current.name(), current.description(),
+                current.sessionDuration(), new LinkedHashMap<>(current.managedPolicies()),
+                new LinkedHashMap<>(current.customerManagedPolicies()), current.inlinePolicy(), boundary));
+        markPermissionSetProvisioningStale(permissionSetArn);
     }
 
     public PaginatedResult<Assignment> listAssignments(JsonNode request) {

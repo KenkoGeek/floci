@@ -29,7 +29,7 @@ class SsoAdminAssignmentsIntegrationTest {
                 .then().statusCode(200).body("PermissionSet.PermissionSetArn", notNullValue())
                 .extract().path("PermissionSet.PermissionSetArn");
         json("SWBExternalService.ListPermissionSets", "{\"InstanceArn\":\"" + instanceArn + "\"}")
-                .then().statusCode(200).body("PermissionSets", hasSize(1));
+                .then().statusCode(200).body("PermissionSets", org.hamcrest.Matchers.hasItem(permissionSetArn));
 
         String assignment = "{\"InstanceArn\":\"" + instanceArn
                 + "\",\"TargetId\":\"123456789012\",\"TargetType\":\"AWS_ACCOUNT\",\"PermissionSetArn\":\""
@@ -84,6 +84,19 @@ class SsoAdminAssignmentsIntegrationTest {
                 .body("CustomerManagedPolicyReferences[0].Name", equalTo("PlatformPolicy"))
                 .body("CustomerManagedPolicyReferences[0].Path", equalTo("/platform/"));
         json("SWBExternalService.DetachCustomerManagedPolicyReferenceFromPermissionSet", body)
+                .then().statusCode(200).body(equalTo(""));
+    }
+
+    @Test
+    void putPermissionsBoundaryReturnsEmptyResponse() {
+        String instanceArn = json("SWBExternalService.ListInstances", "{}")
+                .then().statusCode(200).extract().path("Instances[0].InstanceArn");
+        String permissionSetArn = json("SWBExternalService.CreatePermissionSet",
+                "{\"InstanceArn\":\"" + instanceArn + "\",\"Name\":\"BoundaryIntegration\"}")
+                .then().statusCode(200).extract().path("PermissionSet.PermissionSetArn");
+        String body = "{\"InstanceArn\":\"" + instanceArn + "\",\"PermissionSetArn\":\"" + permissionSetArn
+                + "\",\"PermissionsBoundary\":{\"ManagedPolicyArn\":\"arn:aws:iam::aws:policy/PowerUserAccess\"}}";
+        json("SWBExternalService.PutPermissionsBoundaryToPermissionSet", body)
                 .then().statusCode(200).body(equalTo(""));
     }
 

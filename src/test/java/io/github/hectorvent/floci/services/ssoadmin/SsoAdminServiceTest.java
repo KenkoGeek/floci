@@ -861,6 +861,37 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void putPermissionsBoundarySupportsAwsManagedAndCustomerManagedPolicies() {
+        PermissionSet permissionSet = createPermissionSet("BoundaryAdmins");
+
+        ObjectNode managed = mapper.createObjectNode();
+        managed.put("InstanceArn", service.getInstanceArn());
+        managed.put("PermissionSetArn", permissionSet.arn());
+        managed.putObject("PermissionsBoundary")
+                .put("ManagedPolicyArn", "arn:aws:iam::aws:policy/PowerUserAccess");
+        service.putPermissionsBoundary(managed);
+        assertEquals("arn:aws:iam::aws:policy/PowerUserAccess",
+                service.getPermissionSet(service.getInstanceArn(), permissionSet.arn()).permissionsBoundary().managedPolicyArn());
+
+        ObjectNode customer = mapper.createObjectNode();
+        customer.put("InstanceArn", service.getInstanceArn());
+        customer.put("PermissionSetArn", permissionSet.arn());
+        customer.putObject("PermissionsBoundary")
+                .putObject("CustomerManagedPolicyReference")
+                .put("Name", "BoundaryPolicy")
+                .put("Path", "/platform/");
+        service.putPermissionsBoundary(customer);
+        assertEquals("BoundaryPolicy", service.getPermissionSet(service.getInstanceArn(), permissionSet.arn())
+                .permissionsBoundary().customerManagedPolicyReference().name());
+
+        ObjectNode invalid = managed.deepCopy();
+        invalid.withObject("PermissionsBoundary")
+                .putObject("CustomerManagedPolicyReference")
+                .put("Name", "BoundaryPolicy");
+        assertError("ValidationException", () -> service.putPermissionsBoundary(invalid));
+    }
+
+    @Test
     void clearRemovesPersistedServiceState() {
         PermissionSet permissionSet = createPermissionSet("ResetAdmins");
         AssignmentOperation operation = service.createAssignment(assignmentRequest(permissionSet.arn()));

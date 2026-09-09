@@ -550,6 +550,24 @@ class SsoAdminAccountAssignmentTest {
     }
 
     @Test
+    @DisplayName("puts permission-set permissions boundaries through the AWS SDK")
+    void putPermissionsBoundaryUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only permission-set lifecycle");
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient()) {
+            String instanceArn = sso.listInstances(request -> {}).instances().get(0).instanceArn();
+            String permissionSetArn = sso.createPermissionSet(request -> request
+                            .instanceArn(instanceArn).name("PutBoundarySdkAdmins"))
+                    .permissionSet().permissionSetArn();
+            var response = sso.putPermissionsBoundaryToPermissionSet(request -> request
+                    .instanceArn(instanceArn)
+                    .permissionSetArn(permissionSetArn)
+                    .permissionsBoundary(boundary -> boundary
+                            .managedPolicyArn("arn:aws:iam::aws:policy/PowerUserAccess")));
+            assertThat(response.sdkHttpResponse().isSuccessful()).isTrue();
+        }
+    }
+
+    @Test
     @DisplayName("deletes permission sets through the AWS SDK")
     void deletePermissionSetUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only permission-set lifecycle");
