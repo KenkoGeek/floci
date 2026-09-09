@@ -446,6 +446,31 @@ class SsoAdminIntegrationTest {
                 .extract().path("NextToken");
         org.junit.jupiter.api.Assertions.assertNotNull(nextToken);
     }
+
+    @Test
+    void provisionPermissionSetReturnsSuccessfulOperationStatus() {
+        String instanceArn = listInstancesArn();
+        String permissionSetArn = given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.CreatePermissionSet")
+                .body("{\"InstanceArn\":\"" + instanceArn + "\",\"Name\":\"ProvisionIntegration\"}")
+            .when().post("/")
+            .then().statusCode(200)
+            .extract().path("PermissionSet.PermissionSetArn");
+
+        given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.ProvisionPermissionSet")
+                .body("{\"InstanceArn\":\"" + instanceArn + "\",\"PermissionSetArn\":\"" + permissionSetArn
+                        + "\",\"TargetType\":\"AWS_ACCOUNT\",\"TargetId\":\"123456789012\"}")
+            .when().post("/")
+            .then().statusCode(200)
+                .body("PermissionSetProvisioningStatus.Status", equalTo("SUCCEEDED"))
+                .body("PermissionSetProvisioningStatus.AccountId", equalTo("123456789012"))
+                .body("PermissionSetProvisioningStatus.PermissionSetArn", equalTo(permissionSetArn))
+                .body("PermissionSetProvisioningStatus.RequestId", matchesPattern("[0-9a-f-]{36}"));
+    }
+
     @Test
     void deleteAccountAssignmentReturnsDeletionOperationAndRemovesAssignment() {
         String instanceArn = listInstancesArn();

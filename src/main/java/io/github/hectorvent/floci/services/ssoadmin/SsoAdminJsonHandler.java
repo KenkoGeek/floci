@@ -8,6 +8,7 @@ import io.github.hectorvent.floci.core.common.AwsException;
 import io.github.hectorvent.floci.services.ssoadmin.model.Assignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
+import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSetProvisioningOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoApplication;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -51,6 +52,7 @@ public class SsoAdminJsonHandler {
             case "PutInlinePolicyToPermissionSet" -> putInlinePolicy(request);
             case "ListAccountAssignments" -> listAccountAssignments(request);
             case "ListAccountAssignmentsForPrincipal" -> listAccountAssignmentsForPrincipal(request, callerAccountId);
+            case "ProvisionPermissionSet" -> provisionPermissionSet(request);
             case "CreateAccountAssignment" -> createAccountAssignment(request);
             case "DeleteAccountAssignment" -> deleteAccountAssignment(request);
             case "DescribeAccountAssignmentCreationStatus" -> describeAssignment(request);
@@ -250,6 +252,23 @@ public class SsoAdminJsonHandler {
         }
         if (page.nextToken() != null) {
             response.put("NextToken", page.nextToken());
+        }
+        return Response.ok(response).build();
+    }
+
+    private Response provisionPermissionSet(JsonNode request) {
+        PermissionSetProvisioningOperation operation = service.provisionPermissionSet(request);
+        ObjectNode response = mapper.createObjectNode();
+        ObjectNode status = response.putObject("PermissionSetProvisioningStatus");
+        status.put("RequestId", operation.requestId());
+        status.put("Status", operation.status());
+        status.put("CreatedDate", operation.createdDateEpochMillis() / 1000.0d);
+        if (operation.accountId() != null) {
+            status.put("AccountId", operation.accountId());
+        }
+        status.put("PermissionSetArn", operation.permissionSetArn());
+        if (operation.failureReason() != null) {
+            status.put("FailureReason", operation.failureReason());
         }
         return Response.ok(response).build();
     }
