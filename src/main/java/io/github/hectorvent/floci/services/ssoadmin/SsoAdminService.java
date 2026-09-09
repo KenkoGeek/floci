@@ -1447,6 +1447,62 @@ public class SsoAdminService implements Resettable {
         return getApplication(validateApplicationArn(required(request, "ApplicationArn")));
     }
 
+    public PaginatedResult<SsoApplication> listApplications(JsonNode request, String callerAccountId) {
+        String instanceArn = required(request, "InstanceArn");
+        SsoInstance instance = requireInstance(instanceArn);
+        validateAccountId(callerAccountId);
+        if (instance.accountInstance() && !callerAccountId.equals(instance.ownerAccountId())) {
+            throw accessDenied("The account instance belongs to a different account.");
+        }
+
+        String applicationAccount = null;
+        String applicationProvider = null;
+        JsonNode filter = request == null ? null : request.get("Filter");
+        if (filter != null && !filter.isNull()) {
+            if (!filter.isObject() || filter.size() > 2) {
+                throw validation("Filter may contain only ApplicationAccount and ApplicationProvider.");
+            }
+            for (java.util.Iterator<String> fields = filter.fieldNames(); fields.hasNext();) {
+                String field = fields.next();
+                if (!Set.of("ApplicationAccount", "ApplicationProvider").contains(field)) {
+                    throw validation("Filter may contain only ApplicationAccount and ApplicationProvider.");
+                }
+            }
+            if (filter.has("ApplicationAccount")) {
+                applicationAccount = validateAccountId(required(filter, "ApplicationAccount"));
+            }
+            if (filter.has("ApplicationProvider")) {
+                applicationProvider = required(filter, "ApplicationProvider");
+                if (applicationProvider.length() > 1224 || !APPLICATION_PROVIDER_ARN.matcher(applicationProvider).matches()) {
+                    throw validation("Filter.ApplicationProvider is invalid.");
+                }
+            }
+        }
+        if (!instance.accountInstance() && !callerAccountId.equals(instance.ownerAccountId())) {
+            if (applicationAccount == null || !callerAccountId.equals(applicationAccount)) {
+                throw accessDenied("Filter.ApplicationAccount must match the member account when listing organization-instance applications.");
+            }
+        }
+
+        String finalApplicationAccount = applicationAccount;
+        String finalApplicationProvider = applicationProvider;
+        List<SsoApplication> matching = applications.scan(key -> true).stream()
+                .filter(application -> instanceArn.equals(application.instanceArn()))
+                .filter(application -> finalApplicationAccount == null
+                        || finalApplicationAccount.equals(application.applicationAccount()))
+                .filter(application -> finalApplicationProvider == null
+                        || finalApplicationProvider.equals(application.applicationProviderArn()))
+                .sorted(Comparator.comparing(SsoApplication::applicationArn))
+                .toList();
+        Integer requested = optionalMaxResults(request);
+        if (requested != null && requested > 100) {
+            throw validation("MaxResults must be between 1 and 100.");
+        }
+        Integer effectivePageSize = requested == null ? null : Math.min(requested, 50);
+        return Pagination.paginate(matching, SsoApplication::applicationArn,
+                effectivePageSize, text(request, "NextToken"), 50, 50, "ValidationException");
+    }
+
     SsoApplication getApplication(String applicationArn) {
         validateApplicationArn(applicationArn);
         return applications.get(applicationArn).orElseThrow(() -> notFound("Application not found: " + applicationArn));

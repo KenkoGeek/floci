@@ -348,6 +348,33 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void listApplicationsSupportsFiltersPaginationAndMemberAccountIsolation() {
+        SsoApplication first = createApplication("List Apps One", "list-apps-one-token");
+        SsoApplication second = createApplication("List Apps Two", "list-apps-two-token");
+        ObjectNode request = mapper.createObjectNode();
+        request.put("InstanceArn", service.getInstanceArn());
+        request.put("MaxResults", 1);
+        var firstPage = service.listApplications(request, ACCOUNT_ID);
+        assertEquals(1, firstPage.items().size());
+        assertNotNull(firstPage.nextToken());
+        request.put("NextToken", firstPage.nextToken());
+        assertEquals(1, service.listApplications(request, ACCOUNT_ID).items().size());
+
+        ObjectNode providerFilter = mapper.createObjectNode();
+        providerFilter.put("InstanceArn", service.getInstanceArn());
+        providerFilter.putObject("Filter")
+                .put("ApplicationProvider", "arn:aws:sso::aws:applicationProvider/custom")
+                .put("ApplicationAccount", ACCOUNT_ID);
+        assertTrue(service.listApplications(providerFilter, ACCOUNT_ID).items().containsAll(java.util.List.of(first, second)));
+
+        ObjectNode memberWithoutFilter = mapper.createObjectNode().put("InstanceArn", service.getInstanceArn());
+        assertError("AccessDeniedException",
+                () -> service.listApplications(memberWithoutFilter, "222233334444"));
+        memberWithoutFilter.putObject("Filter").put("ApplicationAccount", "222233334444");
+        assertTrue(service.listApplications(memberWithoutFilter, "222233334444").items().isEmpty());
+    }
+
+    @Test
     void deleteApplicationRemovesApplicationAssignmentsAndIdempotencyReferences() {
         ObjectNode createRequest = mapper.createObjectNode();
         createRequest.put("InstanceArn", service.getInstanceArn());

@@ -24,6 +24,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | `DescribeRegion` | Returns the enabled Region name, status, added date, and primary-Region flag for an IAM Identity Center instance. |
 | `CreateApplication` | Creates a customer managed OAuth 2.0 application with AWS-compatible idempotency, portal options, status, and tags. |
 | `DescribeApplication` | Returns the full persisted IAM Identity Center application metadata, including portal options, status, creation Region, and identity store ARN. |
+| `ListApplications` | Lists applications for an IAM Identity Center instance with AWS-compatible account/provider filters, member-account access rules, pagination, and full application metadata. |
 | `CreateApplicationAssignment` | Grants direct application access to a user or group. |
 | `DescribeApplicationAssignment` | Retrieves a direct user or group assignment to an IAM Identity Center application with AWS-compatible validation. |
 | `DescribeApplicationProvider` | Returns the supported custom OAuth application provider metadata with AWS-compatible ARN validation and not-found behavior. |
