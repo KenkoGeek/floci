@@ -55,6 +55,23 @@ public class ScimController {
     }
 
     @GET
+    @Path("/Users/{userId}")
+    public Response getUser(@PathParam("tenantId") String tenantId,
+                            @PathParam("userId") String userId,
+                            @HeaderParam("Authorization") String authorization) {
+        try {
+            requireBearer(authorization);
+            String identityStoreId = resolveIdentityStore(tenantId);
+            ObjectNode request = mapper.createObjectNode();
+            request.put("IdentityStoreId", identityStoreId);
+            request.put("UserId", userId);
+            return Response.ok(userResponse(identityStoreService.describeUser(request))).build();
+        } catch (AwsException exception) {
+            return scimError(scimStatus(exception), exception.getMessage());
+        }
+    }
+
+    @GET
     @Path("/Groups/{groupId}")
     public Response getGroup(@PathParam("tenantId") String tenantId,
                              @PathParam("groupId") String groupId,

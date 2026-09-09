@@ -56,6 +56,8 @@ Floci also accepts IAM Identity Center SCIM v2 requests under `/{tenant_id}/scim
 
 `GetGroup` is supported through `GET /{tenant_id}/scim/v2/Groups/{id}`. It returns the SCIM group representation and, matching IAM Identity Center, does not expand group members in this response. Missing groups return HTTP `404`.
 
+`GetUser` is supported through `GET /{tenant_id}/scim/v2/Users/{id}` and returns the persisted SCIM user representation, including the enterprise extension when present. Missing users return HTTP `404`.
+
 SCIM validation failures use the standard `urn:ietf:params:scim:api:messages:2.0:Error` response shape. See the [IAM Identity Center SCIM implementation](https://docs.aws.amazon.com/singlesignon/latest/developerguide/what-is-scim.html) and [CreateGroup](https://docs.aws.amazon.com/singlesignon/latest/developerguide/creategroup.html) documentation.
 
 ## AWS-compatible failures
