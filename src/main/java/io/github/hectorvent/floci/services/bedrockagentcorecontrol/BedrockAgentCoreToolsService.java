@@ -209,6 +209,22 @@ public class BedrockAgentCoreToolsService {
                 100, 100, "ValidationException");
     }
 
+    public ObjectNode deleteCodeInterpreter(String codeInterpreterId, String clientToken, String region) {
+        if ("aws.codeinterpreter.v1".equals(codeInterpreterId)) {
+            throw new AwsException("ValidationException", "System code interpreter cannot be deleted", 400);
+        }
+        if (clientToken != null && !clientToken.isBlank()
+                && (clientToken.length() < 33 || clientToken.length() > 256
+                || !clientToken.matches("[a-zA-Z0-9](-*[a-zA-Z0-9]){0,256}"))) {
+            throw new AwsException("ValidationException", "clientToken does not satisfy length or pattern constraints", 400);
+        }
+        ObjectNode interpreter = getCodeInterpreter(codeInterpreterId, region);
+        storage.delete(key("code-interpreter", region, codeInterpreterId));
+        interpreter.put("status", "DELETING");
+        interpreter.put("lastUpdatedAt", Instant.now().toString());
+        return interpreter;
+    }
+
     public ObjectNode getBrowserProfile(String profileId, String region) {
         if (profileId == null || !profileId.matches("[a-zA-Z][a-zA-Z0-9_]{0,47}-[a-zA-Z0-9]{10}")) {
             throw new AwsException("ValidationException", "profileId does not satisfy the required pattern", 400);

@@ -189,4 +189,16 @@ class BedrockAgentCoreToolsTest {
         assertThat(response.codeInterpreterSummaries())
                 .anyMatch(summary -> codeInterpreterId.equals(summary.codeInterpreterId()));
     }
+
+    @Test
+    @Order(12)
+    void deleteCodeInterpreter() {
+        DeleteCodeInterpreterResponse response = client.deleteCodeInterpreter(DeleteCodeInterpreterRequest.builder()
+                .codeInterpreterId(codeInterpreterId)
+                .build());
+
+        assertThat(response.codeInterpreterId()).isEqualTo(codeInterpreterId);
+        assertThat(response.statusAsString()).isEqualTo("DELETING");
+        assertThat(response.lastUpdatedAt()).isNotNull();
+    }
 }

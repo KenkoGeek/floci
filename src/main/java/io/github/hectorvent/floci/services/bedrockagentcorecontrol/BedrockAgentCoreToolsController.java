@@ -76,6 +76,24 @@ public class BedrockAgentCoreToolsController {
         }
     }
 
+    @DELETE
+    @Path("/code-interpreters/{codeInterpreterId}")
+    public Response deleteCodeInterpreter(@Context HttpHeaders headers,
+                                          @PathParam("codeInterpreterId") String codeInterpreterId,
+                                          @QueryParam("clientToken") String clientToken) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            ObjectNode interpreter = service.deleteCodeInterpreter(codeInterpreterId, clientToken, region);
+            ObjectNode response = objectMapper.createObjectNode();
+            copyText(interpreter, response, "codeInterpreterId");
+            copyText(interpreter, response, "lastUpdatedAt");
+            copyText(interpreter, response, "status");
+            return Response.status(202).entity(response).build();
+        } catch (Exception e) {
+            return error(e, "deleting code interpreter");
+        }
+    }
+
     @POST
     @Path("/code-interpreters")
     public Response listCodeInterpreters(@Context HttpHeaders headers,
