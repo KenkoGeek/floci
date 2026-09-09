@@ -14,7 +14,9 @@ import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAssignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationPortalOptions;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationSignInOptions;
+import io.github.hectorvent.floci.services.ssoadmin.model.AccessControlAttribute;
 import io.github.hectorvent.floci.services.ssoadmin.model.CustomerManagedPolicyReference;
+import io.github.hectorvent.floci.services.ssoadmin.model.InstanceAccessControlAttributeConfiguration;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
 import io.github.hectorvent.floci.services.ssoadmin.model.RegionMetadata;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoApplication;
@@ -38,6 +40,7 @@ public class SsoAdminService implements Resettable {
     private static final String INSTANCE_ARN = "arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e";
     private static final String IDENTITY_STORE_ID = "d-9067f2a3c1";
     private static final String PRIMARY_REGION = "us-east-1";
+    private static final Pattern INSTANCE_ARN_PATTERN = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:sso:::instance/(?:sso)?ins-[a-zA-Z0-9-.]{16}");
     private static final Pattern PERMISSION_SET_NAME = Pattern.compile("[\\w+=,.@-]+");
     private static final Pattern PERMISSION_SET_ARN = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:sso:::permissionSet/(?:sso)?ins-[a-zA-Z0-9-.]{16}/ps-[a-zA-Z0-9-./]{16}");
     private static final Pattern PRINCIPAL_ID = Pattern.compile("([0-9a-f]{10}-|)[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}");
@@ -51,6 +54,8 @@ public class SsoAdminService implements Resettable {
     private static final Pattern APPLICATION_URL = Pattern.compile("http(s)?://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#/%?=~_|]");
     private static final Pattern TAG_VALUE = Pattern.compile("[\\p{L}\\p{Z}\\p{N}_.:/=+\\-@]*");
     private static final Pattern INSTANCE_NAME = Pattern.compile("[\\w+=,.@-]+");
+    private static final Pattern ACCESS_CONTROL_ATTRIBUTE_KEY = Pattern.compile("[\\p{L}\\p{Z}\\p{N}_.:/=+\\-@]+");
+    private static final Pattern ACCESS_CONTROL_ATTRIBUTE_SOURCE = Pattern.compile("[\\p{L}\\p{Z}\\p{N}_.:/=+\\-@\\[\\]\\{\\}$\\\\\"]*");
     private static final String CUSTOM_APPLICATION_PROVIDER_ARN = "arn:aws:sso::aws:applicationProvider/custom";
     private static final int PERMISSION_SET_QUOTA = 3500;
     private static final int REGION_QUOTA = 6;
@@ -70,6 +75,7 @@ public class SsoAdminService implements Resettable {
     private final StorageBackend<String, ApplicationAssignment> applicationAssignments;
     private final StorageBackend<String, SsoInstance> instances;
     private final StorageBackend<String, String> instanceClientTokens;
+    private final StorageBackend<String, InstanceAccessControlAttributeConfiguration> accessControlAttributeConfigurations;
     private final OrganizationsService organizationsService;
     private final String defaultAccountId;
     private final String defaultRegion;
@@ -87,6 +93,7 @@ public class SsoAdminService implements Resettable {
                 storageFactory.create("ssoadmin", "ssoadmin-application-assignments.json", new TypeReference<Map<String, ApplicationAssignment>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instances.json", new TypeReference<Map<String, SsoInstance>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instance-client-tokens.json", new TypeReference<Map<String, String>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-access-control-attribute-configurations.json", new TypeReference<Map<String, InstanceAccessControlAttributeConfiguration>>() {}),
                 organizationsService,
                 config.defaultAccountId(),
                 config.defaultRegion());
@@ -101,6 +108,7 @@ public class SsoAdminService implements Resettable {
                     StorageBackend<String, ApplicationAssignment> applicationAssignments,
                     StorageBackend<String, SsoInstance> instances,
                     StorageBackend<String, String> instanceClientTokens,
+                    StorageBackend<String, InstanceAccessControlAttributeConfiguration> accessControlAttributeConfigurations,
                     OrganizationsService organizationsService,
                     String defaultAccountId,
                     String defaultRegion) {
@@ -113,6 +121,7 @@ public class SsoAdminService implements Resettable {
         this.applicationAssignments = applicationAssignments;
         this.instances = instances;
         this.instanceClientTokens = instanceClientTokens;
+        this.accessControlAttributeConfigurations = accessControlAttributeConfigurations;
         this.organizationsService = organizationsService;
         this.defaultAccountId = defaultAccountId;
         this.defaultRegion = defaultRegion;
@@ -153,6 +162,58 @@ public class SsoAdminService implements Resettable {
 
     public double regionAddedDateEpochSeconds(RegionMetadata region) {
         return java.time.Instant.parse(region.addedDate()).toEpochMilli() / 1000.0d;
+    }
+
+    public synchronized InstanceAccessControlAttributeConfiguration createInstanceAccessControlAttributeConfiguration(JsonNode request) {
+        String instanceArn = required(request, "InstanceArn");
+        requireInstance(instanceArn);
+        if (accessControlAttributeConfigurations.get(instanceArn).isPresent()) {
+            throw conflict("An instance access control attribute configuration already exists for this IAM Identity Center instance.");
+        }
+        JsonNode configurationNode = request == null ? null : request.get("InstanceAccessControlAttributeConfiguration");
+        if (configurationNode == null || !configurationNode.isObject()) {
+            throw validation("InstanceAccessControlAttributeConfiguration must be an object.");
+        }
+        JsonNode attributesNode = configurationNode.get("AccessControlAttributes");
+        if (attributesNode == null || !attributesNode.isArray()) {
+            throw validation("AccessControlAttributes must be an array.");
+        }
+        if (attributesNode.size() > 50) {
+            throw validation("AccessControlAttributes can contain at most 50 attributes.");
+        }
+        List<AccessControlAttribute> attributes = new ArrayList<>();
+        for (JsonNode attributeNode : attributesNode) {
+            if (!attributeNode.isObject()) {
+                throw validation("Each access control attribute must be an object.");
+            }
+            String key = required(attributeNode, "Key");
+            if (key.length() > 128 || !ACCESS_CONTROL_ATTRIBUTE_KEY.matcher(key).matches()) {
+                throw validation("Access control attribute Key is invalid.");
+            }
+            JsonNode valueNode = attributeNode.get("Value");
+            if (valueNode == null || !valueNode.isObject()) {
+                throw validation("Access control attribute Value must be an object.");
+            }
+            JsonNode sourceNode = valueNode.get("Source");
+            if (sourceNode == null || !sourceNode.isArray() || sourceNode.size() != 1 || !sourceNode.get(0).isTextual()) {
+                throw validation("Access control attribute Source must contain exactly one string.");
+            }
+            String source = sourceNode.get(0).textValue();
+            if (source.length() > 256 || !ACCESS_CONTROL_ATTRIBUTE_SOURCE.matcher(source).matches()) {
+                throw validation("Access control attribute Source is invalid.");
+            }
+            attributes.add(new AccessControlAttribute(key, source));
+        }
+        InstanceAccessControlAttributeConfiguration configuration = new InstanceAccessControlAttributeConfiguration(
+                instanceArn, attributes, "ENABLED", null);
+        accessControlAttributeConfigurations.put(instanceArn, configuration);
+        return configuration;
+    }
+
+    public InstanceAccessControlAttributeConfiguration getInstanceAccessControlAttributeConfiguration(String instanceArn) {
+        requireInstance(instanceArn);
+        return accessControlAttributeConfigurations.get(instanceArn)
+                .orElseThrow(() -> notFound("Instance access control attribute configuration not found for: " + instanceArn));
     }
 
     public synchronized SsoInstance createInstance(JsonNode request, String callerAccountId, String region) {
@@ -698,6 +759,9 @@ public class SsoAdminService implements Resettable {
     private static AwsException quota(String message) { return new AwsException("ServiceQuotaExceededException", message, 400); }
     private static AwsException accessDenied(String message) { return new AwsException("AccessDeniedException", message, 400); }
     private SsoInstance requireInstance(String arn) {
+        if (arn == null || arn.length() < 10 || arn.length() > 1224 || !INSTANCE_ARN_PATTERN.matcher(arn).matches()) {
+            throw validation("InstanceArn is invalid.");
+        }
         SsoInstance instance = findInstanceByArn(arn);
         if (instance == null) {
             throw notFound("IAM Identity Center instance not found: " + arn);
@@ -726,6 +790,7 @@ public class SsoAdminService implements Resettable {
         applicationAssignments.clear();
         instances.clear();
         instanceClientTokens.clear();
+        accessControlAttributeConfigurations.clear();
         ensureBootstrapInstance(defaultAccountId, defaultRegion);
     }
 

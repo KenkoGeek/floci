@@ -131,6 +131,31 @@ class SsoAdminAccountAssignmentTest {
     }
 
     @Test
+    @DisplayName("creates an instance ABAC configuration through the AWS SDK")
+    void createInstanceAccessControlAttributeConfigurationUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses the emulator IAM Identity Center fixture");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient()) {
+            String instanceArn = sso.listInstances(request -> {}).instances().get(0).instanceArn();
+            var response = sso.createInstanceAccessControlAttributeConfiguration(request -> request
+                    .instanceArn(instanceArn)
+                    .instanceAccessControlAttributeConfiguration(configuration -> configuration
+                            .accessControlAttributes(attribute -> attribute
+                                    .key("Department")
+                                    .value(value -> value.source("${path:enterprise.department}")))));
+
+            assertThat(response.sdkHttpResponse().isSuccessful()).isTrue();
+            assertThatThrownBy(() -> sso.createInstanceAccessControlAttributeConfiguration(request -> request
+                    .instanceArn(instanceArn)
+                    .instanceAccessControlAttributeConfiguration(configuration -> configuration
+                            .accessControlAttributes(attribute -> attribute
+                                    .key("Department")
+                                    .value(value -> value.source("${path:enterprise.department}"))))))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ConflictException.class);
+        }
+    }
+
+    @Test
     @DisplayName("creates an account instance through the AWS SDK")
     void createInstanceUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses an emulator-only account instance");

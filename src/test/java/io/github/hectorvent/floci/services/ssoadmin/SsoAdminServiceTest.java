@@ -7,6 +7,7 @@ import io.github.hectorvent.floci.core.storage.InMemoryStorage;
 import io.github.hectorvent.floci.services.ssoadmin.model.Assignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAssignment;
+import io.github.hectorvent.floci.services.ssoadmin.model.InstanceAccessControlAttributeConfiguration;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
 import io.github.hectorvent.floci.services.ssoadmin.model.RegionMetadata;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoApplication;
@@ -42,10 +43,66 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, ApplicationAssignment>(),
                 new InMemoryStorage<String, SsoInstance>(),
                 new InMemoryStorage<String, String>(),
+                new InMemoryStorage<String, InstanceAccessControlAttributeConfiguration>(),
                 organizationsService,
                 ACCOUNT_ID,
                 "us-east-1");
         service.ensureBootstrapInstance(ACCOUNT_ID, "us-east-1");
+    }
+
+    @Test
+    void createInstanceAccessControlAttributeConfigurationPersistsAndValidatesAwsShape() {
+        ObjectNode request = mapper.createObjectNode();
+        request.put("InstanceArn", service.getInstanceArn());
+        request.putObject("InstanceAccessControlAttributeConfiguration")
+                .putArray("AccessControlAttributes")
+                .addObject()
+                .put("Key", "Department")
+                .putObject("Value")
+                .putArray("Source")
+                .add("${path:enterprise.department}");
+
+        InstanceAccessControlAttributeConfiguration created =
+                service.createInstanceAccessControlAttributeConfiguration(request);
+        assertEquals("ENABLED", created.status());
+        assertEquals(1, created.accessControlAttributes().size());
+        assertEquals("Department", created.accessControlAttributes().get(0).key());
+        assertEquals("${path:enterprise.department}", created.accessControlAttributes().get(0).source());
+        assertEquals(created, service.getInstanceAccessControlAttributeConfiguration(service.getInstanceArn()));
+        assertError("ConflictException", () -> service.createInstanceAccessControlAttributeConfiguration(request));
+    }
+
+    @Test
+    void createInstanceAccessControlAttributeConfigurationRejectsInvalidAttributes() {
+        ObjectNode malformedInstanceArn = mapper.createObjectNode();
+        malformedInstanceArn.put("InstanceArn", "not-an-arn");
+        malformedInstanceArn.putObject("InstanceAccessControlAttributeConfiguration")
+                .putArray("AccessControlAttributes");
+        assertError("ValidationException",
+                () -> service.createInstanceAccessControlAttributeConfiguration(malformedInstanceArn));
+
+        ObjectNode missingConfiguration = mapper.createObjectNode();
+        missingConfiguration.put("InstanceArn", service.getInstanceArn());
+        assertError("ValidationException",
+                () -> service.createInstanceAccessControlAttributeConfiguration(missingConfiguration));
+
+        ObjectNode tooMany = mapper.createObjectNode();
+        tooMany.put("InstanceArn", service.getInstanceArn());
+        var attributes = tooMany.putObject("InstanceAccessControlAttributeConfiguration")
+                .putArray("AccessControlAttributes");
+        for (int i = 0; i < 51; i++) {
+            attributes.addObject().put("Key", "Key" + i).putObject("Value").putArray("Source").add("value");
+        }
+        assertError("ValidationException", () -> service.createInstanceAccessControlAttributeConfiguration(tooMany));
+
+        ObjectNode invalidSourceCount = mapper.createObjectNode();
+        invalidSourceCount.put("InstanceArn", service.getInstanceArn());
+        invalidSourceCount.putObject("InstanceAccessControlAttributeConfiguration")
+                .putArray("AccessControlAttributes")
+                .addObject().put("Key", "Department").putObject("Value").putArray("Source")
+                .add("one").add("two");
+        assertError("ValidationException",
+                () -> service.createInstanceAccessControlAttributeConfiguration(invalidSourceCount));
     }
 
     @Test
@@ -361,6 +418,7 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, ApplicationAssignment>(),
                 new InMemoryStorage<String, SsoInstance>(),
                 new InMemoryStorage<String, String>(),
+                new InMemoryStorage<String, InstanceAccessControlAttributeConfiguration>(),
                 organizationsService,
                 "999999999999",
                 "us-east-1");
