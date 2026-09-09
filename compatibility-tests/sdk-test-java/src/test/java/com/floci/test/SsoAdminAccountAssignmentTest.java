@@ -265,6 +265,13 @@ class SsoAdminAccountAssignmentTest {
                                     .issuerUrl("https://issuer.example.com")
                                     .jwksRetrievalOption("OPEN_ID_DISCOVERY"))));
             assertThat(replay.trustedTokenIssuerArn()).isEqualTo(created.trustedTokenIssuerArn());
+
+            var deleteResponse = sso.deleteTrustedTokenIssuer(request -> request
+                    .trustedTokenIssuerArn(created.trustedTokenIssuerArn()));
+            assertThat(deleteResponse.sdkHttpResponse().isSuccessful()).isTrue();
+            assertThatThrownBy(() -> sso.deleteTrustedTokenIssuer(request -> request
+                    .trustedTokenIssuerArn(created.trustedTokenIssuerArn())))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ResourceNotFoundException.class);
         }
     }
 

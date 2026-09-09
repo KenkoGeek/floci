@@ -288,6 +288,43 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void deleteTrustedTokenIssuerReturnsEmptyAwsResponse() {
+        String createRequest = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
+                + "\"Name\":\"DeleteIntegrationIssuer\",\"ClientToken\":\"delete-tti-integration-token\","
+                + "\"TrustedTokenIssuerType\":\"OIDC_JWT\",\"TrustedTokenIssuerConfiguration\":{"
+                + "\"OidcJwtConfiguration\":{\"ClaimAttributePath\":\"sub\","
+                + "\"IdentityStoreAttributePath\":\"userName\",\"IssuerUrl\":\"https://delete-issuer.example.com\","
+                + "\"JwksRetrievalOption\":\"OPEN_ID_DISCOVERY\"}}}";
+        String arn = given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.CreateTrustedTokenIssuer")
+            .body(createRequest)
+        .when().post("/")
+        .then().statusCode(200)
+            .extract().path("TrustedTokenIssuerArn");
+
+        String deleteRequest = "{\"TrustedTokenIssuerArn\":\"" + arn + "\"}";
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.DeleteTrustedTokenIssuer")
+            .body(deleteRequest)
+        .when().post("/")
+        .then().statusCode(200)
+            .body(org.hamcrest.Matchers.is(org.hamcrest.Matchers.emptyOrNullString()));
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.DeleteTrustedTokenIssuer")
+            .body(deleteRequest)
+        .when().post("/")
+        .then().statusCode(400)
+            .body("__type", org.hamcrest.Matchers.containsString("ResourceNotFoundException"));
+    }
+
+    @Test
     void createInstanceAccessControlAttributeConfigurationReturnsEmptyAwsResponse() {
         String request = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
                 + "\"InstanceAccessControlAttributeConfiguration\":{\"AccessControlAttributes\":[{"

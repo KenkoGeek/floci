@@ -95,6 +95,25 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void deleteTrustedTokenIssuerRemovesIssuerAndIdempotencyToken() {
+        ObjectNode create = trustedTokenIssuerRequest("DeleteIssuer", "delete-tti-token");
+        TrustedTokenIssuer issuer = service.createTrustedTokenIssuer(create, ACCOUNT_ID);
+
+        ObjectNode request = mapper.createObjectNode();
+        request.put("TrustedTokenIssuerArn", issuer.trustedTokenIssuerArn());
+        service.deleteTrustedTokenIssuer(request);
+        assertError("ResourceNotFoundException", () -> service.getTrustedTokenIssuer(issuer.trustedTokenIssuerArn()));
+        assertError("ResourceNotFoundException", () -> service.deleteTrustedTokenIssuer(request));
+
+        TrustedTokenIssuer recreated = service.createTrustedTokenIssuer(create, ACCOUNT_ID);
+        assertFalse(recreated.trustedTokenIssuerArn().equals(issuer.trustedTokenIssuerArn()));
+
+        ObjectNode malformed = mapper.createObjectNode();
+        malformed.put("TrustedTokenIssuerArn", "not-an-arn");
+        assertError("ValidationException", () -> service.deleteTrustedTokenIssuer(malformed));
+    }
+
+    @Test
     void createTrustedTokenIssuerValidatesUnionOidcFieldsAndQuota() {
         ObjectNode invalidType = trustedTokenIssuerRequest("InvalidType", null);
         invalidType.put("TrustedTokenIssuerType", "SAML");
