@@ -39,6 +39,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `ListEnforcedGuardrailsConfiguration` | `GET /enforcedGuardrailsConfiguration` | AWS-compatible control-plane emulation. |
 | `PutEnforcedGuardrailConfiguration` | `PUT /enforcedGuardrailsConfiguration` | AWS-compatible control-plane emulation. |
 | `DeleteEnforcedGuardrailConfiguration` | `DELETE /enforcedGuardrailsConfiguration/{configId}` | AWS-compatible control-plane emulation. |
+| `CreateInferenceProfile` | `POST /inference-profiles` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 

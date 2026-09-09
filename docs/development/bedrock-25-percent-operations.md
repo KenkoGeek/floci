@@ -32,3 +32,4 @@ Each task is checked against the Amazon Bedrock API Reference and the AWS SDK fo
 | BR-026 | `ListEnforcedGuardrailsConfiguration` | `GET /enforcedGuardrailsConfiguration` | SDK marshaller binding verified; diff-check |
 | BR-027 | `PutEnforcedGuardrailConfiguration` | `PUT /enforcedGuardrailsConfiguration` | SDK marshaller binding verified; diff-check |
 | BR-028 | `DeleteEnforcedGuardrailConfiguration` | `DELETE /enforcedGuardrailsConfiguration/{configId}` | SDK marshaller binding verified; diff-check |
+| BR-029 | `CreateInferenceProfile` | `POST /inference-profiles` | SDK marshaller binding verified; diff-check |

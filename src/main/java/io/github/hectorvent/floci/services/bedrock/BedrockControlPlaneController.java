@@ -209,6 +209,12 @@ public class BedrockControlPlaneController {
         return execute("DeleteEnforcedGuardrailConfiguration", null, Map.of("configId", configId), headers);
     }
 
+    @POST
+    @Path("/inference-profiles")
+    public Response createInferenceProfile(String body, @Context HttpHeaders headers) {
+        return execute("CreateInferenceProfile", body, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
