@@ -54,6 +54,14 @@ class SsoAdminAccountAssignmentTest {
                             .path("/platform/")));
 
             assertThat(response.sdkHttpResponse().isSuccessful()).isTrue();
+            var references = sso.listCustomerManagedPolicyReferencesInPermissionSet(request -> request
+                    .instanceArn(instanceArn)
+                    .permissionSetArn(permissionSetArn));
+            assertThat(references.customerManagedPolicyReferences())
+                    .anySatisfy(reference -> {
+                        assertThat(reference.name()).isEqualTo("PlatformPolicy");
+                        assertThat(reference.path()).isEqualTo("/platform/");
+                    });
             assertThatThrownBy(() -> sso.attachCustomerManagedPolicyReferenceToPermissionSet(request -> request
                     .instanceArn(instanceArn)
                     .permissionSetArn(permissionSetArn)

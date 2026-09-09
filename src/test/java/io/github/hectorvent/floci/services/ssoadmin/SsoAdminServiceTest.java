@@ -515,6 +515,12 @@ class SsoAdminServiceTest {
 
         service.attachCustomerManagedPolicyReference(request);
 
+        ObjectNode list = mapper.createObjectNode();
+        list.put("InstanceArn", service.getInstanceArn());
+        list.put("PermissionSetArn", permissionSet.arn());
+        assertEquals(1, service.listCustomerManagedPolicyReferences(list).items().size());
+        assertEquals("PlatformPolicy", service.listCustomerManagedPolicyReferences(list).items().get(0).name());
+
         PermissionSet stored = service.getPermissionSet(service.getInstanceArn(), permissionSet.arn());
         assertEquals(1, stored.customerManagedPolicies().size());
         assertEquals("/", stored.customerManagedPolicies().values().iterator().next().path());
