@@ -54,7 +54,7 @@ class BedrockAgentCoreCredentialProviderTest {
 
         assertThat(response.name()).isEqualTo(apiKeyProviderName);
         assertThat(response.apiKeySecretSourceAsString()).isEqualTo("MANAGED");
-        assertThat(response.credentialProviderArn()).contains(":acps:").contains(":apikeycredentialprovider/");
+        assertThat(response.credentialProviderArn()).contains(":acps:").contains("/apikeycredentialprovider/");
         assertThat(response.apiKeySecretArn().secretArn()).contains(":secretsmanager:");
         assertThat(response.apiKeySecretJsonKey()).isEqualTo("apiKey");
     }
@@ -66,7 +66,7 @@ class BedrockAgentCoreCredentialProviderTest {
 
         assertThat(response.name()).isEqualTo(apiKeyProviderName);
         assertThat(response.apiKeySecretSourceAsString()).isEqualTo("MANAGED");
-        assertThat(response.credentialProviderArn()).contains(":apikeycredentialprovider/");
+        assertThat(response.credentialProviderArn()).contains("/apikeycredentialprovider/");
         assertThat(response.createdTime()).isNotNull();
         assertThat(response.lastUpdatedTime()).isNotNull();
     }
@@ -114,7 +114,7 @@ class BedrockAgentCoreCredentialProviderTest {
                         .build());
 
         assertThat(response.name()).isEqualTo(oauth2ProviderName);
-        assertThat(response.credentialProviderArn()).contains(":oauth2credentialprovider/");
+        assertThat(response.credentialProviderArn()).contains("/oauth2credentialprovider/");
         assertThat(response.clientSecretSourceAsString()).isEqualTo("MANAGED");
         assertThat(response.statusAsString()).isEqualTo("READY");
         assertThat(response.oauth2ProviderConfigOutput().githubOauth2ProviderConfig().clientId()).isEqualTo("client-id");

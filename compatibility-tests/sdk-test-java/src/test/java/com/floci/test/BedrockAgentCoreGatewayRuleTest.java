@@ -1,5 +1,6 @@
 package com.floci.test;
 
+import org.jboss.logging.Logger;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -19,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class BedrockAgentCoreGatewayRuleTest {
 
+    private static final Logger LOG = Logger.getLogger(BedrockAgentCoreGatewayRuleTest.class);
     private static final String ROLE_ARN = "arn:aws:iam::000000000000:role/gw";
     private static BedrockAgentCoreControlClient client;
     private static String gatewayId;
@@ -41,7 +43,8 @@ class BedrockAgentCoreGatewayRuleTest {
         if (client != null) {
             try {
                 client.deleteGateway(DeleteGatewayRequest.builder().gatewayIdentifier(gatewayId).build());
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                LOG.warnf(e, "Failed to delete AgentCore gateway %s during test cleanup", gatewayId);
             }
             client.close();
         }

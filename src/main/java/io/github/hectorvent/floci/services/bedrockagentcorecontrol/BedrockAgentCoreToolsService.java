@@ -16,7 +16,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Pattern;
 
@@ -28,9 +27,6 @@ public class BedrockAgentCoreToolsService {
 
     private final StorageBackend<String, ObjectNode> storage;
     private final RegionResolver regionResolver;
-    private final Map<String, ObjectNode> deletedBrowserReplays = new ConcurrentHashMap<>();
-    private final Map<String, ObjectNode> deletedProfileReplays = new ConcurrentHashMap<>();
-    private final Map<String, ObjectNode> deletedInterpreterReplays = new ConcurrentHashMap<>();
 
     @Inject
     public BedrockAgentCoreToolsService(StorageFactory storageFactory, RegionResolver regionResolver) {
@@ -229,7 +225,7 @@ public class BedrockAgentCoreToolsService {
             throw new AwsException("ValidationException", "clientToken does not satisfy length or pattern constraints", 400);
         }
         String replayKey = deleteReplayKey("code-interpreter", region, codeInterpreterId, clientToken);
-        ObjectNode replay = replayKey == null ? null : deletedInterpreterReplays.get(replayKey);
+        ObjectNode replay = replayKey == null ? null : storage.get(replayKey).map(ObjectNode::deepCopy).orElse(null);
         if (replay != null) {
             return replay.deepCopy();
         }
@@ -238,7 +234,7 @@ public class BedrockAgentCoreToolsService {
         interpreter.put("status", "DELETING");
         interpreter.put("lastUpdatedAt", Instant.now().toString());
         if (replayKey != null) {
-            deletedInterpreterReplays.put(replayKey, interpreter.deepCopy());
+            storage.put(replayKey, interpreter.deepCopy());
         }
         return interpreter;
     }
@@ -275,7 +271,7 @@ public class BedrockAgentCoreToolsService {
             throw new AwsException("ValidationException", "clientToken does not satisfy length or pattern constraints", 400);
         }
         String replayKey = deleteReplayKey("browser-profile", region, profileId, clientToken);
-        ObjectNode replay = replayKey == null ? null : deletedProfileReplays.get(replayKey);
+        ObjectNode replay = replayKey == null ? null : storage.get(replayKey).map(ObjectNode::deepCopy).orElse(null);
         if (replay != null) {
             return replay.deepCopy();
         }
@@ -284,7 +280,7 @@ public class BedrockAgentCoreToolsService {
         profile.put("status", "DELETING");
         profile.put("lastUpdatedAt", Instant.now().toString());
         if (replayKey != null) {
-            deletedProfileReplays.put(replayKey, profile.deepCopy());
+            storage.put(replayKey, profile.deepCopy());
         }
         return profile;
     }
@@ -299,7 +295,7 @@ public class BedrockAgentCoreToolsService {
             throw new AwsException("ValidationException", "clientToken does not satisfy length or pattern constraints", 400);
         }
         String replayKey = deleteReplayKey("browser", region, browserId, clientToken);
-        ObjectNode replay = replayKey == null ? null : deletedBrowserReplays.get(replayKey);
+        ObjectNode replay = replayKey == null ? null : storage.get(replayKey).map(ObjectNode::deepCopy).orElse(null);
         if (replay != null) {
             return replay.deepCopy();
         }
@@ -308,7 +304,7 @@ public class BedrockAgentCoreToolsService {
         browser.put("status", "DELETING");
         browser.put("lastUpdatedAt", Instant.now().toString());
         if (replayKey != null) {
-            deletedBrowserReplays.put(replayKey, browser.deepCopy());
+            storage.put(replayKey, browser.deepCopy());
         }
         return browser;
     }
@@ -454,7 +450,8 @@ public class BedrockAgentCoreToolsService {
         if (clientToken == null || clientToken.isBlank()) {
             return null;
         }
-        return family + ":" + regionResolver.getAccountId() + ":" + region + ":" + id + ":" + clientToken;
+        return "delete-replay:" + family + ":" + regionResolver.getAccountId() + ":"
+                + region + ":" + id + ":" + clientToken;
     }
 
     private static String requiredText(ObjectNode request, String field) {
