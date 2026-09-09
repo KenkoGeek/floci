@@ -20,6 +20,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | `CreateTrustedTokenIssuer` | Creates an OIDC JWT trusted token issuer with idempotency, tags, and AWS-compatible validation. |
 | `DeleteTrustedTokenIssuer` | Deletes a trusted token issuer, validates its AWS ARN, and clears local idempotency mappings. |
 | `AddRegion` | Adds a Region to the local IAM Identity Center instance and reports the initial `ADDING` status. |
+| `DescribeRegion` | Returns the enabled Region name, status, added date, and primary-Region flag for an IAM Identity Center instance. |
 | `CreateApplication` | Creates a customer managed OAuth 2.0 application with AWS-compatible idempotency, portal options, status, and tags. |
 | `DescribeApplication` | Returns the full persisted IAM Identity Center application metadata, including portal options, status, creation Region, and identity store ARN. |
 | `CreateApplicationAssignment` | Grants direct application access to a user or group. |

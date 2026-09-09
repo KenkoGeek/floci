@@ -26,6 +26,15 @@ class SsoAdminAccountAssignmentTest {
                     .regionName("ap-southeast-3"));
 
             assertThat(added.statusAsString()).isEqualTo("ADDING");
+
+            var described = sso.describeRegion(request -> request
+                    .instanceArn(instanceArn)
+                    .regionName("ap-southeast-3"));
+            assertThat(described.regionName()).isEqualTo("ap-southeast-3");
+            assertThat(described.statusAsString()).isEqualTo("ACTIVE");
+            assertThat(described.isPrimaryRegion()).isFalse();
+            assertThat(described.addedDate()).isNotNull();
+
             assertThatThrownBy(() -> sso.addRegion(request -> request
                     .instanceArn(instanceArn)
                     .regionName("ap-southeast-3")))
