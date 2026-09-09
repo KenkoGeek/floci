@@ -12,6 +12,7 @@ import io.github.hectorvent.floci.services.ssoadmin.SsoAdminService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
@@ -52,6 +53,24 @@ public class ScimController {
         this.mapper = mapper;
     }
 
+    @DELETE
+    @Path("/Groups/{groupId}")
+    public Response deleteGroup(@PathParam("tenantId") String tenantId,
+                                @PathParam("groupId") String groupId,
+                                @HeaderParam("Authorization") String authorization) {
+        try {
+            requireBearer(authorization);
+            String identityStoreId = resolveIdentityStore(tenantId);
+            ObjectNode request = mapper.createObjectNode();
+            request.put("IdentityStoreId", identityStoreId);
+            request.put("GroupId", groupId);
+            identityStoreService.deleteGroup(request);
+            return Response.noContent().build();
+        } catch (AwsException exception) {
+            return scimError(scimStatus(exception), exception.getMessage());
+        }
+    }
+
     @POST
     @Path("/Users")
     public Response createUser(@PathParam("tenantId") String tenantId,
@@ -65,7 +84,7 @@ public class ScimController {
             User user = identityStoreService.createUser(toIdentityStoreUser(identityStoreId, request));
             return Response.status(Response.Status.CREATED).entity(userResponse(user)).build();
         } catch (AwsException exception) {
-            return scimError(exception.getHttpStatus(), exception.getMessage());
+            return scimError(scimStatus(exception), exception.getMessage());
         }
     }
 
@@ -110,7 +129,7 @@ public class ScimController {
 
             return Response.status(Response.Status.CREATED).entity(groupResponse(group)).build();
         } catch (AwsException exception) {
-            return scimError(exception.getHttpStatus(), exception.getMessage());
+            return scimError(scimStatus(exception), exception.getMessage());
         }
     }
 
@@ -447,6 +466,19 @@ public class ScimController {
             }
         }
         return null;
+    }
+
+    private static int scimStatus(AwsException exception) {
+        return switch (exception.getErrorCode()) {
+            case "ValidationException" -> 400;
+            case "UnauthorizedException" -> 401;
+            case "AccessDeniedException" -> 403;
+            case "ResourceNotFoundException" -> 404;
+            case "ConflictException" -> 409;
+            case "ThrottlingException" -> 429;
+            case "InternalServerException" -> 500;
+            default -> exception.getHttpStatus();
+        };
     }
 
     private Response scimError(int status, String detail) {

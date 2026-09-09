@@ -134,6 +134,34 @@ class ScimIntegrationTest {
     }
 
     @Test
+    void deleteGroupUsesAwsScimStatusAndRemovesIdentityStoreResource() {
+        String groupId = given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"displayName\":\"SCIM Delete Me\"}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Groups")
+            .then()
+                .statusCode(201)
+                .extract().path("id");
+
+        given()
+                .header("Authorization", BEARER)
+            .when()
+                .delete("/" + TENANT + "/scim/v2/Groups/" + groupId)
+            .then()
+                .statusCode(204);
+
+        given()
+                .header("Authorization", BEARER)
+            .when()
+                .delete("/" + TENANT + "/scim/v2/Groups/" + groupId)
+            .then()
+                .statusCode(404)
+                .body("status", equalTo("404"));
+    }
+
+    @Test
     void createGroupRequiresBearerAndKnownTenant() {
         given()
                 .contentType("application/json")
