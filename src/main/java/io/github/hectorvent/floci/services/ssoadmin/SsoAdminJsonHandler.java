@@ -38,6 +38,7 @@ public class SsoAdminJsonHandler {
             case "DeleteInstanceAccessControlAttributeConfiguration" -> deleteInstanceAccessControlAttributeConfiguration(request);
             case "CreateTrustedTokenIssuer" -> createTrustedTokenIssuer(request, callerAccountId);
             case "DescribeTrustedTokenIssuer" -> describeTrustedTokenIssuer(request);
+            case "ListTrustedTokenIssuers" -> listTrustedTokenIssuers(request);
             case "DeleteTrustedTokenIssuer" -> deleteTrustedTokenIssuer(request);
             case "AddRegion" -> addRegion(request);
             case "DescribeRegion" -> describeRegion(request);
@@ -182,9 +183,7 @@ public class SsoAdminJsonHandler {
 
     private Response describeTrustedTokenIssuer(JsonNode request) {
         var issuer = service.describeTrustedTokenIssuer(request);
-        ObjectNode response = mapper.createObjectNode();
-        response.put("Name", issuer.name());
-        response.put("TrustedTokenIssuerArn", issuer.trustedTokenIssuerArn());
+        ObjectNode response = trustedTokenIssuerMetadataNode(issuer);
         ObjectNode configuration = response.putObject("TrustedTokenIssuerConfiguration");
         var oidc = issuer.oidcJwtConfiguration();
         ObjectNode oidcNode = configuration.putObject("OidcJwtConfiguration");
@@ -192,8 +191,26 @@ public class SsoAdminJsonHandler {
         oidcNode.put("IdentityStoreAttributePath", oidc.identityStoreAttributePath());
         oidcNode.put("IssuerUrl", oidc.issuerUrl());
         oidcNode.put("JwksRetrievalOption", oidc.jwksRetrievalOption());
-        response.put("TrustedTokenIssuerType", issuer.trustedTokenIssuerType());
         return Response.ok(response).build();
+    }
+
+    private Response listTrustedTokenIssuers(JsonNode request) {
+        var page = service.listTrustedTokenIssuers(request);
+        ObjectNode response = mapper.createObjectNode();
+        ArrayNode issuers = response.putArray("TrustedTokenIssuers");
+        page.items().forEach(issuer -> issuers.add(trustedTokenIssuerMetadataNode(issuer)));
+        if (page.nextToken() != null) {
+            response.put("NextToken", page.nextToken());
+        }
+        return Response.ok(response).build();
+    }
+
+    private ObjectNode trustedTokenIssuerMetadataNode(io.github.hectorvent.floci.services.ssoadmin.model.TrustedTokenIssuer issuer) {
+        ObjectNode response = mapper.createObjectNode();
+        response.put("Name", issuer.name());
+        response.put("TrustedTokenIssuerArn", issuer.trustedTokenIssuerArn());
+        response.put("TrustedTokenIssuerType", issuer.trustedTokenIssuerType());
+        return response;
     }
 
     private Response deleteTrustedTokenIssuer(JsonNode request) {

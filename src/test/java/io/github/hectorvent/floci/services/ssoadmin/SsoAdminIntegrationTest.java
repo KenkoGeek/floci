@@ -466,6 +466,18 @@ class SsoAdminIntegrationTest {
             .body("TrustedTokenIssuerConfiguration.OidcJwtConfiguration.IdentityStoreAttributePath", equalTo("userName"))
             .body("TrustedTokenIssuerConfiguration.OidcJwtConfiguration.IssuerUrl", equalTo("https://issuer.example.com"))
             .body("TrustedTokenIssuerConfiguration.OidcJwtConfiguration.JwksRetrievalOption", equalTo("OPEN_ID_DISCOVERY"));
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.ListTrustedTokenIssuers")
+            .body("{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\"}")
+        .when().post("/")
+        .then()
+            .statusCode(200)
+            .body("TrustedTokenIssuers.TrustedTokenIssuerArn", org.hamcrest.Matchers.hasItem(arn))
+            .body("TrustedTokenIssuers.find { it.TrustedTokenIssuerArn == '" + arn + "' }.Name", equalTo("IntegrationIssuer"))
+            .body("TrustedTokenIssuers.find { it.TrustedTokenIssuerArn == '" + arn + "' }.TrustedTokenIssuerType", equalTo("OIDC_JWT"));
     }
 
     @Test

@@ -93,6 +93,9 @@ class SsoAdminServiceTest {
         ObjectNode describe = mapper.createObjectNode().put("TrustedTokenIssuerArn", created.trustedTokenIssuerArn());
         assertEquals(created, service.describeTrustedTokenIssuer(describe));
 
+        ObjectNode list = mapper.createObjectNode().put("InstanceArn", service.getInstanceArn());
+        assertTrue(service.listTrustedTokenIssuers(list).items().contains(created));
+
         ObjectNode mismatch = request.deepCopy();
         mismatch.put("Name", "IssuerTwo");
         assertError("IdempotentParameterMismatch",
