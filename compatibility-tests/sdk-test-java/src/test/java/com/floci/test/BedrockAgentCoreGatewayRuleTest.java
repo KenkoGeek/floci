@@ -80,4 +80,16 @@ class BedrockAgentCoreGatewayRuleTest {
         assertThat(response.statusAsString()).isEqualTo("ACTIVE");
         assertThat(response.actions()).hasSize(1);
     }
+
+    @Test
+    @Order(3)
+    void listGatewayRules() {
+        ListGatewayRulesResponse response = client.listGatewayRules(ListGatewayRulesRequest.builder()
+                .gatewayIdentifier(gatewayId)
+                .maxResults(100)
+                .build());
+
+        assertThat(response.gatewayRules())
+                .anyMatch(rule -> ruleId.equals(rule.ruleId()));
+    }
 }

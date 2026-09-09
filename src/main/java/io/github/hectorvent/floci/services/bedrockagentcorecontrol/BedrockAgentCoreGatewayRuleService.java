@@ -4,12 +4,15 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.hectorvent.floci.core.common.AwsException;
+import io.github.hectorvent.floci.core.common.Pagination;
+import io.github.hectorvent.floci.core.common.PaginatedResult;
 import io.github.hectorvent.floci.core.storage.StorageBackend;
 import io.github.hectorvent.floci.core.storage.StorageFactory;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -85,6 +88,16 @@ public class BedrockAgentCoreGatewayRuleService {
                 .map(ObjectNode::deepCopy)
                 .orElseThrow(() -> new AwsException("ResourceNotFoundException",
                         "Gateway rule not found: " + ruleId, 404));
+    }
+
+    public PaginatedResult<ObjectNode> list(String gatewayId, Integer maxResults,
+                                             String nextToken, String region) {
+        gatewayService.get(gatewayId, region);
+        List<ObjectNode> rules = storage.scan(k -> k.startsWith(prefix(region, gatewayId))).stream()
+                .map(ObjectNode::deepCopy)
+                .toList();
+        return Pagination.paginate(rules, node -> node.path("ruleId").asText(),
+                maxResults, nextToken, 100, 100, "ValidationException");
     }
 
     private static String key(String region, String gatewayId, String ruleId) {

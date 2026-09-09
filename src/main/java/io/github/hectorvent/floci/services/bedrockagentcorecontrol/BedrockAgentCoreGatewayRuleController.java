@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.hectorvent.floci.core.common.AwsErrorResponse;
 import io.github.hectorvent.floci.core.common.AwsException;
+import io.github.hectorvent.floci.core.common.Pagination;
 import io.github.hectorvent.floci.core.common.RegionResolver;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
@@ -13,6 +14,7 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
@@ -68,6 +70,32 @@ public class BedrockAgentCoreGatewayRuleController {
             return Response.ok(response).build();
         } catch (Exception e) {
             return error(e, "getting gateway rule");
+        }
+    }
+
+    @GET
+    @Path("/{gatewayIdentifier}/rules")
+    public Response listGatewayRules(@Context HttpHeaders headers,
+                                     @PathParam("gatewayIdentifier") String gatewayId,
+                                     @QueryParam("maxResults") String maxResultsParam,
+                                     @QueryParam("nextToken") String nextToken) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            Integer maxResults = Pagination.parseMaxResults(maxResultsParam, "ValidationException");
+            var result = service.list(gatewayId, maxResults, nextToken, region);
+            ObjectNode response = objectMapper.createObjectNode();
+            var rules = response.putArray("gatewayRules");
+            for (ObjectNode rule : result.items()) {
+                ObjectNode copy = rule.deepCopy();
+                copy.remove("clientToken");
+                rules.add(copy);
+            }
+            if (result.nextToken() != null) {
+                response.put("nextToken", result.nextToken());
+            }
+            return Response.ok(response).build();
+        } catch (Exception e) {
+            return error(e, "listing gateway rules");
         }
     }
 
