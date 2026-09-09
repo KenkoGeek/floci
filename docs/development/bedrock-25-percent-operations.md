@@ -27,3 +27,4 @@ Each task is checked against the Amazon Bedrock API Reference and the AWS SDK fo
 | BR-021 | `CreateGuardrailVersion` | `POST /guardrails/{guardrailIdentifier}` | SDK marshaller binding verified; diff-check |
 | BR-022 | `DeleteGuardrail` | `DELETE /guardrails/{guardrailIdentifier}` | SDK marshaller binding verified; diff-check |
 | BR-023 | `GetGuardrail` | `GET /guardrails/{guardrailIdentifier}` | SDK marshaller binding verified; diff-check |
+| BR-024 | `ListGuardrails` | `GET /guardrails` | SDK marshaller binding verified; diff-check |
