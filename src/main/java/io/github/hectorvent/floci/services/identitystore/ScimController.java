@@ -72,6 +72,24 @@ public class ScimController {
     }
 
     @GET
+    @Path("/Schemas/{schemaId}")
+    public Response getSchema(@PathParam("tenantId") String tenantId,
+                              @PathParam("schemaId") String schemaId,
+                              @HeaderParam("Authorization") String authorization) {
+        try {
+            requireBearer(authorization);
+            resolveIdentityStore(tenantId);
+            ObjectNode schema = scimSchema(schemaId);
+            if (schema == null) {
+                return scimError(404, "Schema not found: " + schemaId);
+            }
+            return Response.ok(schema).build();
+        } catch (AwsException exception) {
+            return scimError(scimStatus(exception), exception.getMessage());
+        }
+    }
+
+    @GET
     @Path("/Users")
     public Response listUsers(@PathParam("tenantId") String tenantId,
                               @HeaderParam("Authorization") String authorization,
@@ -590,6 +608,88 @@ public class ScimController {
                 }
             }
         }
+    }
+
+    private ObjectNode scimSchema(String schemaId) {
+        return switch (schemaId) {
+            case USER_SCHEMA -> userSchema();
+            case GROUP_SCHEMA -> groupSchema();
+            case ENTERPRISE_USER_SCHEMA -> enterpriseUserSchema();
+            default -> null;
+        };
+    }
+
+    private ObjectNode userSchema() {
+        ObjectNode schema = mapper.createObjectNode();
+        schema.put("id", USER_SCHEMA);
+        schema.put("name", "User");
+        schema.put("description", "User Schema");
+        ArrayNode attributes = schema.putArray("attributes");
+        attributes.add(scimAttribute("userName", "string", false, true, "readWrite", "default", "server"));
+
+        ObjectNode name = scimAttribute("name", "complex", false, false, "readWrite", "default", "none");
+        ArrayNode subAttributes = name.putArray("subAttributes");
+        subAttributes.add(scimAttribute("formatted", "string", false, false, "readWrite", "default", "none"));
+        subAttributes.add(scimAttribute("familyName", "string", false, true, "readWrite", "default", "none"));
+        subAttributes.add(scimAttribute("givenName", "string", false, true, "readWrite", "default", "none"));
+        subAttributes.add(scimAttribute("middleName", "string", false, false, "readWrite", "default", "none"));
+        subAttributes.add(scimAttribute("honorificPrefix", "string", false, false, "readWrite", "default", "none"));
+        subAttributes.add(scimAttribute("honorificSuffix", "string", false, false, "readWrite", "default", "none"));
+        attributes.add(name);
+
+        attributes.add(scimAttribute("displayName", "string", false, false, "readWrite", "default", "none"));
+        attributes.add(scimAttribute("nickName", "string", false, false, "readWrite", "default", "none"));
+        attributes.add(scimAttribute("profileUrl", "reference", false, false, "readWrite", "default", "none"));
+        attributes.add(scimAttribute("title", "string", false, false, "readWrite", "default", "none"));
+        attributes.add(scimAttribute("userType", "string", false, false, "readWrite", "default", "none"));
+        attributes.add(scimAttribute("preferredLanguage", "string", false, false, "readWrite", "default", "none"));
+        attributes.add(scimAttribute("locale", "string", false, false, "readWrite", "default", "none"));
+        attributes.add(scimAttribute("timezone", "string", false, false, "readWrite", "default", "none"));
+        attributes.add(scimAttribute("active", "boolean", false, false, "readWrite", "default", "none"));
+        attributes.add(scimAttribute("emails", "complex", true, false, "readWrite", "default", "none"));
+        attributes.add(scimAttribute("phoneNumbers", "complex", true, false, "readWrite", "default", "none"));
+        attributes.add(scimAttribute("addresses", "complex", true, false, "readWrite", "default", "none"));
+        attributes.add(scimAttribute("roles", "complex", true, false, "readWrite", "default", "none"));
+        attributes.add(scimAttribute("groups", "complex", true, false, "readOnly", "default", "none"));
+        return schema;
+    }
+
+    private ObjectNode groupSchema() {
+        ObjectNode schema = mapper.createObjectNode();
+        schema.put("id", GROUP_SCHEMA);
+        schema.put("name", "Group");
+        schema.put("description", "Group");
+        ArrayNode attributes = schema.putArray("attributes");
+        attributes.add(scimAttribute("displayName", "string", false, true, "readWrite", "default", "server"));
+        attributes.add(scimAttribute("members", "complex", true, false, "readWrite", "default", "none"));
+        return schema;
+    }
+
+    private ObjectNode enterpriseUserSchema() {
+        ObjectNode schema = mapper.createObjectNode();
+        schema.put("id", ENTERPRISE_USER_SCHEMA);
+        schema.put("name", "EnterpriseUser");
+        schema.put("description", "Enterprise User");
+        ArrayNode attributes = schema.putArray("attributes");
+        for (String name : List.of("employeeNumber", "costCenter", "organization", "division", "department")) {
+            attributes.add(scimAttribute(name, "string", false, false, "readWrite", "default", "none"));
+        }
+        attributes.add(scimAttribute("manager", "complex", false, false, "readWrite", "default", "none"));
+        return schema;
+    }
+
+    private ObjectNode scimAttribute(String name, String type, boolean multiValued, boolean required,
+                                     String mutability, String returned, String uniqueness) {
+        ObjectNode attribute = mapper.createObjectNode();
+        attribute.put("name", name);
+        attribute.put("type", type);
+        attribute.put("multiValued", multiValued);
+        attribute.put("required", required);
+        attribute.put("caseExact", false);
+        attribute.put("mutability", mutability);
+        attribute.put("returned", returned);
+        attribute.put("uniqueness", uniqueness);
+        return attribute;
     }
 
     private List<User> filterScimUsers(String identityStoreId, String filter) {
