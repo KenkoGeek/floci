@@ -84,7 +84,8 @@ Operation counts are exact. For dispatch-table services (Query and JSON 1.1) eac
 | [AppConfig](appconfig.md) | `/applications/...`, `/deploymentstrategies/...` | REST JSON | 16 |
 | [AppConfigData](appconfig.md#data-plane) | `/configurationsessions`, `/configuration` | REST JSON | 2 |
 | [AppSync](appsync.md) | `/v1/apis/...` | REST JSON | 33 |
-| [Bedrock Runtime](bedrock-runtime.md) | `/model/{modelId}/converse`, `/model/{modelId}/invoke` | REST JSON | 2 (stub; streaming returns 501) |
+| [Amazon Bedrock](bedrock.md) | `/use-case-for-model-access` | REST JSON | 1 control-plane operation |
+| [Bedrock Runtime](bedrock-runtime.md) | `/model/{modelId}/converse`, `/model/{modelId}/invoke` | REST JSON | 3 (`Converse`, `ConverseStream`, `InvokeModel`) |
 | [Bedrock AgentCore Control](bedrock-agentcore.md) | `/runtimes/*`, `/gateways/*`, `/memories/*`, `/identities/*`, `/tags/{resourceArn}` | REST JSON | 31 (+ 3 tagging via shared `/tags/{arn}` route) |
 | [Bedrock AgentCore](bedrock-agentcore.md#data-plane-invokeagentruntime) | `/runtimes/{agentRuntimeArn}/invocations` | REST JSON (binary payload) | 1 (canned-response stub) |
 | [EKS](eks.md) | `/clusters`, `/clusters/{name}`, `/tags/{resourceArn}` | REST JSON | 7 |

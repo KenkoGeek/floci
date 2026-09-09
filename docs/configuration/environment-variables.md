@@ -462,6 +462,7 @@ These services spawn Docker containers. They require access to the Docker socket
 |---|---|---|
 | `FLOCI_SERVICES_GLUE_ENABLED` | `true` | Enable the Glue service |
 | `FLOCI_SERVICES_APPSYNC_ENABLED` | `true` | Enable the AppSync service |
+| `FLOCI_SERVICES_BEDROCK_ENABLED` | `true` | Enable the Amazon Bedrock control-plane service |
 | `FLOCI_SERVICES_BEDROCK_RUNTIME_ENABLED` | `true` | Enable the Bedrock Runtime service |
 | `FLOCI_SERVICES_BEDROCK_AGENT_CORE_CONTROL_ENABLED` | `true` | Enable the Bedrock AgentCore control plane (agent runtimes, gateways, memory, workload identity) |
 | `FLOCI_SERVICES_BEDROCK_AGENT_CORE_ENABLED` | `true` | Enable the Bedrock AgentCore data plane (`InvokeAgentRuntime` stub) |

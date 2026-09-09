@@ -395,6 +395,11 @@
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>bedrockagentcore</artifactId>
         </dependency>
+        <!-- Amazon Bedrock control-plane client -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>bedrock</artifactId>
+        </dependency>
         <!-- Bedrock Runtime client (Converse/ConverseStream) -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>

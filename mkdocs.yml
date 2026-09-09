@@ -164,6 +164,7 @@ nav:
     - EC2: services/ec2.md
     - Lightsail: services/lightsail.md
     - AppConfig: services/appconfig.md
+    - Amazon Bedrock: services/bedrock.md
     - Bedrock Runtime: services/bedrock-runtime.md
     - Bedrock AgentCore: services/bedrock-agentcore.md
     - ELB v2: services/elb.md

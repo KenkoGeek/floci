@@ -6,6 +6,7 @@ import io.github.hectorvent.floci.services.backup.BackupController;
 import io.github.hectorvent.floci.services.resourceexplorer2.ResourceExplorer2Controller;
 import io.github.hectorvent.floci.services.appconfig.AppConfigDataController;
 import io.github.hectorvent.floci.services.batch.BatchController;
+import io.github.hectorvent.floci.services.bedrock.BedrockControlPlaneController;
 import io.github.hectorvent.floci.services.bedrockruntime.BedrockRuntimeController;
 import io.github.hectorvent.floci.services.cognito.CognitoOAuthController;
 import io.github.hectorvent.floci.services.cognito.CognitoWellKnownController;
@@ -318,6 +319,12 @@ public class ResolvedServiceCatalog {
                         Set.of("bedrock", "bedrock-runtime"),
                         Set.of(),
                         Set.of(BedrockRuntimeController.class)),
+                descriptor("bedrock", "bedrock",
+                        config.services().bedrock().enabled(), true,
+                        "bedrock", config.storage().mode(), 5000L, null, ServiceProtocol.REST_JSON,
+                        protocols(ServiceProtocol.REST_JSON),
+                        Set.of(), Set.of("bedrock"), Set.of(),
+                        Set.of(BedrockControlPlaneController.class)),
                 descriptor("eks", "eks", config.services().eks().enabled(), true,
                         "eks", config.storage().mode(), 5000L, null, ServiceProtocol.REST_JSON,
                         protocols(ServiceProtocol.REST_JSON),

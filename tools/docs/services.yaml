@@ -18,6 +18,10 @@ services:
     doc: docs/services/access-analyzer.md
     sources:
       - { path: src/main/java/io/github/hectorvent/floci/services/accessanalyzer/AccessAnalyzerController.java, mode: rest }
+  - service: bedrock
+    doc: docs/services/bedrock.md
+    sources:
+      - { path: src/main/java/io/github/hectorvent/floci/services/bedrock/BedrockControlPlaneController.java, mode: rest }
   - service: acm
     doc: docs/services/acm.md
     sources:
