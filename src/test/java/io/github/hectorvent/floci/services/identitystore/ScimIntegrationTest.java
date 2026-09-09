@@ -318,4 +318,95 @@ class ScimIntegrationTest {
                 .statusCode(400)
                 .body("status", equalTo("400"));
     }
+
+    @Test
+    void listGroupsSupportsAwsFiltersAndCursorPagination() {
+        String userId = given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"userName\":\"list-groups@example.com\",\"displayName\":\"List Groups User\","
+                        + "\"name\":{\"givenName\":\"List\",\"familyName\":\"Groups\"}}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(201)
+                .extract().path("id");
+
+        String groupId = given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"externalId\":\"list-groups-ext\",\"displayName\":\"SCIM List Groups Target\","
+                        + "\"members\":[{\"value\":\"" + userId + "\",\"type\":\"User\"}]}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Groups")
+            .then()
+                .statusCode(201)
+                .extract().path("id");
+
+        given()
+                .header("Authorization", BEARER)
+                .queryParam("filter", "displayName eq \"SCIM List Groups Target\"")
+            .when()
+                .get("/" + TENANT + "/scim/v2/Groups")
+            .then()
+                .statusCode(200)
+                .body("schemas[0]", equalTo("urn:ietf:params:scim:api:messages:2.0:ListResponse"))
+                .body("totalResults", equalTo(1))
+                .body("itemsPerPage", equalTo(1))
+                .body("startIndex", equalTo(1))
+                .body("Resources[0].id", equalTo(groupId));
+
+        given()
+                .header("Authorization", BEARER)
+                .queryParam("filter", "members.value eq \"" + userId + "\"")
+            .when()
+                .get("/" + TENANT + "/scim/v2/Groups")
+            .then()
+                .statusCode(200)
+                .body("Resources.id", hasItem(groupId));
+
+        given()
+                .header("Authorization", BEARER)
+                .queryParam("filter", "id eq \"" + groupId + "\" and member eq \"" + userId + "\"")
+            .when()
+                .get("/" + TENANT + "/scim/v2/Groups")
+            .then()
+                .statusCode(200)
+                .body("totalResults", equalTo(1))
+                .body("Resources[0].id", equalTo(groupId));
+
+        String nextCursor = given()
+                .header("Authorization", BEARER)
+                .queryParam("cursor", "")
+                .queryParam("count", 1)
+            .when()
+                .get("/" + TENANT + "/scim/v2/Groups")
+            .then()
+                .statusCode(200)
+                .body("itemsPerPage", equalTo(1))
+                .body("totalResults", org.hamcrest.Matchers.nullValue())
+                .body("startIndex", org.hamcrest.Matchers.nullValue())
+                .body("nextCursor", notNullValue())
+                .extract().path("nextCursor");
+
+        given()
+                .header("Authorization", BEARER)
+                .queryParam("cursor", nextCursor)
+                .queryParam("count", 1)
+            .when()
+                .get("/" + TENANT + "/scim/v2/Groups")
+            .then()
+                .statusCode(200)
+                .body("itemsPerPage", equalTo(1));
+
+        given()
+                .header("Authorization", BEARER)
+                .queryParam("cursor", nextCursor)
+                .queryParam("filter", "displayName eq \"changed\"")
+            .when()
+                .get("/" + TENANT + "/scim/v2/Groups")
+            .then()
+                .statusCode(400)
+                .body("status", equalTo("400"));
+    }
 }
