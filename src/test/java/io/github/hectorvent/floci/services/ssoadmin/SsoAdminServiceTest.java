@@ -863,6 +863,8 @@ class SsoAdminServiceTest {
     @Test
     void putPermissionsBoundarySupportsAwsManagedAndCustomerManagedPolicies() {
         PermissionSet permissionSet = createPermissionSet("BoundaryAdmins");
+        assertError("ResourceNotFoundException",
+                () -> service.getPermissionsBoundary(service.getInstanceArn(), permissionSet.arn()));
 
         ObjectNode managed = mapper.createObjectNode();
         managed.put("InstanceArn", service.getInstanceArn());
@@ -871,7 +873,7 @@ class SsoAdminServiceTest {
                 .put("ManagedPolicyArn", "arn:aws:iam::aws:policy/PowerUserAccess");
         service.putPermissionsBoundary(managed);
         assertEquals("arn:aws:iam::aws:policy/PowerUserAccess",
-                service.getPermissionSet(service.getInstanceArn(), permissionSet.arn()).permissionsBoundary().managedPolicyArn());
+                service.getPermissionsBoundary(service.getInstanceArn(), permissionSet.arn()).managedPolicyArn());
 
         ObjectNode customer = mapper.createObjectNode();
         customer.put("InstanceArn", service.getInstanceArn());

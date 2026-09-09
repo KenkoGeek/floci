@@ -53,6 +53,7 @@ public class SsoAdminJsonHandler {
             case "DetachManagedPolicyFromPermissionSet" -> detachManagedPolicy(request);
             case "DeleteInlinePolicyFromPermissionSet" -> deleteInlinePolicy(request);
             case "GetInlinePolicyForPermissionSet" -> getInlinePolicy(request);
+            case "GetPermissionsBoundaryForPermissionSet" -> getPermissionsBoundary(request);
             case "PutInlinePolicyToPermissionSet" -> putInlinePolicy(request);
             case "PutPermissionsBoundaryToPermissionSet" -> putPermissionsBoundary(request);
             case "ListAccountAssignments" -> listAccountAssignments(request);
@@ -262,6 +263,22 @@ public class SsoAdminJsonHandler {
                 SsoAdminService.required(request, "PermissionSetArn"));
         ObjectNode response = mapper.createObjectNode();
         response.put("InlinePolicy", permissionSet.inlinePolicy() == null ? "" : permissionSet.inlinePolicy());
+        return Response.ok(response).build();
+    }
+
+    private Response getPermissionsBoundary(JsonNode request) {
+        var boundary = service.getPermissionsBoundary(
+                SsoAdminService.required(request, "InstanceArn"),
+                SsoAdminService.required(request, "PermissionSetArn"));
+        ObjectNode response = mapper.createObjectNode();
+        ObjectNode boundaryNode = response.putObject("PermissionsBoundary");
+        if (boundary.managedPolicyArn() != null) {
+            boundaryNode.put("ManagedPolicyArn", boundary.managedPolicyArn());
+        } else {
+            boundaryNode.putObject("CustomerManagedPolicyReference")
+                    .put("Name", boundary.customerManagedPolicyReference().name())
+                    .put("Path", boundary.customerManagedPolicyReference().path());
+        }
         return Response.ok(response).build();
     }
 
