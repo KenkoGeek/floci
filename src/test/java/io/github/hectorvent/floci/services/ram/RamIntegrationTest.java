@@ -3,16 +3,22 @@ package io.github.hectorvent.floci.services.ram;
 import io.github.hectorvent.floci.testing.RestAssuredJsonUtils;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 
 import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasItem;
 
 /**
  * Verifies the RAM restJson1 organization-sharing opt-in:
  * {@code POST /enablesharingwithawsorganization} succeeds with or without a request body.
  */
 @QuarkusTest
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class RamIntegrationTest {
 
     private static final String AUTH_HEADER =
@@ -24,6 +30,21 @@ class RamIntegrationTest {
     }
 
     @Test
+    @Order(1)
+    void createOrganizationBeforeEnablingRamIntegration() {
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "AWSOrganizationsV20161128.CreateOrganization")
+            .body("{\"FeatureSet\":\"ALL\"}")
+        .when()
+            .post("/")
+        .then()
+            .statusCode(200);
+    }
+
+    @Test
+    @Order(4)
     void enableSharingWithAwsOrganization_returnsTrue() {
         given()
             .contentType("application/json")
@@ -37,6 +58,7 @@ class RamIntegrationTest {
     }
 
     @Test
+    @Order(5)
     void enableSharingWithAwsOrganization_withoutBody_returnsTrue() {
         given()
             .header("Authorization", AUTH_HEADER)
@@ -48,6 +70,42 @@ class RamIntegrationTest {
     }
 
     @Test
+    @Order(6)
+    void enableSharingWithAwsOrganizationCreatesAwsSideEffects() {
+        given()
+            .header("Authorization", AUTH_HEADER)
+        .when()
+            .post("/enablesharingwithawsorganization")
+        .then()
+            .statusCode(200)
+            .body("returnValue", equalTo(true));
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "AWSOrganizationsV20161128.ListAWSServiceAccessForOrganization")
+            .body("{}")
+        .when()
+            .post("/")
+        .then()
+            .statusCode(200)
+            .body("EnabledServicePrincipals.ServicePrincipal", hasItem("ram.amazonaws.com"));
+
+        given()
+            .contentType("application/x-www-form-urlencoded")
+            .header("Authorization", AUTH_HEADER)
+            .formParam("Action", "GetRole")
+            .formParam("Version", "2010-05-08")
+            .formParam("RoleName", "AWSServiceRoleForResourceAccessManager")
+        .when()
+            .post("/")
+        .then()
+            .statusCode(200)
+            .body(containsString("AWSServiceRoleForResourceAccessManager"));
+    }
+
+    @Test
+    @Order(2)
     void getResourceShareInvitations_returnsEmptyJson() {
         // LZA's Custom::GetResourceShare Lambda pages this first, before any share has been
         // created in this test's account. The response must be JSON (restJson1): an XML
@@ -348,6 +406,7 @@ class RamIntegrationTest {
     }
 
     @Test
+    @Order(3)
     void acceptResourceShareInvitationOverHttp() {
         // A bare account-id principal (not an OU/organization ARN) gets a real PENDING
         // invitation; targeting this test's own account keeps the whole flow within one
