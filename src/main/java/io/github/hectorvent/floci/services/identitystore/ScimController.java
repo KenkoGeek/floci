@@ -18,6 +18,7 @@ import jakarta.ws.rs.GET;
 import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.PATCH;
 import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
@@ -364,6 +365,25 @@ public class ScimController {
             request.put("GroupId", groupId);
             identityStoreService.deleteGroup(request);
             return Response.noContent().build();
+        } catch (AwsException exception) {
+            return scimError(scimStatus(exception), exception.getMessage());
+        }
+    }
+
+    @PUT
+    @Path("/Users/{userId}")
+    public Response putUser(@PathParam("tenantId") String tenantId,
+                            @PathParam("userId") String userId,
+                            @HeaderParam("Authorization") String authorization,
+                            String body) {
+        try {
+            requireBearer(authorization);
+            String identityStoreId = resolveIdentityStore(tenantId);
+            JsonNode request = parseObject(body);
+            validateCreateUser(request);
+            User user = identityStoreService.replaceUserForScim(
+                    identityStoreId, userId, toIdentityStoreUser(identityStoreId, request));
+            return Response.status(Response.Status.CREATED).entity(userResponse(user)).build();
         } catch (AwsException exception) {
             return scimError(scimStatus(exception), exception.getMessage());
         }

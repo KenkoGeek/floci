@@ -9,6 +9,7 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.nullValue;
 
 @QuarkusTest
 class ScimIntegrationTest {
@@ -317,6 +318,123 @@ class ScimIntegrationTest {
             .then()
                 .statusCode(400)
                 .body("status", equalTo("400"));
+    }
+
+    @Test
+    void putUserOverwritesExistingUserAndPreservesResourceIdentity() {
+        String userId = given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"externalId\":\"put-user-old\",\"userName\":\"put-user-old@example.com\","
+                        + "\"displayName\":\"Put User Old\",\"nickName\":\"OldNick\","
+                        + "\"name\":{\"givenName\":\"Put\",\"familyName\":\"Old\"}}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(201)
+                .extract().path("id");
+
+        String createdAt = given()
+                .header("Authorization", BEARER)
+            .when()
+                .get("/" + TENANT + "/scim/v2/Users/" + userId)
+            .then()
+                .statusCode(200)
+                .extract().path("meta.created");
+
+        given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"id\":\"" + userId + "\",\"externalId\":\"put-user-new\","
+                        + "\"userName\":\"put-user-new@example.com\",\"displayName\":\"Put User New\","
+                        + "\"name\":{\"formatted\":\"Put User New\",\"givenName\":\"Put\",\"familyName\":\"New\"},"
+                        + "\"emails\":[{\"value\":\"put-user-new@example.com\",\"type\":\"work\",\"primary\":true}],"
+                        + "\"active\":false,\"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User\":{"
+                        + "\"department\":\"Platform\",\"manager\":{\"value\":\"9067f2a3c1-00000000-0000-0000-0000-000000000077\","
+                        + "\"$ref\":\"../Users/9067f2a3c1-00000000-0000-0000-0000-000000000077\"}}}")
+            .when()
+                .put("/" + TENANT + "/scim/v2/Users/" + userId)
+            .then()
+                .statusCode(201)
+                .body("id", equalTo(userId))
+                .body("externalId", equalTo("put-user-new"))
+                .body("userName", equalTo("put-user-new@example.com"))
+                .body("displayName", equalTo("Put User New"))
+                .body("nickName", nullValue())
+                .body("active", equalTo(false))
+                .body("emails[0].value", equalTo("put-user-new@example.com"))
+                .body("meta.created", equalTo(createdAt))
+                .body("'urn:ietf:params:scim:schemas:extension:enterprise:2.0:User'.department", equalTo("Platform"))
+                .body("'urn:ietf:params:scim:schemas:extension:enterprise:2.0:User'.manager.value",
+                        equalTo("9067f2a3c1-00000000-0000-0000-0000-000000000077"));
+
+        given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", AWS_AUTH)
+                .header("X-Amz-Target", "AWSIdentityStore.DescribeUser")
+                .body("{\"IdentityStoreId\":\"" + STORE + "\",\"UserId\":\"" + userId + "\"}")
+            .when()
+                .post("/")
+            .then()
+                .statusCode(200)
+                .body("UserName", equalTo("put-user-new@example.com"))
+                .body("DisplayName", equalTo("Put User New"))
+                .body("NickName", nullValue())
+                .body("UserStatus", equalTo("DISABLED"));
+    }
+
+    @Test
+    void putUserRejectsInvalidReplacementAndConflictingUserName() {
+        String userId = given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"userName\":\"put-target@example.com\",\"displayName\":\"Put Target\","
+                        + "\"name\":{\"givenName\":\"Put\",\"familyName\":\"Target\"}}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(201)
+                .extract().path("id");
+
+        given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"userName\":\"put-conflict@example.com\",\"displayName\":\"Put Conflict\","
+                        + "\"name\":{\"givenName\":\"Put\",\"familyName\":\"Conflict\"}}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(201);
+
+        given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"userName\":\"put-target@example.com\",\"displayName\":\"Missing Name\"}")
+            .when()
+                .put("/" + TENANT + "/scim/v2/Users/" + userId)
+            .then()
+                .statusCode(400)
+                .body("status", equalTo("400"));
+
+        given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"userName\":\"put-conflict@example.com\",\"displayName\":\"Put Target Conflict\","
+                        + "\"name\":{\"givenName\":\"Put\",\"familyName\":\"Target\"}}")
+            .when()
+                .put("/" + TENANT + "/scim/v2/Users/" + userId)
+            .then()
+                .statusCode(409)
+                .body("status", equalTo("409"));
+
+        given()
+                .header("Authorization", BEARER)
+            .when()
+                .get("/" + TENANT + "/scim/v2/Users/" + userId)
+            .then()
+                .statusCode(200)
+                .body("userName", equalTo("put-target@example.com"))
+                .body("displayName", equalTo("Put Target"));
     }
 
     @Test
