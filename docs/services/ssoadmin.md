@@ -17,6 +17,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | `AddRegion` | Adds a Region to the local IAM Identity Center instance and reports the initial `ADDING` status. |
 | `CreateApplication` | Creates a customer managed OAuth 2.0 application with AWS-compatible idempotency, portal options, status, and tags. |
 | `CreateApplicationAssignment` | Grants direct application access to a user or group. |
+| `DeleteApplication` | Deletes the IAM Identity Center application association and its local assignment state. |
 | `ListPermissionSets` | Lists permission sets with AWS-compatible pagination. |
 | `CreatePermissionSet` | Creates a permission set. |
 | `DescribePermissionSet` | Describes a permission set. |

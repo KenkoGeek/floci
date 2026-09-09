@@ -375,6 +375,22 @@ public class SsoAdminService implements Resettable {
         return instance;
     }
 
+    public synchronized void deleteApplication(String applicationArn) {
+        getApplication(applicationArn);
+        applications.delete(applicationArn);
+        for (String key : new java.util.ArrayList<>(applicationAssignments.keys())) {
+            ApplicationAssignment assignment = applicationAssignments.get(key).orElse(null);
+            if (assignment != null && applicationArn.equals(assignment.applicationArn())) {
+                applicationAssignments.delete(key);
+            }
+        }
+        for (String key : new java.util.ArrayList<>(applicationClientTokens.keys())) {
+            if (applicationArn.equals(applicationClientTokens.get(key).orElse(null))) {
+                applicationClientTokens.delete(key);
+            }
+        }
+    }
+
     public synchronized ApplicationAssignment createApplicationAssignment(JsonNode request) {
         String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
         getApplication(applicationArn);
