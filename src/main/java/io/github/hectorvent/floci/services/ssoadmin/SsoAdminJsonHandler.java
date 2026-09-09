@@ -47,6 +47,7 @@ public class SsoAdminJsonHandler {
             case "CreateApplicationAssignment" -> createApplicationAssignment(request);
             case "DescribeApplicationAssignment" -> describeApplicationAssignment(request);
             case "DescribeApplicationProvider" -> describeApplicationProvider(request);
+            case "ListApplicationProviders" -> listApplicationProviders(request);
             case "ListApplicationAssignments" -> listApplicationAssignments(request);
             case "ListApplicationAssignmentsForPrincipal" -> listApplicationAssignmentsForPrincipal(request, callerAccountId);
             case "DeleteApplication" -> deleteApplication(request);
@@ -239,11 +240,25 @@ public class SsoAdminJsonHandler {
     }
 
     private Response describeApplicationProvider(JsonNode request) {
-        String applicationProviderArn = service.describeApplicationProvider(request);
+        return Response.ok(applicationProviderNode(service.describeApplicationProvider(request))).build();
+    }
+
+    private Response listApplicationProviders(JsonNode request) {
+        var page = service.listApplicationProviders(request);
+        ObjectNode response = mapper.createObjectNode();
+        ArrayNode providers = response.putArray("ApplicationProviders");
+        page.items().forEach(provider -> providers.add(applicationProviderNode(provider)));
+        if (page.nextToken() != null) {
+            response.put("NextToken", page.nextToken());
+        }
+        return Response.ok(response).build();
+    }
+
+    private ObjectNode applicationProviderNode(String applicationProviderArn) {
         ObjectNode response = mapper.createObjectNode();
         response.put("ApplicationProviderArn", applicationProviderArn);
         response.put("FederationProtocol", "OAUTH");
-        return Response.ok(response).build();
+        return response;
     }
 
     private Response listApplicationAssignments(JsonNode request) {

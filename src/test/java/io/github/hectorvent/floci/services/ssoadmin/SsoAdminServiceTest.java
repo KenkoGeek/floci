@@ -524,6 +524,17 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void listApplicationProvidersReturnsCustomProviderAndValidatesPagination() {
+        ObjectNode request = mapper.createObjectNode();
+        var page = service.listApplicationProviders(request);
+        assertEquals(java.util.List.of("arn:aws:sso::aws:applicationProvider/custom"), page.items());
+        assertEquals(null, page.nextToken());
+
+        ObjectNode invalidMaxResults = mapper.createObjectNode().put("MaxResults", 101);
+        assertError("ValidationException", () -> service.listApplicationProviders(invalidMaxResults));
+    }
+
+    @Test
     void listApplicationAssignmentsPaginatesAndScopesToApplication() {
         SsoApplication application = createApplication("List Assignment App", "list-assignment-app-token");
         ObjectNode user = mapper.createObjectNode();
