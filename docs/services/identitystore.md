@@ -70,6 +70,8 @@ Floci also accepts IAM Identity Center SCIM v2 requests under `/{tenant_id}/scim
 
 `ServiceProviderConfig` is supported through `GET /{tenant_id}/scim/v2/ServiceProviderConfig`. It returns IAM Identity Center's documented OAuth bearer authentication scheme and capability flags: patch supported, bulk/change-password/sort/etag unsupported, bulk limits of one operation and 1 MiB, and filter support with `maxResults` 50.
 
+`PatchGroup` is supported through `PATCH /{tenant_id}/scim/v2/Groups/{id}` with the SCIM PatchOp schema. It allows only `displayName`, `externalId`, and `members`; member additions/removals are validated before mutation, capped at 100 changes per request, and share the Identity Store membership state. Replacing all memberships or removing them with an empty value is rejected with HTTP `400`, matching IAM Identity Center. Successful patches return HTTP `204` with an empty body.
+
 SCIM validation failures use the standard `urn:ietf:params:scim:api:messages:2.0:Error` response shape. See the [IAM Identity Center SCIM implementation](https://docs.aws.amazon.com/singlesignon/latest/developerguide/what-is-scim.html) and [CreateGroup](https://docs.aws.amazon.com/singlesignon/latest/developerguide/creategroup.html) documentation.
 
 ## AWS-compatible failures

@@ -320,6 +320,115 @@ class ScimIntegrationTest {
     }
 
     @Test
+    void patchGroupUpdatesAttributesAndMemberships() {
+        String firstUserId = given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"userName\":\"patch-group-one@example.com\",\"displayName\":\"Patch One\","
+                        + "\"name\":{\"givenName\":\"Patch\",\"familyName\":\"One\"}}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(201)
+                .extract().path("id");
+        String secondUserId = given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"userName\":\"patch-group-two@example.com\",\"displayName\":\"Patch Two\","
+                        + "\"name\":{\"givenName\":\"Patch\",\"familyName\":\"Two\"}}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(201)
+                .extract().path("id");
+        String groupId = given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"externalId\":\"patch-group-old\",\"displayName\":\"Patch Group Old\","
+                        + "\"members\":[{\"value\":\"" + firstUserId + "\"}]}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Groups")
+            .then()
+                .statusCode(201)
+                .extract().path("id");
+
+        given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],\"Operations\":["
+                        + "{\"op\":\"replace\",\"path\":\"displayName\",\"value\":\"Patch Group New\"},"
+                        + "{\"op\":\"replace\",\"path\":\"externalId\",\"value\":\"patch-group-new\"},"
+                        + "{\"op\":\"add\",\"path\":\"members\",\"value\":[{\"value\":\"" + secondUserId + "\"}]},"
+                        + "{\"op\":\"remove\",\"path\":\"members\",\"value\":[{\"value\":\"" + firstUserId + "\"}]}]}")
+            .when()
+                .patch("/" + TENANT + "/scim/v2/Groups/" + groupId)
+            .then()
+                .statusCode(204);
+
+        given()
+                .header("Authorization", BEARER)
+            .when()
+                .get("/" + TENANT + "/scim/v2/Groups/" + groupId)
+            .then()
+                .statusCode(200)
+                .body("displayName", equalTo("Patch Group New"))
+                .body("externalId", equalTo("patch-group-new"));
+
+        given()
+                .header("Authorization", BEARER)
+                .queryParam("filter", "members.value eq \"" + secondUserId + "\"")
+            .when()
+                .get("/" + TENANT + "/scim/v2/Groups")
+            .then()
+                .statusCode(200)
+                .body("Resources.id", hasItem(groupId));
+
+        given()
+                .header("Authorization", BEARER)
+                .queryParam("filter", "members.value eq \"" + firstUserId + "\"")
+            .when()
+                .get("/" + TENANT + "/scim/v2/Groups")
+            .then()
+                .statusCode(200)
+                .body("totalResults", equalTo(0));
+    }
+
+    @Test
+    void patchGroupRejectsUnsupportedOrBulkMembershipChanges() {
+        String groupId = given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"displayName\":\"Patch Group Validation\"}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Groups")
+            .then()
+                .statusCode(201)
+                .extract().path("id");
+
+        given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],"
+                        + "\"Operations\":[{\"op\":\"remove\",\"path\":\"members\",\"value\":[]}]}")
+            .when()
+                .patch("/" + TENANT + "/scim/v2/Groups/" + groupId)
+            .then()
+                .statusCode(400)
+                .body("status", equalTo("400"));
+
+        given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],"
+                        + "\"Operations\":[{\"op\":\"replace\",\"path\":\"description\",\"value\":\"nope\"}]}")
+            .when()
+                .patch("/" + TENANT + "/scim/v2/Groups/" + groupId)
+            .then()
+                .statusCode(400)
+                .body("status", equalTo("400"));
+    }
+
+    @Test
     void serviceProviderConfigMatchesAwsScimCapabilities() {
         given()
                 .header("Authorization", BEARER)

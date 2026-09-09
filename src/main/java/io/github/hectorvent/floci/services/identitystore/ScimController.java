@@ -16,6 +16,7 @@ import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.HeaderParam;
+import jakarta.ws.rs.PATCH;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
@@ -46,6 +47,7 @@ public class ScimController {
     private static final String LIST_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:ListResponse";
     private static final String RESOURCE_TYPE_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:ResourceType";
     private static final String SERVICE_PROVIDER_CONFIG_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig";
+    private static final String PATCH_OP_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:PatchOp";
     private static final Pattern CURSOR_PATTERN = Pattern.compile("[-a-zA-Z0-9+=/:_]*");
     private static final Pattern SINGLE_GROUP_FILTER = Pattern.compile(
             "^(displayName|externalId|members\\.value|id) eq \\\"([^\\\"]*)\\\"$");
@@ -299,6 +301,25 @@ public class ScimController {
             request.put("IdentityStoreId", identityStoreId);
             request.put("UserId", userId);
             identityStoreService.deleteUser(request);
+            return Response.noContent().build();
+        } catch (AwsException exception) {
+            return scimError(scimStatus(exception), exception.getMessage());
+        }
+    }
+
+    @PATCH
+    @Path("/Groups/{groupId}")
+    public Response patchGroup(@PathParam("tenantId") String tenantId,
+                               @PathParam("groupId") String groupId,
+                               @HeaderParam("Authorization") String authorization,
+                               String body) {
+        try {
+            requireBearer(authorization);
+            String identityStoreId = resolveIdentityStore(tenantId);
+            JsonNode request = parseObject(body);
+            validatePatchSchema(request);
+            validatePatchGroup(identityStoreId, groupId, request);
+            applyPatchGroup(identityStoreId, groupId, request);
             return Response.noContent().build();
         } catch (AwsException exception) {
             return scimError(scimStatus(exception), exception.getMessage());
@@ -688,6 +709,134 @@ public class ScimController {
                 }
             }
         }
+    }
+
+    private void validatePatchSchema(JsonNode request) {
+        JsonNode schemas = request.get("schemas");
+        if (schemas == null || !schemas.isArray() || schemas.size() != 1
+                || !PATCH_OP_SCHEMA.equals(schemas.get(0).textValue())) {
+            throw validation("schemas must contain only the SCIM PatchOp schema.");
+        }
+    }
+
+    private void validatePatchGroup(String identityStoreId, String groupId, JsonNode request) {
+        ObjectNode describe = mapper.createObjectNode();
+        describe.put("IdentityStoreId", identityStoreId);
+        describe.put("GroupId", groupId);
+        identityStoreService.describeGroup(describe);
+
+        JsonNode operations = request.get("Operations");
+        if (operations == null || !operations.isArray() || operations.isEmpty()) {
+            throw validation("Operations must contain at least one patch operation.");
+        }
+        int membershipChanges = 0;
+        for (JsonNode operation : operations) {
+            if (operation == null || !operation.isObject()) {
+                throw validation("Each patch operation must be an object.");
+            }
+            String op = requiredText(operation, "op");
+            String path = requiredText(operation, "path");
+            if (!List.of("add", "replace", "remove").contains(op)) {
+                throw validation("Unsupported patch operation: " + op);
+            }
+            if (!List.of("displayName", "members", "externalId").contains(path)) {
+                throw validation("Only displayName, members, and externalId can be patched on groups.");
+            }
+            JsonNode value = operation.get("value");
+            if ("members".equals(path)) {
+                if ("replace".equals(op)) {
+                    throw validation("Replacing all group memberships in one request is not supported.");
+                }
+                if (value == null || !value.isArray() || value.isEmpty()) {
+                    throw validation("members patch value must contain at least one member.");
+                }
+                membershipChanges += value.size();
+                if (membershipChanges > 100) {
+                    throw validation("A maximum of 100 membership changes are allowed in one request.");
+                }
+                for (JsonNode member : value) {
+                    if (member == null || !member.isObject()) {
+                        throw validation("Each members value must be an object.");
+                    }
+                    String userId = requiredText(member, "value");
+                    String type = optionalText(member, "type");
+                    if (type != null && !"User".equals(type)) {
+                        throw validation("members.type must be User when specified.");
+                    }
+                    requireScimUser(identityStoreId, userId);
+                }
+                continue;
+            }
+            if ("displayName".equals(path)) {
+                if ("remove".equals(op)) {
+                    throw validation("displayName cannot be removed.");
+                }
+                String displayName = requirePatchText(value, "displayName");
+                boolean duplicate = identityStoreService.listGroupsForScim(identityStoreId).stream()
+                        .anyMatch(group -> displayName.equals(group.displayName()) && !groupId.equals(group.groupId()));
+                if (duplicate) {
+                    throw new AwsException("ConflictException", "A group with DisplayName " + displayName + " already exists.", 400);
+                }
+                continue;
+            }
+            if (!"remove".equals(op)) {
+                requirePatchText(value, "externalId");
+            }
+        }
+    }
+
+    private void applyPatchGroup(String identityStoreId, String groupId, JsonNode request) {
+        for (JsonNode operation : request.get("Operations")) {
+            String op = operation.path("op").textValue();
+            String path = operation.path("path").textValue();
+            if ("members".equals(path)) {
+                for (JsonNode member : operation.get("value")) {
+                    String userId = member.path("value").textValue();
+                    Membership existing = identityStoreService.listMembershipsForScim(identityStoreId).stream()
+                            .filter(candidate -> groupId.equals(candidate.groupId()) && userId.equals(candidate.userId()))
+                            .findFirst().orElse(null);
+                    if ("add".equals(op) && existing == null) {
+                        ObjectNode membership = mapper.createObjectNode();
+                        membership.put("IdentityStoreId", identityStoreId);
+                        membership.put("GroupId", groupId);
+                        membership.putObject("MemberId").put("UserId", userId);
+                        identityStoreService.createMembership(membership);
+                    } else if ("remove".equals(op) && existing != null) {
+                        ObjectNode deletion = mapper.createObjectNode();
+                        deletion.put("IdentityStoreId", identityStoreId);
+                        deletion.put("MembershipId", existing.membershipId());
+                        identityStoreService.deleteMembership(deletion);
+                    }
+                }
+                continue;
+            }
+
+            ObjectNode update = mapper.createObjectNode();
+            update.put("IdentityStoreId", identityStoreId);
+            update.put("GroupId", groupId);
+            ObjectNode attributeOperation = update.putArray("Operations").addObject();
+            if ("displayName".equals(path)) {
+                attributeOperation.put("AttributePath", "displayName");
+                attributeOperation.set("AttributeValue", operation.get("value").deepCopy());
+            } else {
+                attributeOperation.put("AttributePath", "externalIds");
+                if ("remove".equals(op)) {
+                    attributeOperation.putNull("AttributeValue");
+                } else {
+                    ArrayNode externalIds = mapper.createArrayNode();
+                    externalIds.addObject().put("Issuer", GROUP_SCHEMA).put("Id", operation.get("value").textValue());
+                    attributeOperation.set("AttributeValue", externalIds);
+                }
+            }
+            identityStoreService.updateGroup(update);
+        }
+    }
+
+    private static String requirePatchText(JsonNode value, String field) {
+        if (value == null || !value.isTextual() || value.textValue().isBlank()) {
+            throw validation(field + " patch value must be a non-empty string.");
+        }
+        return value.textValue();
     }
 
     private ObjectNode resourceType(String id, String endpoint, String description, String schemaId,
