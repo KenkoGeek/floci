@@ -38,7 +38,13 @@ class SsoAdminAssignmentsIntegrationTest {
                 .then().statusCode(200).extract().path("AccountAssignmentCreationStatus.RequestId");
         json("SWBExternalService.DescribeAccountAssignmentCreationStatus",
                 "{\"InstanceArn\":\"" + instanceArn + "\",\"AccountAssignmentCreationRequestId\":\"" + requestId + "\"}")
-                .then().statusCode(200).body("AccountAssignmentCreationStatus.Status", equalTo("SUCCEEDED"));
+                .then().statusCode(200)
+                .body("AccountAssignmentCreationStatus.Status", equalTo("SUCCEEDED"))
+                .body("AccountAssignmentCreationStatus.CreatedDate", notNullValue());
+        json("SWBExternalService.ListAccountAssignmentCreationStatus",
+                "{\"InstanceArn\":\"" + instanceArn + "\",\"Filter\":{\"Status\":\"SUCCEEDED\"}}")
+                .then().statusCode(200)
+                .body("AccountAssignmentsCreationStatus.RequestId", org.hamcrest.Matchers.hasItem(requestId));
         json("SWBExternalService.ListAccountAssignments",
                 "{\"InstanceArn\":\"" + instanceArn + "\",\"AccountId\":\"123456789012\",\"PermissionSetArn\":\""
                         + permissionSetArn + "\"}")

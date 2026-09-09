@@ -771,6 +771,18 @@ class SsoAdminServiceTest {
         ObjectNode request = assignmentRequest(permissionSet.arn());
         AssignmentOperation created = service.createAssignment(request);
         assertEquals("SUCCEEDED", created.status());
+        assertTrue(created.createdDateEpochMillis() > 0);
+
+        ObjectNode listStatus = mapper.createObjectNode();
+        listStatus.put("InstanceArn", service.getInstanceArn());
+        listStatus.putObject("Filter").put("Status", "SUCCEEDED");
+        var statusPage = service.listAccountAssignmentCreationStatus(listStatus);
+        assertEquals(1, statusPage.items().size());
+        assertEquals(created.requestId(), statusPage.items().get(0).requestId());
+        listStatus.putObject("Filter");
+        assertEquals(1, service.listAccountAssignmentCreationStatus(listStatus).items().size());
+        listStatus.putObject("Filter").put("Status", "INVALID");
+        assertError("ValidationException", () -> service.listAccountAssignmentCreationStatus(listStatus));
 
         assertError("ConflictException", () -> service.createAssignment(request));
 
