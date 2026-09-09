@@ -132,4 +132,16 @@ class BedrockAgentCoreToolsTest {
         assertThat(response.profileSummaries())
                 .anyMatch(summary -> profileId.equals(summary.profileId()));
     }
+
+    @Test
+    @Order(8)
+    void deleteBrowserProfile() {
+        DeleteBrowserProfileResponse response = client.deleteBrowserProfile(DeleteBrowserProfileRequest.builder()
+                .profileId(profileId)
+                .build());
+
+        assertThat(response.profileId()).isEqualTo(profileId);
+        assertThat(response.statusAsString()).isEqualTo("DELETING");
+        assertThat(response.lastUpdatedAt()).isNotNull();
+    }
 }

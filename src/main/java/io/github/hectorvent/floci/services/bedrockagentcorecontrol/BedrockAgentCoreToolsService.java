@@ -154,6 +154,19 @@ public class BedrockAgentCoreToolsService {
                 100, 100, "ValidationException");
     }
 
+    public ObjectNode deleteBrowserProfile(String profileId, String clientToken, String region) {
+        if (clientToken != null && !clientToken.isBlank()
+                && (clientToken.length() < 33 || clientToken.length() > 256
+                || !clientToken.matches("[a-zA-Z0-9](-*[a-zA-Z0-9]){0,256}"))) {
+            throw new AwsException("ValidationException", "clientToken does not satisfy length or pattern constraints", 400);
+        }
+        ObjectNode profile = getBrowserProfile(profileId, region);
+        storage.delete(key("browser-profile", region, profileId));
+        profile.put("status", "DELETING");
+        profile.put("lastUpdatedAt", Instant.now().toString());
+        return profile;
+    }
+
     public ObjectNode deleteBrowser(String browserId, String clientToken, String region) {
         if ("aws.browser.v1".equals(browserId)) {
             throw new AwsException("ValidationException", "System browser cannot be deleted", 400);

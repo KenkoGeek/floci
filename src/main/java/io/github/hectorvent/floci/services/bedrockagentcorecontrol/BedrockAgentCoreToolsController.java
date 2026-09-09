@@ -114,6 +114,26 @@ public class BedrockAgentCoreToolsController {
         }
     }
 
+    @DELETE
+    @Path("/browser-profiles/{profileId}")
+    public Response deleteBrowserProfile(@Context HttpHeaders headers,
+                                         @PathParam("profileId") String profileId,
+                                         @QueryParam("clientToken") String clientToken) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            ObjectNode profile = service.deleteBrowserProfile(profileId, clientToken, region);
+            ObjectNode response = objectMapper.createObjectNode();
+            copyText(profile, response, "lastSavedAt");
+            copyText(profile, response, "lastUpdatedAt");
+            copyText(profile, response, "profileArn");
+            copyText(profile, response, "profileId");
+            copyText(profile, response, "status");
+            return Response.ok(response).build();
+        } catch (Exception e) {
+            return error(e, "deleting browser profile");
+        }
+    }
+
     @GET
     @Path("/browser-profiles/{profileId}")
     public Response getBrowserProfile(@Context HttpHeaders headers, @PathParam("profileId") String profileId) {
