@@ -211,6 +211,30 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void deleteApplicationRemovesApplicationAssignmentsAndIdempotencyReferences() {
+        ObjectNode createRequest = mapper.createObjectNode();
+        createRequest.put("InstanceArn", service.getInstanceArn());
+        createRequest.put("ApplicationProviderArn", "arn:aws:sso::aws:applicationProvider/custom");
+        createRequest.put("Name", "DeleteMeApplication");
+        createRequest.put("ClientToken", "delete-app-token");
+        SsoApplication application = service.createApplication(createRequest, ACCOUNT_ID, "us-east-1");
+
+        ObjectNode assignment = mapper.createObjectNode();
+        assignment.put("ApplicationArn", application.applicationArn());
+        assignment.put("PrincipalId", PRINCIPAL_ID);
+        assignment.put("PrincipalType", "GROUP");
+        service.createApplicationAssignment(assignment);
+
+        service.deleteApplication(application.applicationArn());
+        assertError("ResourceNotFoundException", () -> service.getApplication(application.applicationArn()));
+        assertError("ResourceNotFoundException", () -> service.createApplicationAssignment(assignment));
+
+        SsoApplication recreated = service.createApplication(createRequest, ACCOUNT_ID, "us-east-1");
+        assertFalse(recreated.applicationArn().equals(application.applicationArn()));
+        assertError("ResourceNotFoundException", () -> service.deleteApplication(application.applicationArn()));
+    }
+
+    @Test
     void createApplicationAssignmentValidatesApplicationPrincipalAndDuplicates() {
         SsoApplication application = createApplication("Assignment App", "assignment-app-token");
         ObjectNode request = mapper.createObjectNode();

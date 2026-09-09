@@ -227,6 +227,26 @@ class SsoAdminAccountAssignmentTest {
     }
 
     @Test
+    @DisplayName("deletes applications through the AWS SDK")
+    void deleteApplicationUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses the emulator IAM Identity Center fixture");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient()) {
+            String instanceArn = sso.listInstances(request -> {}).instances().get(0).instanceArn();
+            String applicationArn = sso.createApplication(request -> request
+                    .instanceArn(instanceArn)
+                    .applicationProviderArn("arn:aws:sso::aws:applicationProvider/custom")
+                    .name("SdkDeleteApplication"))
+                    .applicationArn();
+
+            var response = sso.deleteApplication(request -> request.applicationArn(applicationArn));
+            assertThat(response.sdkHttpResponse().isSuccessful()).isTrue();
+            assertThatThrownBy(() -> sso.deleteApplication(request -> request.applicationArn(applicationArn)))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ResourceNotFoundException.class);
+        }
+    }
+
+    @Test
     @DisplayName("deletes account assignments through the AWS SDK")
     void deleteAccountAssignmentUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only account and principal identifiers");
