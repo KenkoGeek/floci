@@ -119,4 +119,17 @@ class BedrockAgentCoreCredentialProviderTest {
         assertThat(response.statusAsString()).isEqualTo("READY");
         assertThat(response.oauth2ProviderConfigOutput().githubOauth2ProviderConfig().clientId()).isEqualTo("client-id");
     }
+
+    @Test
+    @Order(7)
+    void getOauth2CredentialProvider() {
+        var response = client.getOauth2CredentialProvider(builder -> builder.name(oauth2ProviderName));
+
+        assertThat(response.name()).isEqualTo(oauth2ProviderName);
+        assertThat(response.credentialProviderVendorAsString()).isEqualTo("GithubOauth2");
+        assertThat(response.statusAsString()).isEqualTo("READY");
+        assertThat(response.createdTime()).isNotNull();
+        assertThat(response.lastUpdatedTime()).isNotNull();
+        assertThat(response.oauth2ProviderConfigOutput().githubOauth2ProviderConfig().clientId()).isEqualTo("client-id");
+    }
 }

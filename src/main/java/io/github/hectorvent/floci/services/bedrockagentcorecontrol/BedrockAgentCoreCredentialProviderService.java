@@ -224,6 +224,14 @@ public class BedrockAgentCoreCredentialProviderService {
         return item.deepCopy();
     }
 
+    public ObjectNode getOauth2(String name, String region) {
+        validateName(name);
+        return storage.get(key("oauth2", region, name))
+                .map(ObjectNode::deepCopy)
+                .orElseThrow(() -> new AwsException("ResourceNotFoundException",
+                        "OAuth2 credential provider not found: " + name, 404));
+    }
+
     private String credentialProviderArn(String region, String name) {
         return "arn:aws:acps:" + region + ":" + regionResolver.getAccountId()
                 + ":token-vault/default/apikeycredentialprovider/" + name;

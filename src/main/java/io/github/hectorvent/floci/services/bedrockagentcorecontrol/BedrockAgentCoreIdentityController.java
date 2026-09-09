@@ -226,6 +226,20 @@ public class BedrockAgentCoreIdentityController {
         }
     }
 
+    @POST
+    @Path("/GetOauth2CredentialProvider")
+    public Response getOauth2CredentialProvider(@Context HttpHeaders headers, String body) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            ObjectNode req = object(body);
+            ObjectNode out = credentialProviderService.getOauth2(text(req, "name"), region);
+            out.remove("tags");
+            return Response.ok(out).build();
+        } catch (Exception e) {
+            return error(e, "getting OAuth2 credential provider");
+        }
+    }
+
     private ObjectNode identityNode(WorkloadIdentity identity, boolean full) {
         ObjectNode node = objectMapper.createObjectNode();
         node.put("name", identity.getName());
