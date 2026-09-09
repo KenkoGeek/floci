@@ -10,6 +10,7 @@ import io.github.hectorvent.floci.core.storage.StorageBackend;
 import io.github.hectorvent.floci.core.storage.StorageFactory;
 import io.github.hectorvent.floci.services.ssoadmin.model.Assignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentOperation;
+import io.github.hectorvent.floci.services.ssoadmin.model.CustomerManagedPolicyReference;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
 import io.github.hectorvent.floci.services.ssoadmin.model.RegionMetadata;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -33,6 +34,8 @@ public class SsoAdminService implements Resettable {
     private static final Pattern PERMISSION_SET_ARN = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:sso:::permissionSet/(?:sso)?ins-[a-zA-Z0-9-.]{16}/ps-[a-zA-Z0-9-./]{16}");
     private static final Pattern PRINCIPAL_ID = Pattern.compile("([0-9a-f]{10}-|)[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}");
     private static final Pattern MANAGED_POLICY_ARN = Pattern.compile("arn:aws:iam::aws:policy/.+");
+    private static final Pattern CUSTOMER_MANAGED_POLICY_NAME = Pattern.compile("[\\w+=,.@-]+");
+    private static final Pattern CUSTOMER_MANAGED_POLICY_PATH = Pattern.compile("((/[A-Za-z0-9\\.,\\+@=_-]+)*)/");
     private static final Pattern REGION_NAME = Pattern.compile("([a-z]+-){2,3}\\d");
     private static final int PERMISSION_SET_QUOTA = 3500;
     private static final int REGION_QUOTA = 6;
@@ -117,7 +120,7 @@ public class SsoAdminService implements Resettable {
         }
         String arn = "arn:aws:sso:::permissionSet/ssoins-7223b02a5d9f7c8e/ps-" + shortId();
         PermissionSet permissionSet = new PermissionSet(arn, name, description, sessionDuration,
-                new LinkedHashMap<>(), null);
+                new LinkedHashMap<>(), new LinkedHashMap<>(), null);
         permissionSets.put(arn, permissionSet);
         return permissionSet;
     }
@@ -134,7 +137,8 @@ public class SsoAdminService implements Resettable {
         String session = request.has("SessionDuration")
                 ? validateSession(required(request, "SessionDuration")) : current.sessionDuration();
         PermissionSet updated = new PermissionSet(current.arn(), current.name(), description, session,
-                new LinkedHashMap<>(current.managedPolicies()), current.inlinePolicy());
+                new LinkedHashMap<>(current.managedPolicies()),
+                new LinkedHashMap<>(current.customerManagedPolicies()), current.inlinePolicy());
         permissionSets.put(updated.arn(), updated);
         return updated;
     }
@@ -145,11 +149,38 @@ public class SsoAdminService implements Resettable {
         if (current.managedPolicies().containsKey(policyArn)) {
             throw conflict("The managed policy is already attached to the permission set.");
         }
-        if (current.managedPolicies().size() >= MANAGED_POLICY_QUOTA) {
-            throw quota("A permission set can have at most 25 managed policies.");
+        if (managedPolicyCount(current) >= MANAGED_POLICY_QUOTA) {
+            throw quota("A permission set can have at most 25 AWS managed and customer managed policies.");
         }
         current.managedPolicies().put(policyArn, policyArn.substring(policyArn.lastIndexOf('/') + 1));
         permissionSets.put(arn, current);
+    }
+
+    public synchronized void attachCustomerManagedPolicyReference(JsonNode request) {
+        PermissionSet current = getPermissionSet(required(request, "InstanceArn"), required(request, "PermissionSetArn"));
+        JsonNode reference = request.get("CustomerManagedPolicyReference");
+        if (reference == null || !reference.isObject()) {
+            throw validation("CustomerManagedPolicyReference must be an object.");
+        }
+        String name = required(reference, "Name");
+        if (name.length() > 128 || !CUSTOMER_MANAGED_POLICY_NAME.matcher(name).matches()) {
+            throw validation("CustomerManagedPolicyReference.Name is invalid.");
+        }
+        String path = text(reference, "Path");
+        if (path == null) {
+            path = "/";
+        } else if (path.length() > 512 || !CUSTOMER_MANAGED_POLICY_PATH.matcher(path).matches()) {
+            throw validation("CustomerManagedPolicyReference.Path is invalid.");
+        }
+        String key = customerManagedPolicyKey(name, path);
+        if (current.customerManagedPolicies().containsKey(key)) {
+            throw conflict("The customer managed policy reference is already attached to the permission set.");
+        }
+        if (managedPolicyCount(current) >= MANAGED_POLICY_QUOTA) {
+            throw quota("A permission set can have at most 25 AWS managed and customer managed policies.");
+        }
+        current.customerManagedPolicies().put(key, new CustomerManagedPolicyReference(name, path));
+        permissionSets.put(current.arn(), current);
     }
 
     public synchronized void detachPolicy(String instanceArn, String arn, String policyArn) {
@@ -165,13 +196,15 @@ public class SsoAdminService implements Resettable {
         PermissionSet current = getPermissionSet(instanceArn, arn);
         validateInlinePolicy(policy);
         permissionSets.put(arn, new PermissionSet(current.arn(), current.name(), current.description(),
-                current.sessionDuration(), new LinkedHashMap<>(current.managedPolicies()), policy));
+                current.sessionDuration(), new LinkedHashMap<>(current.managedPolicies()),
+                new LinkedHashMap<>(current.customerManagedPolicies()), policy));
     }
 
     public synchronized void deleteInlinePolicy(String instanceArn, String arn) {
         PermissionSet current = getPermissionSet(instanceArn, arn);
         permissionSets.put(arn, new PermissionSet(current.arn(), current.name(), current.description(),
-                current.sessionDuration(), new LinkedHashMap<>(current.managedPolicies()), null));
+                current.sessionDuration(), new LinkedHashMap<>(current.managedPolicies()),
+                new LinkedHashMap<>(current.customerManagedPolicies()), null));
     }
 
     public PaginatedResult<Assignment> listAssignments(JsonNode request) {
@@ -307,6 +340,14 @@ public class SsoAdminService implements Resettable {
         if (nonWhitespace > MAX_INLINE_NON_WHITESPACE) {
             throw quota("InlinePolicy exceeds the non-whitespace quota.");
         }
+    }
+
+    private static int managedPolicyCount(PermissionSet permissionSet) {
+        return permissionSet.managedPolicies().size() + permissionSet.customerManagedPolicies().size();
+    }
+
+    private static String customerManagedPolicyKey(String name, String path) {
+        return name.toLowerCase(java.util.Locale.ROOT) + "\n" + path;
     }
 
     private static String validateRegionName(String value) {

@@ -34,6 +34,37 @@ class SsoAdminAccountAssignmentTest {
     }
 
     @Test
+    @DisplayName("attaches a customer managed policy reference through the AWS SDK")
+    void customerManagedPolicyReferenceUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses the emulator IAM Identity Center instance");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient()) {
+            String instanceArn = sso.listInstances(request -> {}).instances().get(0).instanceArn();
+            String permissionSetArn = sso.createPermissionSet(request -> request
+                            .instanceArn(instanceArn)
+                            .name("FlociCustomerPolicyAdmins"))
+                    .permissionSet()
+                    .permissionSetArn();
+
+            var response = sso.attachCustomerManagedPolicyReferenceToPermissionSet(request -> request
+                    .instanceArn(instanceArn)
+                    .permissionSetArn(permissionSetArn)
+                    .customerManagedPolicyReference(reference -> reference
+                            .name("PlatformPolicy")
+                            .path("/platform/")));
+
+            assertThat(response.sdkHttpResponse().isSuccessful()).isTrue();
+            assertThatThrownBy(() -> sso.attachCustomerManagedPolicyReferenceToPermissionSet(request -> request
+                    .instanceArn(instanceArn)
+                    .permissionSetArn(permissionSetArn)
+                    .customerManagedPolicyReference(reference -> reference
+                            .name("platformpolicy")
+                            .path("/platform/"))))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ConflictException.class);
+        }
+    }
+
+    @Test
     @DisplayName("creates and describes account assignments through the AWS SDK")
     void accountAssignmentLifecycleUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only account and principal identifiers");
