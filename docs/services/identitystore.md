@@ -48,6 +48,8 @@ Floci also accepts IAM Identity Center SCIM v2 requests under `/{tenant_id}/scim
 
 `CreateGroup` is supported through `POST /{tenant_id}/scim/v2/Groups`. It requires `displayName`, accepts `externalId`, supports up to 100 user members in one request, returns the AWS SCIM `201` group representation, and persists the group and memberships into the same Identity Store state used by the JSON 1.1 API. A tenant ID beginning with a ten-character identity-store prefix resolves to `d-<prefix>`; legacy UUID-form identity stores may use the UUID directly. Invalid tenants and missing bearer authorization return SCIM `401` errors.
 
+`CreateUser` is supported through `POST /{tenant_id}/scim/v2/Users`. It enforces the IAM Identity Center SCIM requirements for `givenName`, `familyName`, `userName`, and `displayName`; allows only one value for multi-value attributes such as `emails`, `addresses`, `phoneNumbers`, and `roles`; requires the email value to be primary; rejects `groups` during creation and the AWS-documented unsupported attributes/subattributes; and persists the resulting user into the shared Identity Store state. The response uses the AWS SCIM `201` user representation, including the enterprise extension when supplied.
+
 SCIM validation failures use the standard `urn:ietf:params:scim:api:messages:2.0:Error` response shape. See the [IAM Identity Center SCIM implementation](https://docs.aws.amazon.com/singlesignon/latest/developerguide/what-is-scim.html) and [CreateGroup](https://docs.aws.amazon.com/singlesignon/latest/developerguide/creategroup.html) documentation.
 
 ## AWS-compatible failures

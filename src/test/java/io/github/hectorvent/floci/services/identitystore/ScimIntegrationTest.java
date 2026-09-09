@@ -55,6 +55,85 @@ class ScimIntegrationTest {
     }
 
     @Test
+    void createUserUsesAwsScimShapeAndPersistsToIdentityStore() {
+        String userId = given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"externalId\":\"2819\",\"userName\":\"bjensen@example.com\","
+                        + "\"displayName\":\"Babs Jensen\",\"active\":true,"
+                        + "\"name\":{\"formatted\":\"Ms. Barbara J Jensen III\","
+                        + "\"familyName\":\"Jensen\",\"givenName\":\"Barbara\",\"middleName\":\"Jane\"},"
+                        + "\"emails\":[{\"value\":\"bjensen@example.com\",\"type\":\"work\",\"primary\":true}]}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(201)
+                .body("schemas[0]", equalTo("urn:ietf:params:scim:schemas:core:2.0:User"))
+                .body("id", notNullValue())
+                .body("externalId", equalTo("2819"))
+                .body("userName", equalTo("bjensen@example.com"))
+                .body("displayName", equalTo("Babs Jensen"))
+                .body("name.familyName", equalTo("Jensen"))
+                .body("name.givenName", equalTo("Barbara"))
+                .body("emails[0].value", equalTo("bjensen@example.com"))
+                .body("emails[0].primary", equalTo(true))
+                .body("active", equalTo(true))
+                .body("meta.resourceType", equalTo("User"))
+                .extract().path("id");
+
+        given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", AWS_AUTH)
+                .header("X-Amz-Target", "AWSIdentityStore.DescribeUser")
+                .body("{\"IdentityStoreId\":\"" + STORE + "\",\"UserId\":\"" + userId + "\"}")
+            .when()
+                .post("/")
+            .then()
+                .statusCode(200)
+                .body("UserName", equalTo("bjensen@example.com"))
+                .body("DisplayName", equalTo("Babs Jensen"))
+                .body("Name.FamilyName", equalTo("Jensen"))
+                .body("Emails[0].Value", equalTo("bjensen@example.com"));
+    }
+
+    @Test
+    void createUserValidatesAwsUnsupportedAttributesAndRequiredFields() {
+        given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"userName\":\"missing@example.com\",\"displayName\":\"Missing Name\"}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(400)
+                .body("status", equalTo("400"));
+
+        given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"userName\":\"groups@example.com\",\"displayName\":\"Groups User\","
+                        + "\"name\":{\"givenName\":\"Groups\",\"familyName\":\"User\"},\"groups\":[]}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(400)
+                .body("status", equalTo("400"));
+
+        given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"userName\":\"multi@example.com\",\"displayName\":\"Multi Email\","
+                        + "\"name\":{\"givenName\":\"Multi\",\"familyName\":\"Email\"},"
+                        + "\"emails\":[{\"value\":\"one@example.com\",\"primary\":true},"
+                        + "{\"value\":\"two@example.com\",\"primary\":true}]}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(400)
+                .body("status", equalTo("400"));
+    }
+
+    @Test
     void createGroupRequiresBearerAndKnownTenant() {
         given()
                 .contentType("application/json")
