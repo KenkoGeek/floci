@@ -240,6 +240,56 @@ public class BedrockAgentCoreCredentialProviderService {
                 maxResults, nextToken, 20, 20, "ValidationException");
     }
 
+    public ObjectNode updateOauth2(ObjectNode request, String region) {
+        String name = requiredName(request);
+        ObjectNode item = getOauth2(name, region);
+        String vendor = text(request, "credentialProviderVendor");
+        validateOauthVendor(vendor);
+        JsonNode configInput = request.get("oauth2ProviderConfigInput");
+        if (configInput == null || !configInput.isObject() || configInput.size() != 1) {
+            throw new AwsException("ValidationException",
+                    "oauth2ProviderConfigInput must contain exactly one provider configuration", 400);
+        }
+        Map.Entry<String, JsonNode> configEntry = configInput.fields().next();
+        if (!configEntry.getKey().equals(expectedOauthConfigKey(vendor)) || !configEntry.getValue().isObject()) {
+            throw new AwsException("ValidationException",
+                    "oauth2ProviderConfigInput does not match credentialProviderVendor", 400);
+        }
+        ObjectNode config = ((ObjectNode) configEntry.getValue()).deepCopy();
+        validateOauthProviderConfig(vendor, config);
+        String source = text(config, "clientSecretSource");
+        if (source == null) {
+            source = item.path("clientSecretSource").asText("MANAGED");
+        }
+        if (!source.equals("MANAGED") && !source.equals("EXTERNAL")) {
+            throw new AwsException("ValidationException", "clientSecretSource must be MANAGED or EXTERNAL", 400);
+        }
+        JsonNode secretConfig = config.get("clientSecretConfig");
+        if (source.equals("EXTERNAL")) {
+            validateSecretReference(secretConfig, "clientSecretConfig");
+        }
+        String clientSecret = text(config, "clientSecret");
+        if (clientSecret != null && clientSecret.length() > 2048) {
+            throw new AwsException("ValidationException", "clientSecret exceeds maximum length of 2048", 400);
+        }
+        item.put("credentialProviderVendor", vendor);
+        item.put("clientSecretSource", source);
+        if (source.equals("EXTERNAL")) {
+            item.putObject("clientSecretArn").put("secretArn", secretConfig.path("secretId").asText());
+            item.put("clientSecretJsonKey", secretConfig.path("jsonKey").asText());
+        } else {
+            item.putObject("clientSecretArn").put("secretArn", managedOauthSecretArn(region, name));
+            item.put("clientSecretJsonKey", "clientSecret");
+        }
+        ObjectNode outputUnion = JsonNodeFactory.instance.objectNode();
+        outputUnion.set(configEntry.getKey(), oauthOutputConfig(vendor, config));
+        item.set("oauth2ProviderConfigOutput", outputUnion);
+        item.put("status", "READY");
+        item.put("lastUpdatedTime", Instant.now().getEpochSecond());
+        storage.put(key("oauth2", region, name), item);
+        return item.deepCopy();
+    }
+
     private String credentialProviderArn(String region, String name) {
         return "arn:aws:acps:" + region + ":" + regionResolver.getAccountId()
                 + ":token-vault/default/apikeycredentialprovider/" + name;
