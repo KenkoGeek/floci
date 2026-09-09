@@ -543,6 +543,13 @@ class SsoAdminAccountAssignmentTest {
             assertThat(describedDeletion.accountAssignmentDeletionStatus().requestId())
                     .isEqualTo(deleted.accountAssignmentDeletionStatus().requestId());
             assertThat(describedDeletion.accountAssignmentDeletionStatus().statusAsString()).isEqualTo("SUCCEEDED");
+
+            var deletionStatuses = sso.listAccountAssignmentDeletionStatus(request -> request
+                    .instanceArn(instanceArn)
+                    .filter(filter -> filter.status("SUCCEEDED")));
+            assertThat(deletionStatuses.accountAssignmentsDeletionStatus())
+                    .anyMatch(operation -> deleted.accountAssignmentDeletionStatus().requestId().equals(operation.requestId()));
+
             assertThat(sso.listAccountAssignments(request -> request
                     .instanceArn(instanceArn)
                     .accountId("123456789012")

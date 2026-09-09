@@ -576,6 +576,13 @@ class SsoAdminIntegrationTest {
             .then().statusCode(200)
                 .body("AccountAssignmentDeletionStatus.RequestId", equalTo(deletionRequestId))
                 .body("AccountAssignmentDeletionStatus.Status", equalTo("SUCCEEDED"));
+
+        given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.ListAccountAssignmentDeletionStatus")
+                .body("{\"InstanceArn\":\"" + instanceArn + "\",\"Filter\":{\"Status\":\"SUCCEEDED\"}}")
+            .when().post("/")
+            .then().statusCode(200)
+                .body("AccountAssignmentsDeletionStatus.RequestId", org.hamcrest.Matchers.hasItem(deletionRequestId));
     }
 
     @Test

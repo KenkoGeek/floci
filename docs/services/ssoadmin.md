@@ -45,6 +45,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | `DescribeAccountAssignmentCreationStatus` | Describes account-assignment creation status. |
 | `ListAccountAssignmentCreationStatus` | Lists account-assignment creation request metadata with optional operation-status filtering and AWS-compatible pagination. |
 | `DescribeAccountAssignmentDeletionStatus` | Describes a persisted account-assignment deletion request by its AWS-compatible UUID request identifier. |
+| `ListAccountAssignmentDeletionStatus` | Lists account-assignment deletion request metadata with optional operation-status filtering and AWS-compatible pagination. |
 <!-- floci:actions:end -->
 
 State is isolated by caller account through Floci storage.
