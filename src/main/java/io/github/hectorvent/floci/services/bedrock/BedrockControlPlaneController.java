@@ -299,6 +299,12 @@ public class BedrockControlPlaneController {
         return execute("DeleteImportedModel", null, Map.of("modelIdentifier", modelIdentifier), headers);
     }
 
+    @POST
+    @Path("/custom-models/create-custom-model")
+    public Response createCustomModel(String body, @Context HttpHeaders headers) {
+        return execute("CreateCustomModel", body, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
