@@ -389,6 +389,12 @@ public class BedrockControlPlaneController {
         return execute("StopModelInvocationJob", body, Map.of("jobIdentifier", jobIdentifier), headers);
     }
 
+    @POST
+    @Path("/marketplace-model/endpoints")
+    public Response createMarketplaceModelEndpoint(String body, @Context HttpHeaders headers) {
+        return execute("CreateMarketplaceModelEndpoint", body, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(

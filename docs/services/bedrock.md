@@ -69,6 +69,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `GetModelInvocationJob` | `GET /model-invocation-job/{jobIdentifier}` | AWS-compatible control-plane emulation. |
 | `ListModelInvocationJobs` | `GET /model-invocation-jobs` | AWS-compatible control-plane emulation. |
 | `StopModelInvocationJob` | `POST /model-invocation-job/{jobIdentifier}/stop` | AWS-compatible control-plane emulation. |
+| `CreateMarketplaceModelEndpoint` | `POST /marketplace-model/endpoints` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 
