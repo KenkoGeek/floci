@@ -227,6 +227,43 @@ class SsoAdminAccountAssignmentTest {
     }
 
     @Test
+    @DisplayName("deletes account assignments through the AWS SDK")
+    void deleteAccountAssignmentUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only account and principal identifiers");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient()) {
+            String instanceArn = sso.listInstances(request -> {}).instances().get(0).instanceArn();
+            String permissionSetArn = sso.createPermissionSet(request -> request
+                            .instanceArn(instanceArn)
+                            .name("FlociDeleteAssignmentAdmins"))
+                    .permissionSet().permissionSetArn();
+            sso.createAccountAssignment(request -> request
+                    .instanceArn(instanceArn)
+                    .targetId("123456789012")
+                    .targetType(TargetType.AWS_ACCOUNT)
+                    .permissionSetArn(permissionSetArn)
+                    .principalType(PrincipalType.GROUP)
+                    .principalId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"));
+
+            var deleted = sso.deleteAccountAssignment(request -> request
+                    .instanceArn(instanceArn)
+                    .targetId("123456789012")
+                    .targetType(TargetType.AWS_ACCOUNT)
+                    .permissionSetArn(permissionSetArn)
+                    .principalType(PrincipalType.GROUP)
+                    .principalId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"));
+
+            assertThat(deleted.accountAssignmentDeletionStatus()).isNotNull();
+            assertThat(deleted.accountAssignmentDeletionStatus().statusAsString()).isEqualTo("SUCCEEDED");
+            assertThat(deleted.accountAssignmentDeletionStatus().requestId()).isNotBlank();
+            assertThat(sso.listAccountAssignments(request -> request
+                    .instanceArn(instanceArn)
+                    .accountId("123456789012")
+                    .permissionSetArn(permissionSetArn)).accountAssignments()).isEmpty();
+        }
+    }
+
+    @Test
     @DisplayName("creates and describes account assignments through the AWS SDK")
     void accountAssignmentLifecycleUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only account and principal identifiers");

@@ -11,6 +11,7 @@ import io.github.hectorvent.floci.core.storage.StorageBackend;
 import io.github.hectorvent.floci.core.storage.StorageFactory;
 import io.github.hectorvent.floci.services.ssoadmin.model.Assignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentOperation;
+import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentDeletionOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAssignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationPortalOptions;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationSignInOptions;
@@ -75,6 +76,7 @@ public class SsoAdminService implements Resettable {
     private final StorageBackend<String, PermissionSet> permissionSets;
     private final StorageBackend<String, Assignment> assignments;
     private final StorageBackend<String, AssignmentOperation> assignmentOperations;
+    private final StorageBackend<String, AssignmentDeletionOperation> assignmentDeletionOperations;
     private final StorageBackend<String, RegionMetadata> regions;
     private final StorageBackend<String, SsoApplication> applications;
     private final StorageBackend<String, String> applicationClientTokens;
@@ -95,6 +97,7 @@ public class SsoAdminService implements Resettable {
                 storageFactory.create("ssoadmin", "ssoadmin-permission-sets.json", new TypeReference<Map<String, PermissionSet>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-assignments.json", new TypeReference<Map<String, Assignment>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-assignment-operations.json", new TypeReference<Map<String, AssignmentOperation>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-assignment-deletion-operations.json", new TypeReference<Map<String, AssignmentDeletionOperation>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-regions.json", new TypeReference<Map<String, RegionMetadata>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-applications.json", new TypeReference<Map<String, SsoApplication>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-application-client-tokens.json", new TypeReference<Map<String, String>>() {}),
@@ -112,6 +115,7 @@ public class SsoAdminService implements Resettable {
     SsoAdminService(StorageBackend<String, PermissionSet> permissionSets,
                     StorageBackend<String, Assignment> assignments,
                     StorageBackend<String, AssignmentOperation> assignmentOperations,
+                    StorageBackend<String, AssignmentDeletionOperation> assignmentDeletionOperations,
                     StorageBackend<String, RegionMetadata> regions,
                     StorageBackend<String, SsoApplication> applications,
                     StorageBackend<String, String> applicationClientTokens,
@@ -127,6 +131,7 @@ public class SsoAdminService implements Resettable {
         this.permissionSets = permissionSets;
         this.assignments = assignments;
         this.assignmentOperations = assignmentOperations;
+        this.assignmentDeletionOperations = assignmentDeletionOperations;
         this.regions = regions;
         this.applications = applications;
         this.applicationClientTokens = applicationClientTokens;
@@ -634,6 +639,43 @@ public class SsoAdminService implements Resettable {
         return operation;
     }
 
+    public synchronized AssignmentDeletionOperation deleteAssignment(JsonNode request) {
+        String instanceArn = required(request, "InstanceArn");
+        requireInstance(instanceArn);
+        String account = validateAccountId(required(request, "TargetId"));
+        if (!"AWS_ACCOUNT".equals(required(request, "TargetType"))) {
+            throw validation("TargetType must be AWS_ACCOUNT.");
+        }
+        String permission = required(request, "PermissionSetArn");
+        getPermissionSet(instanceArn, permission);
+        String principal = validatePrincipalId(required(request, "PrincipalId"));
+        String principalType = required(request, "PrincipalType");
+        if (!PRINCIPAL_TYPES.contains(principalType)) {
+            throw validation("PrincipalType must be USER or GROUP.");
+        }
+        String key = account + "::" + permission + "::" + principal;
+        Assignment existing = assignments.get(key)
+                .orElseThrow(() -> notFound("Account assignment not found."));
+        if (!principalType.equals(existing.principalType())) {
+            throw notFound("Account assignment not found.");
+        }
+        assignments.delete(key);
+        String requestId = UUID.randomUUID().toString();
+        AssignmentDeletionOperation operation = new AssignmentDeletionOperation(
+                requestId, "SUCCEEDED", System.currentTimeMillis(), account, permission, principal, principalType, null);
+        assignmentDeletionOperations.put(requestId, operation);
+        return operation;
+    }
+
+    public AssignmentDeletionOperation getAssignmentDeletionOperation(String instanceArn, String requestId) {
+        requireInstance(instanceArn);
+        if (requestId == null || !requestId.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+            throw validation("AccountAssignmentDeletionRequestId must be a UUID.");
+        }
+        return assignmentDeletionOperations.get(requestId)
+                .orElseThrow(() -> notFound("Assignment deletion operation not found: " + requestId));
+    }
+
     public AssignmentOperation getAssignmentOperation(String instanceArn, String requestId) {
         requireInstance(instanceArn);
         if (requestId == null || !requestId.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
@@ -895,6 +937,7 @@ public class SsoAdminService implements Resettable {
         permissionSets.clear();
         assignments.clear();
         assignmentOperations.clear();
+        assignmentDeletionOperations.clear();
         regions.clear();
         applications.clear();
         applicationClientTokens.clear();

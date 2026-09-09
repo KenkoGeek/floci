@@ -6,6 +6,7 @@ import io.github.hectorvent.floci.core.common.AwsException;
 import io.github.hectorvent.floci.core.storage.InMemoryStorage;
 import io.github.hectorvent.floci.services.ssoadmin.model.Assignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentOperation;
+import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentDeletionOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAssignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.InstanceAccessControlAttributeConfiguration;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
@@ -38,6 +39,7 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, PermissionSet>(),
                 new InMemoryStorage<String, Assignment>(),
                 new InMemoryStorage<String, AssignmentOperation>(),
+                new InMemoryStorage<String, AssignmentDeletionOperation>(),
                 new InMemoryStorage<String, RegionMetadata>(),
                 new InMemoryStorage<String, SsoApplication>(),
                 new InMemoryStorage<String, String>(),
@@ -433,6 +435,35 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void deleteAccountAssignmentRemovesAssignmentAndCreatesDeletionOperation() {
+        PermissionSet permissionSet = createPermissionSet("DeleteAssignmentAdmins");
+        ObjectNode request = assignmentRequest(permissionSet.arn());
+        service.createAssignment(request);
+
+        AssignmentDeletionOperation deleted = service.deleteAssignment(request);
+        assertEquals("SUCCEEDED", deleted.status());
+        assertTrue(deleted.createdDateEpochMillis() > 0);
+        assertTrue(service.listAssignments(service.getInstanceArn(), ACCOUNT_ID, permissionSet.arn()).isEmpty());
+        assertEquals(deleted, service.getAssignmentDeletionOperation(service.getInstanceArn(), deleted.requestId()));
+        assertError("ResourceNotFoundException", () -> service.deleteAssignment(request));
+    }
+
+    @Test
+    void deleteAccountAssignmentValidatesPrincipalTypeAndTargetType() {
+        PermissionSet permissionSet = createPermissionSet("DeleteValidationAdmins");
+        ObjectNode request = assignmentRequest(permissionSet.arn());
+        service.createAssignment(request);
+
+        ObjectNode invalidTargetType = request.deepCopy();
+        invalidTargetType.put("TargetType", "APPLICATION");
+        assertError("ValidationException", () -> service.deleteAssignment(invalidTargetType));
+
+        ObjectNode wrongPrincipalType = request.deepCopy();
+        wrongPrincipalType.put("PrincipalType", "USER");
+        assertError("ResourceNotFoundException", () -> service.deleteAssignment(wrongPrincipalType));
+    }
+
+    @Test
     void clearRemovesPersistedServiceState() {
         PermissionSet permissionSet = createPermissionSet("ResetAdmins");
         AssignmentOperation operation = service.createAssignment(assignmentRequest(permissionSet.arn()));
@@ -451,6 +482,7 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, PermissionSet>(),
                 new InMemoryStorage<String, Assignment>(),
                 new InMemoryStorage<String, AssignmentOperation>(),
+                new InMemoryStorage<String, AssignmentDeletionOperation>(),
                 new InMemoryStorage<String, RegionMetadata>(),
                 new InMemoryStorage<String, SsoApplication>(),
                 new InMemoryStorage<String, String>(),
