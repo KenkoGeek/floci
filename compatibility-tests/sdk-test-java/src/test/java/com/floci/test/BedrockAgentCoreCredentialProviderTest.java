@@ -64,4 +64,13 @@ class BedrockAgentCoreCredentialProviderTest {
         assertThat(response.createdTime()).isNotNull();
         assertThat(response.lastUpdatedTime()).isNotNull();
     }
+
+    @Test
+    @Order(3)
+    void listApiKeyCredentialProviders() {
+        var response = client.listApiKeyCredentialProviders(builder -> builder.maxResults(100));
+
+        assertThat(response.credentialProviders())
+                .anyMatch(provider -> apiKeyProviderName.equals(provider.name()));
+    }
 }

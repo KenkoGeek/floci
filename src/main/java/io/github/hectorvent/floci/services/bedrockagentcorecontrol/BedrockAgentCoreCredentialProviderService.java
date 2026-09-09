@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.hectorvent.floci.core.common.AwsException;
+import io.github.hectorvent.floci.core.common.Pagination;
+import io.github.hectorvent.floci.core.common.PaginatedResult;
 import io.github.hectorvent.floci.core.common.RegionResolver;
 import io.github.hectorvent.floci.core.storage.StorageBackend;
 import io.github.hectorvent.floci.core.storage.StorageFactory;
@@ -12,6 +14,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 @ApplicationScoped
@@ -96,6 +99,14 @@ public class BedrockAgentCoreCredentialProviderService {
                 .map(ObjectNode::deepCopy)
                 .orElseThrow(() -> new AwsException("ResourceNotFoundException",
                         "API key credential provider not found: " + name, 404));
+    }
+
+    public PaginatedResult<ObjectNode> listApiKeys(Integer maxResults, String nextToken, String region) {
+        List<ObjectNode> items = storage.scan(k -> k.startsWith(prefix("apikey", region))).stream()
+                .map(ObjectNode::deepCopy)
+                .toList();
+        return Pagination.paginate(items, node -> node.path("name").asText(),
+                maxResults, nextToken, 100, 100, "ValidationException");
     }
 
     private String credentialProviderArn(String region, String name) {
