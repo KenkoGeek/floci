@@ -16,10 +16,10 @@ class MarketplaceMeteringIntegrationTest {
     @Test
     void resolveCustomerIsStableForRegistrationToken() {
         String body = "{\"RegistrationToken\":\"local-registration-token\"}";
-        var first = rpc("ResolveCustomer", body).then().statusCode(200)
+        var first = rpc("ResolveCustomer", body).statusCode(200)
                 .body("CustomerAWSAccountId", notNullValue()).body("LicenseArn", notNullValue())
                 .extract().response();
-        rpc("ResolveCustomer", body).then().statusCode(200)
+        rpc("ResolveCustomer", body).statusCode(200)
                 .body("CustomerAWSAccountId", equalTo(first.path("CustomerAWSAccountId")))
                 .body("LicenseArn", equalTo(first.path("LicenseArn")));
     }
@@ -29,9 +29,9 @@ class MarketplaceMeteringIntegrationTest {
         long timestamp = System.currentTimeMillis() / 1000L;
         String body = "{\"ProductCode\":\"prod-local\",\"Timestamp\":" + timestamp
                 + ",\"UsageDimension\":\"requests\",\"UsageQuantity\":3}";
-        String recordId = rpc("MeterUsage", body).then().statusCode(200)
+        String recordId = rpc("MeterUsage", body).statusCode(200)
                 .body("MeteringRecordId", notNullValue()).extract().path("MeteringRecordId");
-        rpc("MeterUsage", body).then().statusCode(200).body("MeteringRecordId", equalTo(recordId));
+        rpc("MeterUsage", body).statusCode(200).body("MeteringRecordId", equalTo(recordId));
     }
 
     @Test
@@ -39,14 +39,14 @@ class MarketplaceMeteringIntegrationTest {
         long timestamp = System.currentTimeMillis() / 1000L;
         String base = "{\"ProductCode\":\"prod-local\",\"UsageRecords\":[{\"Timestamp\":" + timestamp
                 + ",\"CustomerAWSAccountId\":\"123456789012\",\"Dimension\":\"users\",\"Quantity\":";
-        rpc("BatchMeterUsage", base + "1}]}").then().statusCode(200).body("Results[0].Status", equalTo("Success"));
-        rpc("BatchMeterUsage", base + "2}]}").then().statusCode(200).body("Results[0].Status", equalTo("DuplicateRecord"));
+        rpc("BatchMeterUsage", base + "1}]}").statusCode(200).body("Results[0].Status", equalTo("Success"));
+        rpc("BatchMeterUsage", base + "2}]}").statusCode(200).body("Results[0].Status", equalTo("DuplicateRecord"));
     }
 
     @Test
     void registerUsageReturnsSignature() {
         rpc("RegisterUsage", "{\"ProductCode\":\"prod-local\",\"PublicKeyVersion\":1,\"Nonce\":\"instance-1\"}")
-                .then().statusCode(200).body("Signature", notNullValue());
+                .statusCode(200).body("Signature", notNullValue());
     }
 
     private static io.restassured.response.ValidatableResponse rpc(String action, String body) {

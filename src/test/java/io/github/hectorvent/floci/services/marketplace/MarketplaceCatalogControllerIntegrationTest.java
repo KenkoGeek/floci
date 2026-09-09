@@ -19,12 +19,17 @@ class MarketplaceCatalogControllerIntegrationTest {
         String body = "{\"Catalog\":\"AWSMarketplace\",\"ChangeSet\":[{\"ChangeType\":\"CreateProduct\",\"Entity\":{\"Type\":\"SaaSProduct@1.0\",\"Identifier\":\"@1\"},\"DetailsDocument\":{\"ProductTitle\":\"Local product\"}}]}";
         String id = given().contentType("application/json").header("Authorization", auth())
                 .body(body).post("/StartChangeSet").then().statusCode(200)
-                .body("ChangeSetId", notNullValue()).extract().path("ChangeSetId");
+                .body("ChangeSetId", notNullValue())
+                .body("ChangeSetArn", containsString(":000000000000:AWSMarketplace/ChangeSet/"))
+                .extract().path("ChangeSetId");
         var described = given().header("Authorization", auth()).get("/DescribeChangeSet?catalog=AWSMarketplace&changeSetId=" + id)
                 .then().statusCode(200).body("Status", equalTo("SUCCEEDED")).extract().response();
         String entityId = described.path("ChangeSet[0].Entity.Identifier");
         given().header("Authorization", auth()).get("/DescribeEntity?catalog=AWSMarketplace&entityId=" + entityId)
-                .then().statusCode(200).body("EntityIdentifier", equalTo(entityId)).body("DetailsDocument.ProductTitle", equalTo("Local product"));
+                .then().statusCode(200)
+                .body("EntityIdentifier", equalTo(entityId))
+                .body("EntityArn", containsString(":000000000000:AWSMarketplace/SaaSProduct/"))
+                .body("DetailsDocument.ProductTitle", equalTo("Local product"));
     }
 
     @Test

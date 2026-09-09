@@ -7,10 +7,12 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.hectorvent.floci.core.common.AwsException;
 import io.github.hectorvent.floci.core.common.Resettable;
+import io.github.hectorvent.floci.core.common.RequestContext;
 import io.github.hectorvent.floci.core.storage.AccountAwareStorageBackend;
 import io.github.hectorvent.floci.core.storage.StorageFactory;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.jboss.logging.Logger;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -23,30 +25,35 @@ import java.util.UUID;
 @ApplicationScoped
 public class MarketplaceService implements Resettable {
     private static final String CATALOG = "AWSMarketplace";
+    private static final Logger LOG = Logger.getLogger(MarketplaceService.class);
     private final ObjectMapper mapper;
     private final AccountAwareStorageBackend<JsonNode> entities;
     private final AccountAwareStorageBackend<JsonNode> changeSets;
     private final AccountAwareStorageBackend<JsonNode> resourcePolicies;
     private final AccountAwareStorageBackend<JsonNode> tags;
     private final AccountAwareStorageBackend<JsonNode> assessments;
+    private final RequestContext requestContext;
 
     @Inject
-    public MarketplaceService(StorageFactory factory, ObjectMapper mapper) {
+    public MarketplaceService(StorageFactory factory, ObjectMapper mapper, RequestContext requestContext) {
         this(mapper,
                 factory.create("marketplace", "marketplace-entities.json", type()),
                 factory.create("marketplace", "marketplace-change-sets.json", type()),
                 factory.create("marketplace", "marketplace-resource-policies.json", type()),
                 factory.create("marketplace", "marketplace-tags.json", type()),
-                factory.create("marketplace", "marketplace-assessments.json", type()));
+                factory.create("marketplace", "marketplace-assessments.json", type()),
+                requestContext);
     }
 
     MarketplaceService(ObjectMapper mapper, AccountAwareStorageBackend<JsonNode> entities,
                        AccountAwareStorageBackend<JsonNode> changeSets,
                        AccountAwareStorageBackend<JsonNode> resourcePolicies,
                        AccountAwareStorageBackend<JsonNode> tags,
-                       AccountAwareStorageBackend<JsonNode> assessments) {
+                       AccountAwareStorageBackend<JsonNode> assessments,
+                       RequestContext requestContext) {
         this.mapper = mapper; this.entities = entities; this.changeSets = changeSets;
         this.resourcePolicies = resourcePolicies; this.tags = tags; this.assessments = assessments;
+        this.requestContext = requestContext;
     }
 
     private static TypeReference<Map<String, JsonNode>> type() { return new TypeReference<>() {}; }
@@ -147,9 +154,9 @@ public class MarketplaceService implements Resettable {
     }
 
     private ArrayNode normalizeChanges(ArrayNode changes, String region) {
-        ArrayNode out=mapper.createArrayNode(); for(JsonNode raw:changes){ ObjectNode c=raw.deepCopy(); text(c,"ChangeType",true); JsonNode entity=c.path("Entity"); if(!entity.isObject()) throw validation("Each change requires Entity."); String type=text(entity,"Type",true); String identifier=text(entity,"Identifier",false); if(identifier==null||identifier.isBlank()||identifier.equals("@1")){ identifier=idForType(type); ((ObjectNode)entity).put("Identifier",identifier); } c.put("EntityArn",arn(region,"AWSMarketplace/"+type+"/"+identifier)); out.add(c); } return out;
+        ArrayNode out=mapper.createArrayNode(); for(JsonNode raw:changes){ ObjectNode c=raw.deepCopy(); text(c,"ChangeType",true); JsonNode entity=c.path("Entity"); if(!entity.isObject()) throw validation("Each change requires Entity."); String type=text(entity,"Type",true); String identifier=text(entity,"Identifier",false); if(identifier==null||identifier.isBlank()||identifier.equals("@1")){ identifier=idForType(type); ((ObjectNode)entity).put("Identifier",identifier); } c.put("EntityArn",arn(region,"AWSMarketplace/"+arnEntityType(type)+"/"+identifier)); out.add(c); } return out;
     }
-    private void applyChangeSet(ObjectNode cs,String region){ cs.put("Status","APPLYING"); for(JsonNode c:cs.path("ChangeSet")){ String changeType=c.path("ChangeType").asText(); JsonNode ref=c.path("Entity"); String type=ref.path("Type").asText(); String id=ref.path("Identifier").asText(); if(changeType.toLowerCase(Locale.ROOT).startsWith("delete")){ entities.delete(id); continue; } ObjectNode e=entities.get(id).filter(JsonNode::isObject).map(n->(ObjectNode)n.deepCopy()).orElseGet(mapper::createObjectNode); e.put("EntityType",type); e.put("EntityIdentifier",id); e.put("EntityId",id); e.put("EntityArn",arn(region,"AWSMarketplace/"+type+"/"+id)); e.put("LastModifiedDate",Instant.now().toString()); JsonNode d=c.get("DetailsDocument"); if(d!=null&&!d.isNull()) e.set("DetailsDocument",d.deepCopy()); JsonNode legacy=c.get("Details"); if(legacy!=null&&!legacy.isNull()){ e.put("Details",legacy.asText()); if(!e.has("DetailsDocument")){ try{e.set("DetailsDocument",mapper.readTree(legacy.asText()));}catch(Exception ignored){ /* Legacy Details is allowed to be an opaque string. */ } } } entities.put(id,e); } cs.put("Status","SUCCEEDED"); cs.put("EndTime",Instant.now().toString()); }
+    private void applyChangeSet(ObjectNode cs,String region){ cs.put("Status","APPLYING"); for(JsonNode c:cs.path("ChangeSet")){ String changeType=c.path("ChangeType").asText(); JsonNode ref=c.path("Entity"); String type=ref.path("Type").asText(); String id=ref.path("Identifier").asText(); if(changeType.toLowerCase(Locale.ROOT).startsWith("delete")){ entities.delete(id); continue; } ObjectNode e=entities.get(id).filter(JsonNode::isObject).map(n->(ObjectNode)n.deepCopy()).orElseGet(mapper::createObjectNode); e.put("EntityType",type); e.put("EntityIdentifier",id); e.put("EntityId",id); e.put("EntityArn",arn(region,"AWSMarketplace/"+arnEntityType(type)+"/"+id)); e.put("LastModifiedDate",Instant.now().toString()); JsonNode d=c.get("DetailsDocument"); if(d!=null&&!d.isNull()) e.set("DetailsDocument",d.deepCopy()); JsonNode legacy=c.get("Details"); if(legacy!=null&&!legacy.isNull()){ e.put("Details",legacy.asText()); if(!e.has("DetailsDocument")){ try{e.set("DetailsDocument",mapper.readTree(legacy.asText()));}catch(Exception parseError){ LOG.debug("Legacy Marketplace Details is not JSON; preserving it as an opaque string.", parseError); } } } entities.put(id,e); } cs.put("Status","SUCCEEDED"); cs.put("EndTime",Instant.now().toString()); }
     private void completePending(String region){ for(String k:changeSets.keys()){ JsonNode n=changeSets.get(k).orElse(null); if(n instanceof ObjectNode o && "PREPARING".equals(o.path("Status").asText())){ applyChangeSet(o,region); changeSets.put(k,o); } } }
     private ObjectNode ids(JsonNode cs){ return mapper.createObjectNode().put("ChangeSetId",cs.path("ChangeSetId").asText()).put("ChangeSetArn",cs.path("ChangeSetArn").asText()); }
     private ObjectNode changeSet(String id){ if(id==null||id.isBlank()) throw validation("ChangeSetId is required."); JsonNode n=changeSets.get(id).orElseThrow(()->notFound("Change set",id)); return (ObjectNode)n.deepCopy(); }
@@ -164,8 +171,10 @@ public class MarketplaceService implements Resettable {
     private static String text(JsonNode n,String field,boolean required){ JsonNode v=n==null?null:n.get(field); if(v==null||v.isNull()||!v.isTextual()||v.asText().isBlank()){if(required)throw validation(field+" is required.");return null;} return v.asText(); }
     private static void requireCatalog(String c){ if(c==null||c.isBlank())throw validation("Catalog is required."); if(!CATALOG.equals(c))throw validation("Catalog must be AWSMarketplace."); }
     private static String idForType(String type){String prefix=type.toLowerCase(Locale.ROOT).contains("offer")?"offer-":"prod-";return prefix+compactId();}
+    private static String arnEntityType(String type){int version=type.indexOf('@');return version<0?type:type.substring(0,version);}
     private static String compactId(){return UUID.randomUUID().toString().replace("-","").substring(0,16);}
-    private static String arn(String region,String resource){return "arn:aws:aws-marketplace:"+region+"::"+resource;}
+    private String arn(String region,String resource){return "arn:aws:aws-marketplace:"+region+":"+accountId()+":"+resource;}
+    private String accountId(){return requestContext == null || requestContext.getAccountId() == null ? "000000000000" : requestContext.getAccountId();}
     private static AwsException validation(String msg){return new AwsException("ValidationException",msg,422);}
     private static AwsException notFound(String kind,String id){return new AwsException("ResourceNotFoundException",kind+" "+id+" was not found.",404);}
 
