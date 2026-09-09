@@ -175,6 +175,11 @@ class SsoAdminAccountAssignmentTest {
                     .scope("api:read")
                     .authorizedTargets(instanceArn));
             assertThat(putScope.sdkHttpResponse().isSuccessful()).isTrue();
+            var accessScope = sso.getApplicationAccessScope(request -> request
+                    .applicationArn(created.applicationArn())
+                    .scope("api:read"));
+            assertThat(accessScope.scope()).isEqualTo("api:read");
+            assertThat(accessScope.authorizedTargets()).containsExactly(instanceArn);
         }
     }
 
