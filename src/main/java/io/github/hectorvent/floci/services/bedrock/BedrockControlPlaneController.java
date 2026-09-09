@@ -443,6 +443,12 @@ public class BedrockControlPlaneController {
         return execute("DeletePromptRouter", null, Map.of("promptRouterArn", promptRouterArn), headers);
     }
 
+    @GET
+    @Path("/prompt-routers/{promptRouterArn:.+}")
+    public Response getPromptRouter(@PathParam("promptRouterArn") String promptRouterArn, @Context HttpHeaders headers) {
+        return execute("GetPromptRouter", null, Map.of("promptRouterArn", promptRouterArn), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
