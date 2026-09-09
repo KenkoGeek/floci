@@ -22,9 +22,38 @@ Floci emulates AWS Marketplace APIs under the shared `aws-marketplace` SigV4 sig
 | `StartChangeSet` | Starts an idempotent Marketplace Catalog change set |
 | `TagResource` | Adds or replaces tags on a Marketplace Catalog resource |
 | `UntagResource` | Removes tag keys from a Marketplace Catalog resource |
+| `AcceptAgreementCancellationRequest` | - |
+| `AcceptAgreementPaymentRequest` | - |
+| `AcceptAgreementRequest` | - |
+| `BatchCreateBillingAdjustmentRequest` | - |
+| `CancelAgreement` | - |
+| `CancelAgreementCancellationRequest` | - |
+| `CancelAgreementPaymentRequest` | - |
+| `CreateAgreementRequest` | - |
+| `DescribeAgreement` | - |
+| `GetAgreementCancellationRequest` | - |
+| `GetAgreementEntitlements` | - |
+| `GetAgreementPaymentRequest` | - |
+| `GetAgreementTerms` | - |
+| `GetBillingAdjustmentRequest` | - |
+| `ListAgreementCancellationRequests` | - |
+| `ListAgreementCharges` | - |
+| `ListAgreementInvoiceLineItems` | - |
+| `ListAgreementPaymentRequests` | - |
+| `ListBillingAdjustmentRequests` | - |
+| `RejectAgreementCancellationRequest` | - |
+| `RejectAgreementPaymentRequest` | - |
+| `SearchAgreements` | - |
+| `SendAgreementCancellationRequest` | - |
+| `SendAgreementPaymentRequest` | - |
+| `UpdatePurchaseOrders` | - |
 <!-- floci:actions:end -->
 
 Catalog change sets use AWS states (`PREPARING`, `APPLYING`, `SUCCEEDED`, and `CANCELLED`). Floci applies supported entity mutations locally when a change set is observed and persists entities, change sets, tags, resource policies, and assessments through `StorageFactory`, isolated by AWS account.
+
+## Marketplace Agreement
+
+The AWS JSON 1.0 Agreement endpoint supports all 25 current public operations: agreement request creation and acceptance, agreement description/search/cancellation, agreement terms and entitlements, cancellation requests, payment requests, billing adjustments, charges, invoice line items, and purchase order updates. Agreement request acceptance persists the resulting agreement and exposes it through subsequent read and search operations.
 
 ## Configuration
 
