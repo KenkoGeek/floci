@@ -24,6 +24,8 @@ import io.github.hectorvent.floci.services.organizations.OrganizationsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Set;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -522,6 +524,35 @@ class SsoAdminServiceTest {
         ObjectNode missing = mapper.createObjectNode();
         missing.put("ApplicationArn", "arn:aws:sso::123456789012:application/ssoins-7223b02a5d9f7c8e/apl-1111111111111111");
         assertError("ResourceNotFoundException", () -> service.listApplicationAssignments(missing));
+    }
+
+    @Test
+    void listApplicationAssignmentsForPrincipalIncludesGroupBasedUserAccessAndRequiresMemberFilter() {
+        SsoApplication application = createApplication("Principal Assignment App", "principal-assignment-app-token");
+        String groupId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        ObjectNode groupAssignment = mapper.createObjectNode();
+        groupAssignment.put("ApplicationArn", application.applicationArn());
+        groupAssignment.put("PrincipalId", groupId);
+        groupAssignment.put("PrincipalType", "GROUP");
+        service.createApplicationAssignment(groupAssignment);
+        org.mockito.Mockito.when(identityStoreService.groupIdsForUser(service.getIdentityStoreId(), PRINCIPAL_ID))
+                .thenReturn(Set.of(groupId));
+
+        ObjectNode request = mapper.createObjectNode();
+        request.put("InstanceArn", service.getInstanceArn());
+        request.put("PrincipalId", PRINCIPAL_ID);
+        request.put("PrincipalType", "USER");
+        var page = service.listApplicationAssignmentsForPrincipal(request, ACCOUNT_ID);
+        assertEquals(1, page.items().size());
+        assertEquals(application.applicationArn(), page.items().get(0).applicationArn());
+        assertEquals(PRINCIPAL_ID, page.items().get(0).principalId());
+        assertEquals("USER", page.items().get(0).principalType());
+
+        ObjectNode memberRequest = request.deepCopy();
+        assertError("AccessDeniedException",
+                () -> service.listApplicationAssignmentsForPrincipal(memberRequest, "222233334444"));
+        memberRequest.putObject("Filter").put("ApplicationArn", application.applicationArn());
+        assertEquals(1, service.listApplicationAssignmentsForPrincipal(memberRequest, "222233334444").items().size());
     }
 
     @Test

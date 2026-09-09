@@ -602,6 +602,61 @@ public class SsoAdminService implements Resettable {
                 optionalMaxResults(request), text(request, "NextToken"), 50, 100, "ValidationException");
     }
 
+    public PaginatedResult<ApplicationAssignment> listApplicationAssignmentsForPrincipal(JsonNode request,
+                                                                                           String callerAccountId) {
+        String instanceArn = required(request, "InstanceArn");
+        SsoInstance instance = requireInstance(instanceArn);
+        validateAccountId(callerAccountId);
+        if (instance.accountInstance() && !callerAccountId.equals(instance.ownerAccountId())) {
+            throw accessDenied("The account instance belongs to a different account.");
+        }
+        String principalId = validatePrincipalId(required(request, "PrincipalId"));
+        String principalType = required(request, "PrincipalType");
+        if (!PRINCIPAL_TYPES.contains(principalType)) {
+            throw validation("PrincipalType must be USER or GROUP.");
+        }
+
+        String applicationFilter = null;
+        JsonNode filter = request == null ? null : request.get("Filter");
+        if (filter != null && !filter.isNull()) {
+            if (!filter.isObject() || filter.size() != 1 || !filter.has("ApplicationArn")) {
+                throw validation("Filter must contain exactly one ApplicationArn.");
+            }
+            applicationFilter = validateApplicationArn(required(filter, "ApplicationArn"));
+            SsoApplication filteredApplication = getApplication(applicationFilter);
+            if (!instanceArn.equals(filteredApplication.instanceArn())) {
+                throw notFound("Application not found in the specified IAM Identity Center instance.");
+            }
+        }
+        if (!instance.accountInstance() && !callerAccountId.equals(instance.ownerAccountId()) && applicationFilter == null) {
+            throw accessDenied("Filter.ApplicationArn is required from a member account against an organization instance.");
+        }
+
+        Set<String> effectiveGroupIds = Set.of();
+        if ("USER".equals(principalType)) {
+            effectiveGroupIds = identityStoreService.groupIdsForUser(instance.identityStoreId(), principalId);
+        }
+        Set<String> finalEffectiveGroupIds = effectiveGroupIds;
+        String finalApplicationFilter = applicationFilter;
+        List<ApplicationAssignment> effective = applicationAssignments.scan(key -> true).stream()
+                .filter(assignment -> {
+                    SsoApplication application = applications.get(assignment.applicationArn()).orElse(null);
+                    return application != null && instanceArn.equals(application.instanceArn());
+                })
+                .filter(assignment -> finalApplicationFilter == null
+                        || finalApplicationFilter.equals(assignment.applicationArn()))
+                .filter(assignment -> (principalId.equals(assignment.principalId())
+                        && principalType.equals(assignment.principalType()))
+                        || ("USER".equals(principalType) && "GROUP".equals(assignment.principalType())
+                        && finalEffectiveGroupIds.contains(assignment.principalId())))
+                .map(assignment -> new ApplicationAssignment(assignment.applicationArn(), principalId, principalType))
+                .distinct()
+                .sorted(Comparator.comparing(ApplicationAssignment::applicationArn))
+                .toList();
+        return Pagination.paginate(effective, ApplicationAssignment::applicationArn,
+                optionalMaxResults(request), text(request, "NextToken"), 50, 100, "ValidationException");
+    }
+
     public synchronized void deleteApplicationAssignment(JsonNode request) {
         String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
         getApplication(applicationArn);

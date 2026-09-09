@@ -323,6 +323,17 @@ public class IdentityStoreService implements Resettable {
                         && finalGroupId.equals(membership.groupId()));
     }
 
+    public Set<String> groupIdsForUser(String storeId, String userId) {
+        storeId = requireStore(storeId);
+        userId = requireResourceId(userId, "UserId");
+        requireUser(storeId, userId);
+        String finalUserId = userId;
+        return listMembershipsAll(storeId).stream()
+                .filter(membership -> finalUserId.equals(membership.userId()))
+                .map(Membership::groupId)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
     public List<String> validateGroupIds(JsonNode groupIds) {
         if (groupIds == null || !groupIds.isArray() || groupIds.size() < 1 || groupIds.size() > 100) {
             throw validation("GroupIds must contain between 1 and 100 identifiers.");

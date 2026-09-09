@@ -239,6 +239,41 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void listApplicationAssignmentsForPrincipalReturnsDirectGroupAssignments() {
+        String applicationArn = given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.CreateApplication")
+                .body("{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
+                        + "\"ApplicationProviderArn\":\"arn:aws:sso::aws:applicationProvider/custom\","
+                        + "\"Name\":\"Principal List Integration\"}")
+            .when().post("/")
+            .then().statusCode(200)
+            .extract().path("ApplicationArn");
+        String groupId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.CreateApplicationAssignment")
+                .body("{\"ApplicationArn\":\"" + applicationArn + "\",\"PrincipalId\":\"" + groupId
+                        + "\",\"PrincipalType\":\"GROUP\"}")
+            .when().post("/")
+            .then().statusCode(200);
+
+        given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.ListApplicationAssignmentsForPrincipal")
+                .body("{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
+                        + "\"PrincipalId\":\"" + groupId + "\",\"PrincipalType\":\"GROUP\"}")
+            .when().post("/")
+            .then().statusCode(200)
+                .body("ApplicationAssignments[0].ApplicationArn", equalTo(applicationArn))
+                .body("ApplicationAssignments[0].PrincipalId", equalTo(groupId))
+                .body("ApplicationAssignments[0].PrincipalType", equalTo("GROUP"));
+    }
+
+    @Test
     void describeApplicationProviderReturnsCustomOauthProvider() {
         given()
             .contentType("application/x-amz-json-1.1")
