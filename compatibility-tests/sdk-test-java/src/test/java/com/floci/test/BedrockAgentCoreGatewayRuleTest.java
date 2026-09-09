@@ -65,4 +65,19 @@ class BedrockAgentCoreGatewayRuleTest {
         assertThat(response.priority()).isEqualTo(1);
         assertThat(response.actions()).hasSize(1);
     }
+
+    @Test
+    @Order(2)
+    void getGatewayRule() {
+        GetGatewayRuleResponse response = client.getGatewayRule(GetGatewayRuleRequest.builder()
+                .gatewayIdentifier(gatewayId)
+                .ruleId(ruleId)
+                .build());
+
+        assertThat(response.ruleId()).isEqualTo(ruleId);
+        assertThat(response.priority()).isEqualTo(1);
+        assertThat(response.description()).isEqualTo("route");
+        assertThat(response.statusAsString()).isEqualTo("ACTIVE");
+        assertThat(response.actions()).hasSize(1);
+    }
 }

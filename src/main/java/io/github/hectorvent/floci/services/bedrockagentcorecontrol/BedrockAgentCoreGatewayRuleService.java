@@ -76,6 +76,17 @@ public class BedrockAgentCoreGatewayRuleService {
         return rule.deepCopy();
     }
 
+    public ObjectNode get(String gatewayId, String ruleId, String region) {
+        gatewayService.get(gatewayId, region);
+        if (ruleId == null || !ruleId.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+            throw new AwsException("ValidationException", "ruleId does not satisfy the required UUID pattern", 400);
+        }
+        return storage.get(key(region, gatewayId, ruleId))
+                .map(ObjectNode::deepCopy)
+                .orElseThrow(() -> new AwsException("ResourceNotFoundException",
+                        "Gateway rule not found: " + ruleId, 404));
+    }
+
     private static String key(String region, String gatewayId, String ruleId) {
         return prefix(region, gatewayId) + ruleId;
     }

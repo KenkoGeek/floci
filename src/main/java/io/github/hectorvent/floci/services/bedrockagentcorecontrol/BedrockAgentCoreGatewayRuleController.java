@@ -8,6 +8,7 @@ import io.github.hectorvent.floci.core.common.AwsException;
 import io.github.hectorvent.floci.core.common.RegionResolver;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
@@ -52,6 +53,21 @@ public class BedrockAgentCoreGatewayRuleController {
             return Response.status(202).entity(response).build();
         } catch (Exception e) {
             return error(e, "creating gateway rule");
+        }
+    }
+
+    @GET
+    @Path("/{gatewayIdentifier}/rules/{ruleId}")
+    public Response getGatewayRule(@Context HttpHeaders headers,
+                                   @PathParam("gatewayIdentifier") String gatewayId,
+                                   @PathParam("ruleId") String ruleId) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            ObjectNode response = service.get(gatewayId, ruleId, region).deepCopy();
+            response.remove("clientToken");
+            return Response.ok(response).build();
+        } catch (Exception e) {
+            return error(e, "getting gateway rule");
         }
     }
 
