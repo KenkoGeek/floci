@@ -349,6 +349,13 @@ class SsoAdminAccountAssignmentTest {
             assertThat(described.trustedTokenIssuerConfiguration().oidcJwtConfiguration().issuerUrl())
                     .isEqualTo("https://issuer.example.com");
 
+            var issuers = sso.listTrustedTokenIssuers(request -> request.instanceArn(instanceArn));
+            assertThat(issuers.trustedTokenIssuers()).anySatisfy(issuer -> {
+                assertThat(issuer.trustedTokenIssuerArn()).isEqualTo(created.trustedTokenIssuerArn());
+                assertThat(issuer.name()).isEqualTo("SdkIssuer");
+                assertThat(issuer.trustedTokenIssuerTypeAsString()).isEqualTo("OIDC_JWT");
+            });
+
             var deleteResponse = sso.deleteTrustedTokenIssuer(request -> request
                     .trustedTokenIssuerArn(created.trustedTokenIssuerArn()));
             assertThat(deleteResponse.sdkHttpResponse().isSuccessful()).isTrue();

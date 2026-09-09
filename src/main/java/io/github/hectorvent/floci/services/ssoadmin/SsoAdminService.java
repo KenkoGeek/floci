@@ -321,6 +321,17 @@ public class SsoAdminService implements Resettable {
         return getTrustedTokenIssuer(required(request, "TrustedTokenIssuerArn"));
     }
 
+    public PaginatedResult<TrustedTokenIssuer> listTrustedTokenIssuers(JsonNode request) {
+        String instanceArn = required(request, "InstanceArn");
+        requireInstance(instanceArn);
+        List<TrustedTokenIssuer> matching = trustedTokenIssuers.scan(key -> true).stream()
+                .filter(issuer -> instanceArn.equals(issuer.instanceArn()))
+                .sorted(Comparator.comparing(TrustedTokenIssuer::trustedTokenIssuerArn))
+                .toList();
+        return Pagination.paginate(matching, TrustedTokenIssuer::trustedTokenIssuerArn,
+                optionalMaxResults(request), text(request, "NextToken"), 100, 100, "ValidationException");
+    }
+
     public TrustedTokenIssuer getTrustedTokenIssuer(String trustedTokenIssuerArn) {
         validateTrustedTokenIssuerArn(trustedTokenIssuerArn);
         return trustedTokenIssuers.get(trustedTokenIssuerArn)
