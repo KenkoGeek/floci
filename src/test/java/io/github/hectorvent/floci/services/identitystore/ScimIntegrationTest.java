@@ -134,6 +134,35 @@ class ScimIntegrationTest {
     }
 
     @Test
+    void deleteUserUsesAwsScimStatusAndRemovesIdentityStoreResource() {
+        String userId = given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"userName\":\"delete@example.com\",\"displayName\":\"Delete User\","
+                        + "\"name\":{\"givenName\":\"Delete\",\"familyName\":\"User\"}}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(201)
+                .extract().path("id");
+
+        given()
+                .header("Authorization", BEARER)
+            .when()
+                .delete("/" + TENANT + "/scim/v2/Users/" + userId)
+            .then()
+                .statusCode(204);
+
+        given()
+                .header("Authorization", BEARER)
+            .when()
+                .delete("/" + TENANT + "/scim/v2/Users/" + userId)
+            .then()
+                .statusCode(404)
+                .body("status", equalTo("404"));
+    }
+
+    @Test
     void deleteGroupUsesAwsScimStatusAndRemovesIdentityStoreResource() {
         String groupId = given()
                 .contentType("application/json")

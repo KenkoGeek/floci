@@ -52,6 +52,8 @@ Floci also accepts IAM Identity Center SCIM v2 requests under `/{tenant_id}/scim
 
 `DeleteGroup` is supported through `DELETE /{tenant_id}/scim/v2/Groups/{id}` and returns HTTP `204` with an empty body. Deletion removes the shared Identity Store group and its local membership records. Missing groups return the SCIM-documented HTTP `404` `ResourceNotFoundException` mapping.
 
+`DeleteUser` is supported through `DELETE /{tenant_id}/scim/v2/Users/{id}` and returns HTTP `204` with an empty body. Deletion removes the shared Identity Store user and any local group memberships that reference it. Missing users return HTTP `404`.
+
 SCIM validation failures use the standard `urn:ietf:params:scim:api:messages:2.0:Error` response shape. See the [IAM Identity Center SCIM implementation](https://docs.aws.amazon.com/singlesignon/latest/developerguide/what-is-scim.html) and [CreateGroup](https://docs.aws.amazon.com/singlesignon/latest/developerguide/creategroup.html) documentation.
 
 ## AWS-compatible failures
