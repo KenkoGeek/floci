@@ -68,6 +68,21 @@ class SsoAdminAssignmentsIntegrationTest {
     }
 
     @Test
+    void detachCustomerManagedPolicyReferenceReturnsEmptyResponse() {
+        String instanceArn = json("SWBExternalService.ListInstances", "{}")
+                .then().statusCode(200).extract().path("Instances[0].InstanceArn");
+        String permissionSetArn = json("SWBExternalService.CreatePermissionSet",
+                "{\"InstanceArn\":\"" + instanceArn + "\",\"Name\":\"DetachCustomerPolicyIntegration\"}")
+                .then().statusCode(200).extract().path("PermissionSet.PermissionSetArn");
+        String body = "{\"InstanceArn\":\"" + instanceArn + "\",\"PermissionSetArn\":\"" + permissionSetArn
+                + "\",\"CustomerManagedPolicyReference\":{\"Name\":\"PlatformPolicy\",\"Path\":\"/platform/\"}}";
+        json("SWBExternalService.AttachCustomerManagedPolicyReferenceToPermissionSet", body)
+                .then().statusCode(200);
+        json("SWBExternalService.DetachCustomerManagedPolicyReferenceFromPermissionSet", body)
+                .then().statusCode(200).body(equalTo(""));
+    }
+
+    @Test
     void invalidAssignmentRequestIdReturnsResourceNotFound() {
         String instanceArn = json("SWBExternalService.ListInstances", "{}")
                 .then().statusCode(200).extract().path("Instances[0].InstanceArn");

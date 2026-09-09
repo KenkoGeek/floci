@@ -526,6 +526,12 @@ class SsoAdminServiceTest {
         ObjectNode invalidPath = request.deepCopy();
         invalidPath.withObject("CustomerManagedPolicyReference").put("Name", "OtherPolicy").put("Path", "missing-slash");
         assertError("ValidationException", () -> service.attachCustomerManagedPolicyReference(invalidPath));
+
+        ObjectNode detach = request.deepCopy();
+        detach.withObject("CustomerManagedPolicyReference").put("Name", "platformpolicy");
+        service.detachCustomerManagedPolicyReference(detach);
+        assertTrue(service.getPermissionSet(service.getInstanceArn(), permissionSet.arn()).customerManagedPolicies().isEmpty());
+        assertError("ResourceNotFoundException", () -> service.detachCustomerManagedPolicyReference(detach));
     }
 
     @Test

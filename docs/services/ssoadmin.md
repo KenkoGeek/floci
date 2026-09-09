@@ -31,6 +31,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | `ListManagedPoliciesInPermissionSet` | Lists attached AWS managed policies with AWS-compatible pagination. |
 | `AttachManagedPolicyToPermissionSet` | Attaches an AWS managed policy. |
 | `AttachCustomerManagedPolicyReferenceToPermissionSet` | Attaches a customer managed IAM policy reference by name and path. |
+| `DetachCustomerManagedPolicyReferenceFromPermissionSet` | Detaches a customer managed IAM policy reference from a permission set by name and path. |
 | `DetachManagedPolicyFromPermissionSet` | Detaches an AWS managed policy. |
 | `DeleteInlinePolicyFromPermissionSet` | Deletes the inline policy. |
 | `PutInlinePolicyToPermissionSet` | Creates or replaces the inline policy. |

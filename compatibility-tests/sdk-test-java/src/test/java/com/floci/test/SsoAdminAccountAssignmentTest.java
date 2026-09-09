@@ -61,6 +61,21 @@ class SsoAdminAccountAssignmentTest {
                             .name("platformpolicy")
                             .path("/platform/"))))
                     .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ConflictException.class);
+
+            var detached = sso.detachCustomerManagedPolicyReferenceFromPermissionSet(request -> request
+                    .instanceArn(instanceArn)
+                    .permissionSetArn(permissionSetArn)
+                    .customerManagedPolicyReference(reference -> reference
+                            .name("platformpolicy")
+                            .path("/platform/")));
+            assertThat(detached.sdkHttpResponse().isSuccessful()).isTrue();
+            assertThatThrownBy(() -> sso.detachCustomerManagedPolicyReferenceFromPermissionSet(request -> request
+                    .instanceArn(instanceArn)
+                    .permissionSetArn(permissionSetArn)
+                    .customerManagedPolicyReference(reference -> reference
+                            .name("PlatformPolicy")
+                            .path("/platform/"))))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ResourceNotFoundException.class);
         }
     }
 
