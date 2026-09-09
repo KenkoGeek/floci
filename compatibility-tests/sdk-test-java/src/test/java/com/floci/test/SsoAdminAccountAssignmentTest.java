@@ -162,6 +162,30 @@ class SsoAdminAccountAssignmentTest {
     }
 
     @Test
+    @DisplayName("deletes application authentication methods through the AWS SDK")
+    void deleteApplicationAuthenticationMethodUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses the emulator IAM Identity Center instance");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient()) {
+            String instanceArn = sso.listInstances(request -> {}).instances().get(0).instanceArn();
+            String applicationArn = sso.createApplication(request -> request
+                    .instanceArn(instanceArn)
+                    .applicationProviderArn("arn:aws:sso::aws:applicationProvider/custom")
+                    .name("SDK Delete Authentication Method"))
+                    .applicationArn();
+
+            assertThatThrownBy(() -> sso.deleteApplicationAuthenticationMethod(request -> request
+                    .applicationArn(applicationArn)
+                    .authenticationMethodType("IAM")))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ResourceNotFoundException.class);
+            assertThatThrownBy(() -> sso.deleteApplicationAuthenticationMethod(request -> request
+                    .applicationArn(applicationArn)
+                    .authenticationMethodType("SAML")))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ValidationException.class);
+        }
+    }
+
+    @Test
     @DisplayName("creates trusted token issuers through the AWS SDK")
     void createTrustedTokenIssuerUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses the emulator IAM Identity Center fixture");

@@ -198,6 +198,35 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void deleteApplicationAuthenticationMethodValidatesIamTypeAndMissingMethod() {
+        String appRequest = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
+                + "\"ApplicationProviderArn\":\"arn:aws:sso::aws:applicationProvider/custom\","
+                + "\"Name\":\"Delete Authentication Integration\"}";
+        String applicationArn = given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.CreateApplication")
+                .body(appRequest)
+            .when().post("/")
+            .then().statusCode(200)
+            .extract().path("ApplicationArn");
+
+        given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.DeleteApplicationAuthenticationMethod")
+                .body("{\"ApplicationArn\":\"" + applicationArn + "\",\"AuthenticationMethodType\":\"IAM\"}")
+            .when().post("/")
+            .then().statusCode(400)
+            .body("__type", org.hamcrest.Matchers.containsString("ResourceNotFoundException"));
+
+        given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.DeleteApplicationAuthenticationMethod")
+                .body("{\"ApplicationArn\":\"" + applicationArn + "\",\"AuthenticationMethodType\":\"SAML\"}")
+            .when().post("/")
+            .then().statusCode(400)
+            .body("__type", org.hamcrest.Matchers.containsString("ValidationException"));
+    }
+
+    @Test
     void createTrustedTokenIssuerReturnsAwsArnAndSupportsIdempotency() {
         String request = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
                 + "\"Name\":\"IntegrationIssuer\",\"ClientToken\":\"tti-integration-token\","
