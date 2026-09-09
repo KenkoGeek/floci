@@ -35,3 +35,4 @@ Each task is checked against the Amazon Bedrock API Reference and the AWS SDK fo
 | BR-029 | `CreateInferenceProfile` | `POST /inference-profiles` | SDK marshaller binding verified; diff-check |
 | BR-030 | `GetInferenceProfile` | `GET /inference-profiles/{inferenceProfileIdentifier}` | SDK marshaller binding verified; diff-check |
 | BR-031 | `ListInferenceProfiles` | `GET /inference-profiles` | SDK marshaller binding verified; diff-check |
+| BR-032 | `DeleteInferenceProfile` | `DELETE /inference-profiles/{inferenceProfileIdentifier}` | SDK marshaller binding verified; diff-check |

@@ -42,6 +42,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `CreateInferenceProfile` | `POST /inference-profiles` | AWS-compatible control-plane emulation. |
 | `GetInferenceProfile` | `GET /inference-profiles/{inferenceProfileIdentifier}` | AWS-compatible control-plane emulation. |
 | `ListInferenceProfiles` | `GET /inference-profiles` | AWS-compatible control-plane emulation. |
+| `DeleteInferenceProfile` | `DELETE /inference-profiles/{inferenceProfileIdentifier}` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 

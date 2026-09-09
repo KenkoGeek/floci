@@ -227,6 +227,12 @@ public class BedrockControlPlaneController {
         return execute("ListInferenceProfiles", null, Map.of(), headers);
     }
 
+    @DELETE
+    @Path("/inference-profiles/{inferenceProfileIdentifier:.+}")
+    public Response deleteInferenceProfile(@PathParam("inferenceProfileIdentifier") String inferenceProfileIdentifier, @Context HttpHeaders headers) {
+        return execute("DeleteInferenceProfile", null, Map.of("inferenceProfileIdentifier", inferenceProfileIdentifier), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
