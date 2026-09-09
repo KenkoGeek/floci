@@ -7,6 +7,7 @@ import io.github.hectorvent.floci.core.common.AwsErrorResponse;
 import io.github.hectorvent.floci.core.common.AwsException;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
@@ -58,6 +59,17 @@ public class BedrockAgentCoreResourcePolicyController {
             return Response.status(201).entity(out).build();
         } catch (Exception e) {
             return error(e, "putting resource policy");
+        }
+    }
+
+    @DELETE
+    @Path("/{resourceArn:.+}")
+    public Response deleteResourcePolicy(@PathParam("resourceArn") String resourceArn) {
+        try {
+            service.delete(resourceArn);
+            return Response.noContent().build();
+        } catch (Exception e) {
+            return error(e, "deleting resource policy");
         }
     }
 

@@ -41,6 +41,11 @@ public class BedrockAgentCoreResourcePolicyService {
         return policy;
     }
 
+    public void delete(String resourceArn) {
+        get(resourceArn);
+        storage.delete(resourceArn);
+    }
+
     private static void validateResourceArn(String resourceArn) {
         if (resourceArn == null || resourceArn.length() < 20 || resourceArn.length() > 1011) {
             throw new AwsException("ValidationException",
