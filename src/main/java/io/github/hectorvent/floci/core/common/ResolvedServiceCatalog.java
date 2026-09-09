@@ -18,6 +18,7 @@ import io.github.hectorvent.floci.services.iot.IotDataController;
 import io.github.hectorvent.floci.services.bedrockagentcore.BedrockAgentCoreController;
 import io.github.hectorvent.floci.services.bedrockagentcorecontrol.BedrockAgentCoreControlController;
 import io.github.hectorvent.floci.services.bedrockagentcorecontrol.BedrockAgentCoreGatewayController;
+import io.github.hectorvent.floci.services.bedrockagentcorecontrol.BedrockAgentCoreGatewayRuleController;
 import io.github.hectorvent.floci.services.bedrockagentcorecontrol.BedrockAgentCoreIdentityController;
 import io.github.hectorvent.floci.services.bedrockagentcorecontrol.BedrockAgentCoreMemoryController;
 import io.github.hectorvent.floci.services.bedrockagentcorecontrol.BedrockAgentCoreToolsController;
@@ -345,7 +346,7 @@ public class ResolvedServiceCatalog {
                         Set.of(), Set.of("bedrock-agentcore"), Set.of(),
                         Set.of(BedrockAgentCoreControlController.class, BedrockAgentCoreIdentityController.class,
                                 BedrockAgentCoreGatewayController.class, BedrockAgentCoreMemoryController.class,
-                                BedrockAgentCoreToolsController.class)),
+                                BedrockAgentCoreToolsController.class, BedrockAgentCoreGatewayRuleController.class)),
                 descriptor("bedrock-agentcore", "bedrock-agentcore",
                         config.services().bedrockAgentCore().enabled(), true,
                         null, null, 5000L, null, ServiceProtocol.REST_JSON,
