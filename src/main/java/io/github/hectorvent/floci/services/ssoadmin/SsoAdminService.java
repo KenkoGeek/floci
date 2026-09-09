@@ -189,6 +189,14 @@ public class SsoAdminService implements Resettable {
     public String getInstanceArn() { return INSTANCE_ARN; }
     public String getIdentityStoreId() { return IDENTITY_STORE_ID; }
 
+    public boolean hasIdentityStore(String identityStoreId) {
+        if (identityStoreId == null) {
+            return false;
+        }
+        return instances.scan(key -> true).stream()
+                .anyMatch(instance -> identityStoreId.equals(instance.identityStoreId()));
+    }
+
     void ensureBootstrapInstance(String ownerAccountId, String region) {
         if (instanceDeletionMarkers.get(ownerAccountId).orElse(false)) {
             return;
