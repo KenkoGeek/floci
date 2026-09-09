@@ -47,6 +47,7 @@ import io.github.hectorvent.floci.services.s3vectors.S3VectorsController;
 import io.github.hectorvent.floci.services.s3tables.S3TablesController;
 import io.github.hectorvent.floci.services.efs.EfsController;
 import io.github.hectorvent.floci.services.marketplace.MarketplaceCatalogController;
+import io.github.hectorvent.floci.services.marketplace.MarketplaceDeploymentController;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -642,7 +643,7 @@ public class ResolvedServiceCatalog {
                         protocols(ServiceProtocol.REST_JSON, ServiceProtocol.JSON, ServiceProtocol.CBOR),
                         Set.of("AWSMPCommerceService_v20200301.", "AWSMPMeteringService.", "AWSMPEntitlementService."),
                         Set.of("aws-marketplace"), Set.of("Marketplace Entitlement Service"),
-                        Set.of(MarketplaceCatalogController.class))
+                        Set.of(MarketplaceCatalogController.class, MarketplaceDeploymentController.class))
         ));
     }
 

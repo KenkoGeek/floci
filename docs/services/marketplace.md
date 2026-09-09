@@ -22,6 +22,7 @@ Floci emulates AWS Marketplace APIs under the shared `aws-marketplace` SigV4 sig
 | `StartChangeSet` | Starts an idempotent Marketplace Catalog change set |
 | `TagResource` | Adds or replaces tags on a Marketplace Catalog resource |
 | `UntagResource` | Removes tag keys from a Marketplace Catalog resource |
+| `PutDeploymentParameter` | - |
 | `AcceptAgreementCancellationRequest` | - |
 | `AcceptAgreementPaymentRequest` | - |
 | `AcceptAgreementRequest` | - |
@@ -58,6 +59,10 @@ The AWS JSON 1.0 Agreement endpoint supports all 25 current public operations: a
 ## Marketplace Entitlement
 
 `GetEntitlements` is supported through the AWS JSON 1.1 wire contract used by the current AWS CLI and through Floci's Smithy RPC v2 CBOR dispatcher. The service validates the documented filter keys, enforces the mutual exclusion of customer identifier and customer AWS account ID filters, supports pagination, and follows AWS Marketplace's `us-east-1` regional restriction.
+
+## Marketplace Deployment
+
+The four Deployment Service operations are supported for Quick Launch workflows. `PutDeploymentParameter` creates or updates a parameter by catalog, product, agreement, and parameter name, preserves create-only tags on updates, supports client-token idempotency, and returns the documented DeploymentParameter ARN shape. Deployment parameter secret values are persisted for local emulation but are never returned by the API. Tag operations use the Deployment Service REST paths and status codes, including query-string `tagKeys` for `UntagResource`.
 
 ## Configuration
 
