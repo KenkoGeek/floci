@@ -72,6 +72,8 @@ Floci also accepts IAM Identity Center SCIM v2 requests under `/{tenant_id}/scim
 
 `PatchGroup` is supported through `PATCH /{tenant_id}/scim/v2/Groups/{id}` with the SCIM PatchOp schema. It allows only `displayName`, `externalId`, and `members`; member additions/removals are validated before mutation, capped at 100 changes per request, and share the Identity Store membership state. Replacing all memberships or removing them with an empty value is rejected with HTTP `400`, matching IAM Identity Center. Successful patches return HTTP `204` with an empty body.
 
+`PatchUser` is supported through `PATCH /{tenant_id}/scim/v2/Users/{id}` with `add`, `replace`, and `remove` PatchOp operations. It supports the IAM Identity Center user attribute set, pathless object values for add/replace, textual or JSON boolean values for `active`, single-value email/address/phone constraints, enterprise/name updates, conflict detection for `userName`, and the AWS restriction against multiple `userName` or `active` changes in one request. Successful patches return HTTP `200` with the updated SCIM user representation.
+
 SCIM validation failures use the standard `urn:ietf:params:scim:api:messages:2.0:Error` response shape. See the [IAM Identity Center SCIM implementation](https://docs.aws.amazon.com/singlesignon/latest/developerguide/what-is-scim.html) and [CreateGroup](https://docs.aws.amazon.com/singlesignon/latest/developerguide/creategroup.html) documentation.
 
 ## AWS-compatible failures
