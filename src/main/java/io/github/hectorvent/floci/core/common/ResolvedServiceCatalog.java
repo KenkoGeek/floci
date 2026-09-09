@@ -644,8 +644,8 @@ public class ResolvedServiceCatalog {
                         Set.of(io.github.hectorvent.floci.services.codegurureviewer.CodeGuruReviewerController.class)),
                 descriptor("marketplace", "marketplace", config.services().marketplace().enabled(), true,
                         "marketplace", config.storage().mode(), 5000L, null, ServiceProtocol.REST_JSON,
-                        protocols(ServiceProtocol.REST_JSON, ServiceProtocol.JSON),
-                        Set.of("AWSMPCommerceService_v20200301."), Set.of("aws-marketplace"), Set.of(),
+                        protocols(ServiceProtocol.REST_JSON, ServiceProtocol.JSON, ServiceProtocol.CBOR),
+                        Set.of("AWSMPCommerceService_v20200301.", "AWSMPEntitlementService."), Set.of("aws-marketplace"), Set.of("AWS Marketplace Entitlement Service"),
                         Set.of(MarketplaceCatalogController.class))
         ));
     }
