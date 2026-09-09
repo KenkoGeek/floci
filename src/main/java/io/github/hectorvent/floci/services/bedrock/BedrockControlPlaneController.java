@@ -371,6 +371,12 @@ public class BedrockControlPlaneController {
         return execute("CreateModelInvocationJob", body, Map.of(), headers);
     }
 
+    @GET
+    @Path("/model-invocation-job/{jobIdentifier:.+}")
+    public Response getModelInvocationJob(@PathParam("jobIdentifier") String jobIdentifier, @Context HttpHeaders headers) {
+        return execute("GetModelInvocationJob", null, Map.of("jobIdentifier", jobIdentifier), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
