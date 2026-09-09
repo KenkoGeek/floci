@@ -470,6 +470,31 @@ class SsoAdminAccountAssignmentTest {
     }
 
     @Test
+    @DisplayName("lists accounts for a provisioned permission set through the AWS SDK")
+    void listAccountsForProvisionedPermissionSetUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only account identifiers");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient()) {
+            String instanceArn = sso.listInstances(request -> {}).instances().get(0).instanceArn();
+            String permissionSetArn = sso.createPermissionSet(request -> request
+                            .instanceArn(instanceArn)
+                            .name("ProvisionedAccountsSdkAdmins"))
+                    .permissionSet().permissionSetArn();
+            sso.provisionPermissionSet(request -> request
+                    .instanceArn(instanceArn)
+                    .permissionSetArn(permissionSetArn)
+                    .targetType("AWS_ACCOUNT")
+                    .targetId("321098765432"));
+
+            var response = sso.listAccountsForProvisionedPermissionSet(request -> request
+                    .instanceArn(instanceArn)
+                    .permissionSetArn(permissionSetArn)
+                    .provisioningStatus("LATEST_PERMISSION_SET_PROVISIONED"));
+            assertThat(response.accountIds()).contains("321098765432");
+        }
+    }
+
+    @Test
     @DisplayName("deletes account assignments through the AWS SDK")
     void deleteAccountAssignmentUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only account and principal identifiers");

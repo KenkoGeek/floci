@@ -897,6 +897,30 @@ public class SsoAdminService implements Resettable {
                 optionalMaxResults(request), text(request, "NextToken"), 50, 100, "ValidationException");
     }
 
+    public PaginatedResult<String> listAccountsForProvisionedPermissionSet(JsonNode request) {
+        String instanceArn = required(request, "InstanceArn");
+        SsoInstance instance = requireInstance(instanceArn);
+        if (instance.accountInstance()) {
+            throw accessDenied("Permission sets are only available from an organization instance.");
+        }
+        String permissionSetArn = required(request, "PermissionSetArn");
+        getPermissionSet(instanceArn, permissionSetArn);
+        String provisioningStatus = text(request, "ProvisioningStatus");
+        if (provisioningStatus != null
+                && !Set.of("LATEST_PERMISSION_SET_PROVISIONED", "LATEST_PERMISSION_SET_NOT_PROVISIONED")
+                        .contains(provisioningStatus)) {
+            throw validation("ProvisioningStatus is invalid.");
+        }
+        List<String> accountIds = permissionSetProvisionings.scan(key -> true).stream()
+                .filter(provisioning -> permissionSetArn.equals(provisioning.permissionSetArn()))
+                .filter(provisioning -> provisioningStatus == null || provisioningStatus.equals(provisioning.status()))
+                .map(PermissionSetProvisioning::accountId)
+                .distinct()
+                .toList();
+        return Pagination.paginate(accountIds, value -> value,
+                optionalMaxResults(request), text(request, "NextToken"), 50, 100, "ValidationException");
+    }
+
     private void markPermissionSetProvisioningStale(String permissionSetArn) {
         for (PermissionSetProvisioning provisioning : permissionSetProvisionings.scan(key -> true)) {
             if (permissionSetArn.equals(provisioning.permissionSetArn())) {
