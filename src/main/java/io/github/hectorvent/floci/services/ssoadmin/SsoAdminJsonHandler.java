@@ -53,6 +53,7 @@ public class SsoAdminJsonHandler {
             case "ListApplicationAssignments" -> listApplicationAssignments(request);
             case "ListApplicationAssignmentsForPrincipal" -> listApplicationAssignmentsForPrincipal(request, callerAccountId);
             case "DeleteApplication" -> deleteApplication(request);
+            case "PutApplicationAccessScope" -> putApplicationAccessScope(request);
             case "DeleteApplicationAccessScope" -> deleteApplicationAccessScope(request);
             case "DeleteApplicationAssignment" -> deleteApplicationAssignment(request);
             case "DeleteApplicationAuthenticationMethod" -> deleteApplicationAuthenticationMethod(request);
@@ -249,6 +250,11 @@ public class SsoAdminJsonHandler {
 
     private Response deleteApplication(JsonNode request) {
         service.deleteApplication(SsoAdminService.required(request, "ApplicationArn"));
+        return Response.ok().build();
+    }
+
+    private Response putApplicationAccessScope(JsonNode request) {
+        service.putApplicationAccessScope(request);
         return Response.ok().build();
     }
 

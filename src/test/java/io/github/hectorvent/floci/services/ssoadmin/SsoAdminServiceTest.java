@@ -402,6 +402,27 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void putApplicationAccessScopeCreatesAndUpdatesAuthorizedTargets() {
+        SsoApplication application = createApplication("Put Scope App", "put-scope-app-token");
+        ObjectNode request = mapper.createObjectNode();
+        request.put("ApplicationArn", application.applicationArn());
+        request.put("Scope", "api:read");
+        request.putArray("AuthorizedTargets").add(service.getInstanceArn());
+
+        ApplicationAccessScope created = service.putApplicationAccessScope(request);
+        assertEquals("api:read", created.scope());
+        assertEquals(java.util.List.of(service.getInstanceArn()), created.authorizedTargets());
+
+        request.putArray("AuthorizedTargets").add(application.applicationArn());
+        ApplicationAccessScope updated = service.putApplicationAccessScope(request);
+        assertEquals(java.util.List.of(application.applicationArn()), updated.authorizedTargets());
+
+        ObjectNode invalid = request.deepCopy();
+        invalid.putArray("AuthorizedTargets").add("not-an-arn");
+        assertError("ValidationException", () -> service.putApplicationAccessScope(invalid));
+    }
+
+    @Test
     void deleteApplicationAccessScopeDeletesStoredScopeAndValidatesRequest() {
         SsoApplication application = createApplication("Scope App", "scope-app-token");
         String scope = "api:read";
