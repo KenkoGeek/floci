@@ -34,6 +34,7 @@ public class SsoAdminJsonHandler {
             case "CreateApplication" -> createApplication(request, callerAccountId, region);
             case "CreateApplicationAssignment" -> createApplicationAssignment(request);
             case "DeleteApplication" -> deleteApplication(request);
+            case "DeleteApplicationAccessScope" -> deleteApplicationAccessScope(request);
             case "ListPermissionSets" -> listPermissionSets(request);
             case "CreatePermissionSet" -> createPermissionSet(request);
             case "DescribePermissionSet" -> describePermissionSet(request);
@@ -104,6 +105,11 @@ public class SsoAdminJsonHandler {
 
     private Response deleteApplication(JsonNode request) {
         service.deleteApplication(SsoAdminService.required(request, "ApplicationArn"));
+        return Response.ok().build();
+    }
+
+    private Response deleteApplicationAccessScope(JsonNode request) {
+        service.deleteApplicationAccessScope(request);
         return Response.ok().build();
     }
 

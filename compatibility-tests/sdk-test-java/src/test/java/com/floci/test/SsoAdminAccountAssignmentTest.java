@@ -227,6 +227,30 @@ class SsoAdminAccountAssignmentTest {
     }
 
     @Test
+    @DisplayName("deletes application access scopes through the AWS SDK")
+    void deleteApplicationAccessScopeUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses the emulator IAM Identity Center fixture");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient()) {
+            String instanceArn = sso.listInstances(request -> {}).instances().get(0).instanceArn();
+            String applicationArn = sso.createApplication(request -> request
+                    .instanceArn(instanceArn)
+                    .applicationProviderArn("arn:aws:sso::aws:applicationProvider/custom")
+                    .name("SdkDeleteApplicationScope"))
+                    .applicationArn();
+
+            assertThatThrownBy(() -> sso.deleteApplicationAccessScope(request -> request
+                    .applicationArn(applicationArn)
+                    .scope("api:read")))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ResourceNotFoundException.class);
+            assertThatThrownBy(() -> sso.deleteApplicationAccessScope(request -> request
+                    .applicationArn(applicationArn)
+                    .scope("bad scope")))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ValidationException.class);
+        }
+    }
+
+    @Test
     @DisplayName("deletes applications through the AWS SDK")
     void deleteApplicationUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses the emulator IAM Identity Center fixture");

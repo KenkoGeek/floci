@@ -7,6 +7,7 @@ import io.github.hectorvent.floci.core.storage.InMemoryStorage;
 import io.github.hectorvent.floci.services.ssoadmin.model.Assignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentDeletionOperation;
+import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAccessScope;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAssignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.InstanceAccessControlAttributeConfiguration;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
@@ -31,10 +32,12 @@ class SsoAdminServiceTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private SsoAdminService service;
     private OrganizationsService organizationsService;
+    private InMemoryStorage<String, ApplicationAccessScope> applicationAccessScopes;
 
     @BeforeEach
     void setUp() {
         organizationsService = org.mockito.Mockito.mock(OrganizationsService.class);
+        applicationAccessScopes = new InMemoryStorage<>();
         service = new SsoAdminService(
                 new InMemoryStorage<String, PermissionSet>(),
                 new InMemoryStorage<String, Assignment>(),
@@ -44,6 +47,7 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, SsoApplication>(),
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, ApplicationAssignment>(),
+                applicationAccessScopes,
                 new InMemoryStorage<String, SsoInstance>(),
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, InstanceAccessControlAttributeConfiguration>(),
@@ -232,6 +236,26 @@ class SsoAdminServiceTest {
         SsoApplication recreated = service.createApplication(createRequest, ACCOUNT_ID, "us-east-1");
         assertFalse(recreated.applicationArn().equals(application.applicationArn()));
         assertError("ResourceNotFoundException", () -> service.deleteApplication(application.applicationArn()));
+    }
+
+    @Test
+    void deleteApplicationAccessScopeDeletesStoredScopeAndValidatesRequest() {
+        SsoApplication application = createApplication("Scope App", "scope-app-token");
+        String scope = "api:read";
+        String key = SsoAdminService.applicationAccessScopeKey(application.applicationArn(), scope);
+        applicationAccessScopes.put(key, new ApplicationAccessScope(
+                application.applicationArn(), scope, java.util.List.of(service.getInstanceArn())));
+
+        ObjectNode request = mapper.createObjectNode();
+        request.put("ApplicationArn", application.applicationArn());
+        request.put("Scope", scope);
+        service.deleteApplicationAccessScope(request);
+        assertTrue(applicationAccessScopes.get(key).isEmpty());
+        assertError("ResourceNotFoundException", () -> service.deleteApplicationAccessScope(request));
+
+        ObjectNode invalid = request.deepCopy();
+        invalid.put("Scope", "bad scope");
+        assertError("ValidationException", () -> service.deleteApplicationAccessScope(invalid));
     }
 
     @Test
@@ -511,6 +535,7 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, SsoApplication>(),
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, ApplicationAssignment>(),
+                new InMemoryStorage<String, ApplicationAccessScope>(),
                 new InMemoryStorage<String, SsoInstance>(),
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, InstanceAccessControlAttributeConfiguration>(),
