@@ -417,6 +417,21 @@ public class SsoAdminService implements Resettable {
         applicationAccessScopes.delete(key);
     }
 
+    public synchronized void deleteApplicationAssignment(JsonNode request) {
+        String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
+        getApplication(applicationArn);
+        String principalId = validatePrincipalId(required(request, "PrincipalId"));
+        String principalType = required(request, "PrincipalType");
+        if (!PRINCIPAL_TYPES.contains(principalType)) {
+            throw validation("PrincipalType must be USER or GROUP.");
+        }
+        String key = applicationAssignmentKey(applicationArn, principalId, principalType);
+        if (applicationAssignments.get(key).isEmpty()) {
+            throw notFound("Application assignment not found for the specified principal.");
+        }
+        applicationAssignments.delete(key);
+    }
+
     public synchronized ApplicationAssignment createApplicationAssignment(JsonNode request) {
         String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
         getApplication(applicationArn);

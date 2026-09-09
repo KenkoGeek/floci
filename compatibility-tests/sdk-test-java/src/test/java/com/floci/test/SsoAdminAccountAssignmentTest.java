@@ -131,6 +131,37 @@ class SsoAdminAccountAssignmentTest {
     }
 
     @Test
+    @DisplayName("deletes application assignments through the AWS SDK")
+    void deleteApplicationAssignmentUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses the emulator IAM Identity Center instance");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient()) {
+            String instanceArn = sso.listInstances(request -> {}).instances().get(0).instanceArn();
+            String applicationArn = sso.createApplication(request -> request
+                    .instanceArn(instanceArn)
+                    .applicationProviderArn("arn:aws:sso::aws:applicationProvider/custom")
+                    .name("SDK Delete Assignment App"))
+                    .applicationArn();
+            String principalId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+            sso.createApplicationAssignment(request -> request
+                    .applicationArn(applicationArn)
+                    .principalId(principalId)
+                    .principalType("GROUP"));
+
+            var deleted = sso.deleteApplicationAssignment(request -> request
+                    .applicationArn(applicationArn)
+                    .principalId(principalId)
+                    .principalType("GROUP"));
+            assertThat(deleted.sdkHttpResponse().isSuccessful()).isTrue();
+            assertThatThrownBy(() -> sso.deleteApplicationAssignment(request -> request
+                    .applicationArn(applicationArn)
+                    .principalId(principalId)
+                    .principalType("GROUP")))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ResourceNotFoundException.class);
+        }
+    }
+
+    @Test
     @DisplayName("creates trusted token issuers through the AWS SDK")
     void createTrustedTokenIssuerUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses the emulator IAM Identity Center fixture");
