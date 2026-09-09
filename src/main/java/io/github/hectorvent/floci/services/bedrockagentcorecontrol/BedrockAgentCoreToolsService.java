@@ -166,6 +166,30 @@ public class BedrockAgentCoreToolsService {
         return interpreter.deepCopy();
     }
 
+    public ObjectNode getCodeInterpreter(String codeInterpreterId, String region) {
+        if ("aws.codeinterpreter.v1".equals(codeInterpreterId)) {
+            ObjectNode interpreter = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+            interpreter.put("codeInterpreterId", codeInterpreterId);
+            interpreter.put("codeInterpreterArn", "arn:aws:bedrock-agentcore:" + region
+                    + ":aws:code-interpreter/aws.codeinterpreter.v1");
+            interpreter.put("name", codeInterpreterId);
+            interpreter.put("status", "READY");
+            interpreter.put("createdAt", "1970-01-01T00:00:00Z");
+            interpreter.put("lastUpdatedAt", "1970-01-01T00:00:00Z");
+            interpreter.putObject("networkConfiguration").put("networkMode", "SANDBOX");
+            return interpreter;
+        }
+        if (codeInterpreterId == null
+                || !codeInterpreterId.matches("[a-zA-Z][a-zA-Z0-9_]{0,47}-[a-zA-Z0-9]{10}")) {
+            throw new AwsException("ValidationException",
+                    "codeInterpreterId does not satisfy the required pattern", 400);
+        }
+        return storage.get(key("code-interpreter", region, codeInterpreterId))
+                .map(ObjectNode::deepCopy)
+                .orElseThrow(() -> new AwsException("ResourceNotFoundException",
+                        "Code interpreter not found: " + codeInterpreterId, 404));
+    }
+
     public ObjectNode getBrowserProfile(String profileId, String region) {
         if (profileId == null || !profileId.matches("[a-zA-Z][a-zA-Z0-9_]{0,47}-[a-zA-Z0-9]{10}")) {
             throw new AwsException("ValidationException", "profileId does not satisfy the required pattern", 400);

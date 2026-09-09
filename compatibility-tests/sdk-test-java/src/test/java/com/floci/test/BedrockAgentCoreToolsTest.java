@@ -164,4 +164,17 @@ class BedrockAgentCoreToolsTest {
         assertThat(response.statusAsString()).isEqualTo("READY");
         assertThat(response.createdAt()).isNotNull();
     }
+
+    @Test
+    @Order(10)
+    void getCodeInterpreter() {
+        GetCodeInterpreterResponse response = client.getCodeInterpreter(GetCodeInterpreterRequest.builder()
+                .codeInterpreterId(codeInterpreterId)
+                .build());
+
+        assertThat(response.codeInterpreterId()).isEqualTo(codeInterpreterId);
+        assertThat(response.name()).isEqualTo(codeInterpreterName);
+        assertThat(response.networkConfiguration().networkModeAsString()).isEqualTo("PUBLIC");
+        assertThat(response.statusAsString()).isEqualTo("READY");
+    }
 }

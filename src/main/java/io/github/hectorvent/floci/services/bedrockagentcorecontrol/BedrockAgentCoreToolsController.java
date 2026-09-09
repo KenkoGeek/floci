@@ -61,6 +61,21 @@ public class BedrockAgentCoreToolsController {
         }
     }
 
+    @GET
+    @Path("/code-interpreters/{codeInterpreterId}")
+    public Response getCodeInterpreter(@Context HttpHeaders headers,
+                                       @PathParam("codeInterpreterId") String codeInterpreterId) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            ObjectNode interpreter = service.getCodeInterpreter(codeInterpreterId, region).deepCopy();
+            interpreter.remove("clientToken");
+            interpreter.remove("tags");
+            return Response.ok(interpreter).build();
+        } catch (Exception e) {
+            return error(e, "getting code interpreter");
+        }
+    }
+
     @PUT
     @Path("/code-interpreters")
     public Response createCodeInterpreter(@Context HttpHeaders headers, String body) {
