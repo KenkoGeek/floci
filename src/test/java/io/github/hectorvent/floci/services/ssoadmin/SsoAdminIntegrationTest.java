@@ -299,6 +299,21 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void listApplicationProvidersReturnsCustomOauthProvider() {
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.ListApplicationProviders")
+            .body("{}")
+        .when().post("/")
+        .then()
+            .statusCode(200)
+            .body("ApplicationProviders[0].ApplicationProviderArn",
+                    equalTo("arn:aws:sso::aws:applicationProvider/custom"))
+            .body("ApplicationProviders[0].FederationProtocol", equalTo("OAUTH"));
+    }
+
+    @Test
     void deleteApplicationAssignmentReturnsEmptyResponseAndRevokesAssignment() {
         String appRequest = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
                 + "\"ApplicationProviderArn\":\"arn:aws:sso::aws:applicationProvider/custom\","

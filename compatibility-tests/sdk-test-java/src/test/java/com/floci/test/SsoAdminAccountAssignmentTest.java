@@ -149,6 +149,13 @@ class SsoAdminAccountAssignmentTest {
             assertThat(provider.applicationProviderArn()).isEqualTo("arn:aws:sso::aws:applicationProvider/custom");
             assertThat(provider.federationProtocolAsString()).isEqualTo("OAUTH");
 
+            var providers = sso.listApplicationProviders(request -> {});
+            assertThat(providers.applicationProviders()).singleElement().satisfies(applicationProvider -> {
+                assertThat(applicationProvider.applicationProviderArn())
+                        .isEqualTo("arn:aws:sso::aws:applicationProvider/custom");
+                assertThat(applicationProvider.federationProtocolAsString()).isEqualTo("OAUTH");
+            });
+
             var applications = sso.listApplications(request -> request
                     .instanceArn(instanceArn)
                     .filter(filter -> filter
