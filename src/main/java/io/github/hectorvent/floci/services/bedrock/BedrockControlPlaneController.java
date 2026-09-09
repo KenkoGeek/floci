@@ -509,6 +509,12 @@ public class BedrockControlPlaneController {
         return execute("StopEvaluationJob", body, Map.of("jobIdentifier", jobIdentifier), headers);
     }
 
+    @POST
+    @Path("/evaluation-jobs/batch-delete")
+    public Response batchDeleteEvaluationJob(String body, @Context HttpHeaders headers) {
+        return execute("BatchDeleteEvaluationJob", body, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
