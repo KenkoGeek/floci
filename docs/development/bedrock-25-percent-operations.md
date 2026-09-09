@@ -66,3 +66,4 @@ Each task is checked against the Amazon Bedrock API Reference and the AWS SDK fo
 | BR-060 | `GetMarketplaceModelEndpoint` | `GET /marketplace-model/endpoints/{endpointArn}` | SDK marshaller binding verified; diff-check |
 | BR-061 | `ListMarketplaceModelEndpoints` | `GET /marketplace-model/endpoints` | SDK marshaller binding verified; diff-check |
 | BR-062 | `UpdateMarketplaceModelEndpoint` | `PATCH /marketplace-model/endpoints/{endpointArn}` | SDK marshaller binding verified; diff-check |
+| BR-063 | `DeleteMarketplaceModelEndpoint` | `DELETE /marketplace-model/endpoints/{endpointArn}` | SDK marshaller binding verified; diff-check |

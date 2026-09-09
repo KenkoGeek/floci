@@ -73,6 +73,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `GetMarketplaceModelEndpoint` | `GET /marketplace-model/endpoints/{endpointArn}` | AWS-compatible control-plane emulation. |
 | `ListMarketplaceModelEndpoints` | `GET /marketplace-model/endpoints` | AWS-compatible control-plane emulation. |
 | `UpdateMarketplaceModelEndpoint` | `PATCH /marketplace-model/endpoints/{endpointArn}` | AWS-compatible control-plane emulation. |
+| `DeleteMarketplaceModelEndpoint` | `DELETE /marketplace-model/endpoints/{endpointArn}` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 
