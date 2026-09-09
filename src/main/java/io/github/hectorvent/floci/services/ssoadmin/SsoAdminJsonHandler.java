@@ -27,6 +27,7 @@ public class SsoAdminJsonHandler {
     public Response handle(String action, JsonNode request, String callerAccountId, String region) {
         return switch (action) {
             case "ListInstances" -> listInstances(callerAccountId);
+            case "CreateInstance" -> createInstance(request, callerAccountId, region);
             case "AddRegion" -> addRegion(request);
             case "CreateApplication" -> createApplication(request, callerAccountId, region);
             case "CreateApplicationAssignment" -> createApplicationAssignment(request);
@@ -49,13 +50,36 @@ public class SsoAdminJsonHandler {
 
     private Response listInstances(String callerAccountId) {
         ObjectNode response = mapper.createObjectNode();
-        ObjectNode instance = response.putArray("Instances").addObject();
-        instance.put("InstanceArn", service.getInstanceArn());
-        instance.put("IdentityStoreId", service.getIdentityStoreId());
-        instance.put("Name", "floci-identity-center");
-        instance.put("OwnerAccountId", callerAccountId);
-        instance.put("Status", "ACTIVE");
+        ArrayNode instances = response.putArray("Instances");
+        service.listInstances(callerAccountId).forEach(instance -> {
+            ObjectNode node = instances.addObject();
+            node.put("InstanceArn", instance.instanceArn());
+            node.put("IdentityStoreId", instance.identityStoreId());
+            if (instance.name() != null) {
+                node.put("Name", instance.name());
+            }
+            node.put("OwnerAccountId", instance.ownerAccountId());
+            node.put("CreatedDate", instance.createdDateEpochMillis() / 1000.0d);
+            node.put("PrimaryRegion", instance.primaryRegion());
+            ArrayNode regionNodes = node.putArray("Regions");
+            service.listRegionsForInstance(instance).forEach(region -> {
+                ObjectNode regionNode = regionNodes.addObject();
+                regionNode.put("RegionName", region.regionName());
+                regionNode.put("Status", region.status());
+                regionNode.put("IsPrimaryRegion", region.primaryRegion());
+                regionNode.put("AddedDate", service.regionAddedDateEpochSeconds(region));
+            });
+            node.put("Status", instance.status());
+            if (instance.statusReason() != null) {
+                node.put("StatusReason", instance.statusReason());
+            }
+        });
         return Response.ok(response).build();
+    }
+
+    private Response createInstance(JsonNode request, String callerAccountId, String region) {
+        var instance = service.createInstance(request, callerAccountId, region);
+        return Response.ok(mapper.createObjectNode().put("InstanceArn", instance.instanceArn())).build();
     }
 
     private Response addRegion(JsonNode request) {

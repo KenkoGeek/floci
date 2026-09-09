@@ -1350,6 +1350,12 @@ public class OrganizationsService implements ScpProvider {
         return Optional.empty();
     }
 
+    public boolean isManagementAccount(String accountId) {
+        return findOrganizationForAccount(accountId)
+                .map(organization -> accountId.equals(organization.getMasterAccountId()))
+                .orElse(false);
+    }
+
     private Optional<Organization> findOrganizationForAccount(String accountId) {
         for (Organization organization : organizations.scanAllAccounts()) {
             if (accountId.equals(organization.getMasterAccountId())) {

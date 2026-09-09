@@ -10,6 +10,8 @@ import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAssignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
 import io.github.hectorvent.floci.services.ssoadmin.model.RegionMetadata;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoApplication;
+import io.github.hectorvent.floci.services.ssoadmin.model.SsoInstance;
+import io.github.hectorvent.floci.services.organizations.OrganizationsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -25,9 +27,11 @@ class SsoAdminServiceTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
     private SsoAdminService service;
+    private OrganizationsService organizationsService;
 
     @BeforeEach
     void setUp() {
+        organizationsService = org.mockito.Mockito.mock(OrganizationsService.class);
         service = new SsoAdminService(
                 new InMemoryStorage<String, PermissionSet>(),
                 new InMemoryStorage<String, Assignment>(),
@@ -35,7 +39,77 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, RegionMetadata>(),
                 new InMemoryStorage<String, SsoApplication>(),
                 new InMemoryStorage<String, String>(),
-                new InMemoryStorage<String, ApplicationAssignment>());
+                new InMemoryStorage<String, ApplicationAssignment>(),
+                new InMemoryStorage<String, SsoInstance>(),
+                new InMemoryStorage<String, String>(),
+                organizationsService,
+                ACCOUNT_ID,
+                "us-east-1");
+        service.ensureBootstrapInstance(ACCOUNT_ID, "us-east-1");
+    }
+
+    @Test
+    void createInstancePersistsMetadataAndSupportsIdempotentReplay() {
+        SsoAdminService emptyService = emptyService();
+        ObjectNode request = mapper.createObjectNode();
+        request.put("Name", "AccountInstance");
+        request.put("ClientToken", "create-instance-token");
+        request.putArray("Tags").addObject().put("Key", "Environment").put("Value", "dev");
+
+        assertTrue(emptyService.listInstances(ACCOUNT_ID).isEmpty());
+
+        SsoInstance created = emptyService.createInstance(request, ACCOUNT_ID, "us-west-2");
+        assertEquals(ACCOUNT_ID, created.ownerAccountId());
+        assertEquals("us-west-2", created.primaryRegion());
+        assertEquals("ACTIVE", created.status());
+        assertTrue(created.accountInstance());
+        assertTrue(created.instanceArn().matches("arn:aws:sso:::instance/ssoins-[0-9a-f]{16}"));
+        assertTrue(created.identityStoreId().matches("d-[0-9a-f]{10}"));
+        assertEquals(created.instanceArn(), emptyService.createInstance(request, ACCOUNT_ID, "us-west-2").instanceArn());
+        assertEquals(1, emptyService.listInstances(ACCOUNT_ID).size());
+
+        ObjectNode mismatch = request.deepCopy();
+        mismatch.put("Name", "DifferentName");
+        assertError("IdempotentParameterMismatch",
+                () -> emptyService.createInstance(mismatch, ACCOUNT_ID, "us-west-2"));
+    }
+
+    @Test
+    void createInstanceEnforcesSingletonAndValidatesInputs() {
+        ObjectNode duplicate = mapper.createObjectNode();
+        duplicate.put("Name", "SecondInstance");
+        assertError("ServiceQuotaExceededException",
+                () -> service.createInstance(duplicate, ACCOUNT_ID, "us-east-1"));
+
+        SsoAdminService emptyService = emptyService();
+        ObjectNode invalidName = mapper.createObjectNode();
+        invalidName.put("Name", "bad name");
+        assertError("ValidationException",
+                () -> emptyService.createInstance(invalidName, ACCOUNT_ID, "us-east-1"));
+
+        ObjectNode invalidToken = mapper.createObjectNode();
+        invalidToken.put("ClientToken", "bad token");
+        assertError("ValidationException",
+                () -> emptyService.createInstance(invalidToken, ACCOUNT_ID, "us-east-1"));
+
+        ObjectNode nonStringToken = mapper.createObjectNode();
+        nonStringToken.put("ClientToken", 123);
+        assertError("ValidationException",
+                () -> emptyService.createInstance(nonStringToken, ACCOUNT_ID, "us-east-1"));
+
+        ObjectNode reservedTag = mapper.createObjectNode();
+        reservedTag.putArray("Tags").addObject().put("Key", "aws:reserved").put("Value", "x");
+        assertError("ValidationException",
+                () -> emptyService.createInstance(reservedTag, ACCOUNT_ID, "us-east-1"));
+    }
+
+    @Test
+    void createInstanceRejectsOrganizationsManagementAccounts() {
+        org.mockito.Mockito.when(organizationsService.isManagementAccount(ACCOUNT_ID)).thenReturn(true);
+        SsoAdminService emptyService = emptyService();
+
+        assertError("AccessDeniedException",
+                () -> emptyService.createInstance(mapper.createObjectNode(), ACCOUNT_ID, "us-east-1"));
     }
 
     @Test
@@ -274,6 +348,22 @@ class SsoAdminServiceTest {
         assertTrue(service.listPermissionSets(service.getInstanceArn()).isEmpty());
         assertError("ResourceNotFoundException",
                 () -> service.getAssignmentOperation(service.getInstanceArn(), operation.requestId()));
+    }
+
+    private SsoAdminService emptyService() {
+        return new SsoAdminService(
+                new InMemoryStorage<String, PermissionSet>(),
+                new InMemoryStorage<String, Assignment>(),
+                new InMemoryStorage<String, AssignmentOperation>(),
+                new InMemoryStorage<String, RegionMetadata>(),
+                new InMemoryStorage<String, SsoApplication>(),
+                new InMemoryStorage<String, String>(),
+                new InMemoryStorage<String, ApplicationAssignment>(),
+                new InMemoryStorage<String, SsoInstance>(),
+                new InMemoryStorage<String, String>(),
+                organizationsService,
+                "999999999999",
+                "us-east-1");
     }
 
     private SsoApplication createApplication(String name, String clientToken) {

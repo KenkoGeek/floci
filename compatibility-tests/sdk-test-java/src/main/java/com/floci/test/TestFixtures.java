@@ -317,6 +317,14 @@ public final class TestFixtures {
                 .build();
     }
 
+    public static SsoAdminClient ssoAdminClient(String accountId) {
+        return SsoAdminClient.builder()
+                .endpointOverride(ENDPOINT)
+                .region(REGION)
+                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(accountId, "test")))
+                .build();
+    }
+
     public static IdentitystoreClient identityStoreClient() {
         return IdentitystoreClient.builder()
                 .endpointOverride(ENDPOINT)

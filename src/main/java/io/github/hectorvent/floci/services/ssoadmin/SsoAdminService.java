@@ -2,6 +2,7 @@ package io.github.hectorvent.floci.services.ssoadmin;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import io.github.hectorvent.floci.config.EmulatorConfig;
 import io.github.hectorvent.floci.core.common.AwsException;
 import io.github.hectorvent.floci.core.common.PaginatedResult;
 import io.github.hectorvent.floci.core.common.Pagination;
@@ -17,10 +18,13 @@ import io.github.hectorvent.floci.services.ssoadmin.model.CustomerManagedPolicyR
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
 import io.github.hectorvent.floci.services.ssoadmin.model.RegionMetadata;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoApplication;
+import io.github.hectorvent.floci.services.ssoadmin.model.SsoInstance;
+import io.github.hectorvent.floci.services.organizations.OrganizationsService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,6 +50,7 @@ public class SsoAdminService implements Resettable {
     private static final Pattern CLIENT_TOKEN = Pattern.compile("[!-~]+");
     private static final Pattern APPLICATION_URL = Pattern.compile("http(s)?://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#/%?=~_|]");
     private static final Pattern TAG_VALUE = Pattern.compile("[\\p{L}\\p{Z}\\p{N}_.:/=+\\-@]*");
+    private static final Pattern INSTANCE_NAME = Pattern.compile("[\\w+=,.@-]+");
     private static final String CUSTOM_APPLICATION_PROVIDER_ARN = "arn:aws:sso::aws:applicationProvider/custom";
     private static final int PERMISSION_SET_QUOTA = 3500;
     private static final int REGION_QUOTA = 6;
@@ -63,9 +68,15 @@ public class SsoAdminService implements Resettable {
     private final StorageBackend<String, SsoApplication> applications;
     private final StorageBackend<String, String> applicationClientTokens;
     private final StorageBackend<String, ApplicationAssignment> applicationAssignments;
+    private final StorageBackend<String, SsoInstance> instances;
+    private final StorageBackend<String, String> instanceClientTokens;
+    private final OrganizationsService organizationsService;
+    private final String defaultAccountId;
+    private final String defaultRegion;
 
     @Inject
-    public SsoAdminService(StorageFactory storageFactory) {
+    public SsoAdminService(StorageFactory storageFactory, OrganizationsService organizationsService,
+                           EmulatorConfig config) {
         this(
                 storageFactory.create("ssoadmin", "ssoadmin-permission-sets.json", new TypeReference<Map<String, PermissionSet>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-assignments.json", new TypeReference<Map<String, Assignment>>() {}),
@@ -73,7 +84,12 @@ public class SsoAdminService implements Resettable {
                 storageFactory.create("ssoadmin", "ssoadmin-regions.json", new TypeReference<Map<String, RegionMetadata>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-applications.json", new TypeReference<Map<String, SsoApplication>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-application-client-tokens.json", new TypeReference<Map<String, String>>() {}),
-                storageFactory.create("ssoadmin", "ssoadmin-application-assignments.json", new TypeReference<Map<String, ApplicationAssignment>>() {}));
+                storageFactory.create("ssoadmin", "ssoadmin-application-assignments.json", new TypeReference<Map<String, ApplicationAssignment>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-instances.json", new TypeReference<Map<String, SsoInstance>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-instance-client-tokens.json", new TypeReference<Map<String, String>>() {}),
+                organizationsService,
+                config.defaultAccountId(),
+                config.defaultRegion());
     }
 
     SsoAdminService(StorageBackend<String, PermissionSet> permissionSets,
@@ -82,7 +98,12 @@ public class SsoAdminService implements Resettable {
                     StorageBackend<String, RegionMetadata> regions,
                     StorageBackend<String, SsoApplication> applications,
                     StorageBackend<String, String> applicationClientTokens,
-                    StorageBackend<String, ApplicationAssignment> applicationAssignments) {
+                    StorageBackend<String, ApplicationAssignment> applicationAssignments,
+                    StorageBackend<String, SsoInstance> instances,
+                    StorageBackend<String, String> instanceClientTokens,
+                    OrganizationsService organizationsService,
+                    String defaultAccountId,
+                    String defaultRegion) {
         this.permissionSets = permissionSets;
         this.assignments = assignments;
         this.assignmentOperations = assignmentOperations;
@@ -90,10 +111,92 @@ public class SsoAdminService implements Resettable {
         this.applications = applications;
         this.applicationClientTokens = applicationClientTokens;
         this.applicationAssignments = applicationAssignments;
+        this.instances = instances;
+        this.instanceClientTokens = instanceClientTokens;
+        this.organizationsService = organizationsService;
+        this.defaultAccountId = defaultAccountId;
+        this.defaultRegion = defaultRegion;
+        ensureBootstrapInstance(defaultAccountId, defaultRegion);
     }
 
     public String getInstanceArn() { return INSTANCE_ARN; }
     public String getIdentityStoreId() { return IDENTITY_STORE_ID; }
+
+    void ensureBootstrapInstance(String ownerAccountId, String region) {
+        if (instances.get(ownerAccountId).isEmpty()) {
+            instances.put(ownerAccountId, new SsoInstance(INSTANCE_ARN, IDENTITY_STORE_ID, "floci-identity-center",
+                    ownerAccountId, region, System.currentTimeMillis(), "ACTIVE", null, false,
+                    new LinkedHashMap<>()));
+        }
+    }
+
+    public synchronized List<SsoInstance> listInstances(String callerAccountId) {
+        validateAccountId(callerAccountId);
+        if (callerAccountId.equals(defaultAccountId) && instances.get(callerAccountId).isEmpty()) {
+            ensureBootstrapInstance(callerAccountId, defaultRegion);
+        }
+        return instances.get(callerAccountId).map(List::of).orElseGet(List::of);
+    }
+
+    public List<RegionMetadata> listRegionsForInstance(SsoInstance instance) {
+        List<RegionMetadata> result = new ArrayList<>();
+        result.add(new RegionMetadata(instance.primaryRegion(), "ACTIVE",
+                java.time.Instant.ofEpochMilli(instance.createdDateEpochMillis()).toString(), true));
+        if (!instance.accountInstance()) {
+            result.addAll(regions.scan(key -> true).stream()
+                    .filter(region -> !instance.primaryRegion().equals(region.regionName()))
+                    .sorted(Comparator.comparing(RegionMetadata::regionName))
+                    .toList());
+        }
+        return result;
+    }
+
+    public double regionAddedDateEpochSeconds(RegionMetadata region) {
+        return java.time.Instant.parse(region.addedDate()).toEpochMilli() / 1000.0d;
+    }
+
+    public synchronized SsoInstance createInstance(JsonNode request, String callerAccountId, String region) {
+        validateAccountId(callerAccountId);
+        validateRegionName(region);
+        if (organizationsService.isManagementAccount(callerAccountId)) {
+            throw accessDenied("The AWS Organizations management account cannot create an account instance of IAM Identity Center.");
+        }
+        String name = optionalInstanceName(request);
+        Map<String, String> tags = parseTags(request.get("Tags"));
+        JsonNode clientTokenNode = request == null ? null : request.get("ClientToken");
+        String clientToken;
+        if (clientTokenNode == null || clientTokenNode.isNull()) {
+            clientToken = UUID.randomUUID().toString();
+        } else if (!clientTokenNode.isTextual()) {
+            throw validation("ClientToken must be a string.");
+        } else {
+            clientToken = clientTokenNode.textValue();
+            if (clientToken.length() > 64 || !CLIENT_TOKEN.matcher(clientToken).matches()) {
+                throw validation("ClientToken must be between 1 and 64 visible ASCII characters.");
+            }
+        }
+        String tokenKey = callerAccountId + "::" + clientToken;
+        var priorArn = instanceClientTokens.get(tokenKey);
+        if (priorArn.isPresent()) {
+            SsoInstance prior = findInstanceByArn(priorArn.get());
+            if (prior != null && java.util.Objects.equals(prior.name(), name)
+                    && java.util.Objects.equals(prior.tags(), tags)) {
+                return prior;
+            }
+            throw new AwsException("IdempotentParameterMismatch",
+                    "ClientToken was reused with different request parameters.", 400);
+        }
+        if (instances.get(callerAccountId).isPresent()) {
+            throw quota("Only one IAM Identity Center instance can exist in an AWS account.");
+        }
+        String instanceArn = "arn:aws:sso:::instance/ssoins-" + shortId();
+        String identityStoreId = "d-" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+        SsoInstance instance = new SsoInstance(instanceArn, identityStoreId, name, callerAccountId, region,
+                System.currentTimeMillis(), "ACTIVE", null, true, tags);
+        instances.put(callerAccountId, instance);
+        instanceClientTokens.put(tokenKey, instanceArn);
+        return instance;
+    }
 
     public synchronized ApplicationAssignment createApplicationAssignment(JsonNode request) {
         String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
@@ -506,6 +609,17 @@ public class SsoAdminService implements Resettable {
         return new ApplicationPortalOptions(visibility, signInOptions);
     }
 
+    private static String optionalInstanceName(JsonNode request) {
+        if (request == null || !request.has("Name") || request.get("Name").isNull()) {
+            return null;
+        }
+        String name = text(request, "Name");
+        if (name == null || name.length() > 255 || !INSTANCE_NAME.matcher(name).matches()) {
+            throw validation("Name must be at most 255 characters and match [\\w+=,.@-]+.");
+        }
+        return name;
+    }
+
     private static String optionalString(JsonNode request, String field, int min, int max) {
         if (request == null || !request.has(field) || request.get(field).isNull()) {
             return null;
@@ -533,7 +647,8 @@ public class SsoAdminService implements Resettable {
             JsonNode valueNode = tag.get("Value");
             String value = valueNode != null && valueNode.isTextual() ? valueNode.textValue() : null;
             if (key.length() > 128 || !TAG_VALUE.matcher(key).matches()
-                    || value == null || value.length() > 256 || !TAG_VALUE.matcher(value).matches()) {
+                    || value == null || value.length() > 256 || !TAG_VALUE.matcher(value).matches()
+                    || key.regionMatches(true, 0, "aws:", 0, 4)) {
                 throw validation("Tag key or value is invalid.");
             }
             if (tags.putIfAbsent(key, value) != null) {
@@ -581,10 +696,23 @@ public class SsoAdminService implements Resettable {
     private static AwsException validation(String message) { return new AwsException("ValidationException", message, 400); }
     private static AwsException conflict(String message) { return new AwsException("ConflictException", message, 400); }
     private static AwsException quota(String message) { return new AwsException("ServiceQuotaExceededException", message, 400); }
-    private static void requireInstance(String arn) {
-        if (arn == null || !arn.equals(INSTANCE_ARN)) {
+    private static AwsException accessDenied(String message) { return new AwsException("AccessDeniedException", message, 400); }
+    private SsoInstance requireInstance(String arn) {
+        SsoInstance instance = findInstanceByArn(arn);
+        if (instance == null) {
             throw notFound("IAM Identity Center instance not found: " + arn);
         }
+        return instance;
+    }
+
+    private SsoInstance findInstanceByArn(String arn) {
+        if (arn == null) {
+            return null;
+        }
+        SsoInstance stored = instances.scan(key -> true).stream()
+                .filter(instance -> arn.equals(instance.instanceArn()))
+                .findFirst().orElse(null);
+        return stored;
     }
 
     @Override
@@ -596,6 +724,9 @@ public class SsoAdminService implements Resettable {
         applications.clear();
         applicationClientTokens.clear();
         applicationAssignments.clear();
+        instances.clear();
+        instanceClientTokens.clear();
+        ensureBootstrapInstance(defaultAccountId, defaultRegion);
     }
 
 }

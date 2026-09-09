@@ -131,6 +131,41 @@ class SsoAdminAccountAssignmentTest {
     }
 
     @Test
+    @DisplayName("creates an account instance through the AWS SDK")
+    void createInstanceUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses an emulator-only account instance");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient("333344445555")) {
+            assertThat(sso.listInstances(request -> {}).instances()).isEmpty();
+            String instanceArn = sso.createInstance(request -> request
+                    .name("SdkAccountInstance")
+                    .clientToken("sdk-create-instance")
+                    .tags(tag -> tag.key("Environment").value("test")))
+                    .instanceArn();
+
+            var listed = sso.listInstances(request -> {}).instances();
+            assertThat(listed).hasSize(1);
+            assertThat(listed.get(0).instanceArn()).isEqualTo(instanceArn);
+            assertThat(listed.get(0).ownerAccountId()).isEqualTo("333344445555");
+            assertThat(listed.get(0).primaryRegion()).isEqualTo("us-east-1");
+        }
+    }
+
+    @Test
+    @DisplayName("models the singleton CreateInstance quota through the AWS SDK")
+    void createInstanceQuotaUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses the emulator IAM Identity Center fixture");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient()) {
+            sso.listInstances(request -> {});
+            assertThatThrownBy(() -> sso.createInstance(request -> request
+                    .name("SecondInstance")
+                    .clientToken("sdk-create-instance-quota")))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ServiceQuotaExceededException.class);
+        }
+    }
+
+    @Test
     @DisplayName("creates and describes account assignments through the AWS SDK")
     void accountAssignmentLifecycleUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only account and principal identifiers");

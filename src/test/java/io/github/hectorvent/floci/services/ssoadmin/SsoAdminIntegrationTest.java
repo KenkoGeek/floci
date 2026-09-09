@@ -161,6 +161,56 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void createInstanceCreatesOneAccountInstanceAndReplaysClientToken() {
+        String auth = "AWS4-HMAC-SHA256 Credential=222233334444/20260101/us-west-2/sso/aws4_request";
+        String request = "{\"Name\":\"StandaloneInstance\",\"ClientToken\":\"instance-integration-token\","
+                + "\"Tags\":[{\"Key\":\"Environment\",\"Value\":\"test\"}]}";
+
+        String instanceArn = given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", auth)
+            .header("X-Amz-Target", "SWBExternalService.CreateInstance")
+            .body(request)
+        .when()
+            .post("/")
+        .then()
+            .statusCode(200)
+            .body("InstanceArn", matchesPattern("arn:aws:sso:::instance/ssoins-[0-9a-f]{16}"))
+            .extract().path("InstanceArn");
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", auth)
+            .header("X-Amz-Target", "SWBExternalService.CreateInstance")
+            .body(request)
+        .when()
+            .post("/")
+        .then()
+            .statusCode(200)
+            .body("InstanceArn", equalTo(instanceArn));
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", auth)
+            .header("X-Amz-Target", "SWBExternalService.ListInstances")
+            .body("{}")
+        .when()
+            .post("/")
+        .then()
+            .statusCode(200)
+            .body("Instances.size()", equalTo(1))
+            .body("Instances[0].InstanceArn", equalTo(instanceArn))
+            .body("Instances[0].Name", equalTo("StandaloneInstance"))
+            .body("Instances[0].OwnerAccountId", equalTo("222233334444"))
+            .body("Instances[0].PrimaryRegion", equalTo("us-west-2"))
+            .body("Instances[0].CreatedDate", org.hamcrest.Matchers.greaterThan(0.0f))
+            .body("Instances[0].Regions.size()", equalTo(1))
+            .body("Instances[0].Regions[0].RegionName", equalTo("us-west-2"))
+            .body("Instances[0].Regions[0].IsPrimaryRegion", equalTo(true))
+            .body("Instances[0].Regions[0].Status", equalTo("ACTIVE"));
+    }
+
+    @Test
     void unknownAction_returnsUnknownOperationException() {
         given()
             .contentType("application/x-amz-json-1.1")
@@ -175,7 +225,7 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
-    void listInstances_ownerAccountIdTracksTheCaller() {
+    void listInstancesReturnsEmptyForAnAccountWithoutAVisibleInstance() {
         given()
             .contentType("application/x-amz-json-1.1")
             .header("Authorization",
@@ -186,7 +236,7 @@ class SsoAdminIntegrationTest {
             .post("/")
         .then()
             .statusCode(200)
-            .body("Instances[0].OwnerAccountId", org.hamcrest.Matchers.equalTo("111122223333"));
+            .body("Instances.size()", org.hamcrest.Matchers.equalTo(0));
     }
 
     private static String listInstancesArn() {
