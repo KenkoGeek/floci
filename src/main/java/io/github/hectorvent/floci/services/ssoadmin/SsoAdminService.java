@@ -17,10 +17,12 @@ import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationSignInOptio
 import io.github.hectorvent.floci.services.ssoadmin.model.AccessControlAttribute;
 import io.github.hectorvent.floci.services.ssoadmin.model.CustomerManagedPolicyReference;
 import io.github.hectorvent.floci.services.ssoadmin.model.InstanceAccessControlAttributeConfiguration;
+import io.github.hectorvent.floci.services.ssoadmin.model.OidcJwtIssuerConfiguration;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
 import io.github.hectorvent.floci.services.ssoadmin.model.RegionMetadata;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoApplication;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoInstance;
+import io.github.hectorvent.floci.services.ssoadmin.model.TrustedTokenIssuer;
 import io.github.hectorvent.floci.services.organizations.OrganizationsService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -56,12 +58,16 @@ public class SsoAdminService implements Resettable {
     private static final Pattern INSTANCE_NAME = Pattern.compile("[\\w+=,.@-]+");
     private static final Pattern ACCESS_CONTROL_ATTRIBUTE_KEY = Pattern.compile("[\\p{L}\\p{Z}\\p{N}_.:/=+\\-@]+");
     private static final Pattern ACCESS_CONTROL_ATTRIBUTE_SOURCE = Pattern.compile("[\\p{L}\\p{Z}\\p{N}_.:/=+\\-@\\[\\]\\{\\}$\\\\\"]*");
+    private static final Pattern OIDC_CLAIM_ATTRIBUTE_PATH = Pattern.compile("\\p{L}+(?:(\\.|_)\\p{L}+){0,2}");
+    private static final Pattern OIDC_IDENTITY_STORE_ATTRIBUTE_PATH = Pattern.compile("\\p{L}+(?:\\.\\p{L}+){0,2}");
+    private static final Pattern OIDC_ISSUER_URL = Pattern.compile("https?://[-a-zA-Z0-9+&@/%=~_|!:,.;]*[-a-zA-Z0-9+&@/%=~_|]");
     private static final String CUSTOM_APPLICATION_PROVIDER_ARN = "arn:aws:sso::aws:applicationProvider/custom";
     private static final int PERMISSION_SET_QUOTA = 3500;
     private static final int REGION_QUOTA = 6;
     private static final int MANAGED_POLICY_QUOTA = 25;
     private static final int APPLICATION_QUOTA = 7000;
     private static final int APPLICATION_GROUP_ASSIGNMENT_QUOTA = 100;
+    private static final int TRUSTED_TOKEN_ISSUER_QUOTA = 10;
     private static final int MAX_INLINE_POLICY_BYTES = 32_768;
     private static final int MAX_INLINE_NON_WHITESPACE = 10_240;
     private static final Set<String> PRINCIPAL_TYPES = Set.of("USER", "GROUP");
@@ -76,6 +82,8 @@ public class SsoAdminService implements Resettable {
     private final StorageBackend<String, SsoInstance> instances;
     private final StorageBackend<String, String> instanceClientTokens;
     private final StorageBackend<String, InstanceAccessControlAttributeConfiguration> accessControlAttributeConfigurations;
+    private final StorageBackend<String, TrustedTokenIssuer> trustedTokenIssuers;
+    private final StorageBackend<String, String> trustedTokenIssuerClientTokens;
     private final OrganizationsService organizationsService;
     private final String defaultAccountId;
     private final String defaultRegion;
@@ -94,6 +102,8 @@ public class SsoAdminService implements Resettable {
                 storageFactory.create("ssoadmin", "ssoadmin-instances.json", new TypeReference<Map<String, SsoInstance>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instance-client-tokens.json", new TypeReference<Map<String, String>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-access-control-attribute-configurations.json", new TypeReference<Map<String, InstanceAccessControlAttributeConfiguration>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-trusted-token-issuers.json", new TypeReference<Map<String, TrustedTokenIssuer>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-trusted-token-issuer-client-tokens.json", new TypeReference<Map<String, String>>() {}),
                 organizationsService,
                 config.defaultAccountId(),
                 config.defaultRegion());
@@ -109,6 +119,8 @@ public class SsoAdminService implements Resettable {
                     StorageBackend<String, SsoInstance> instances,
                     StorageBackend<String, String> instanceClientTokens,
                     StorageBackend<String, InstanceAccessControlAttributeConfiguration> accessControlAttributeConfigurations,
+                    StorageBackend<String, TrustedTokenIssuer> trustedTokenIssuers,
+                    StorageBackend<String, String> trustedTokenIssuerClientTokens,
                     OrganizationsService organizationsService,
                     String defaultAccountId,
                     String defaultRegion) {
@@ -122,6 +134,8 @@ public class SsoAdminService implements Resettable {
         this.instances = instances;
         this.instanceClientTokens = instanceClientTokens;
         this.accessControlAttributeConfigurations = accessControlAttributeConfigurations;
+        this.trustedTokenIssuers = trustedTokenIssuers;
+        this.trustedTokenIssuerClientTokens = trustedTokenIssuerClientTokens;
         this.organizationsService = organizationsService;
         this.defaultAccountId = defaultAccountId;
         this.defaultRegion = defaultRegion;
@@ -162,6 +176,103 @@ public class SsoAdminService implements Resettable {
 
     public double regionAddedDateEpochSeconds(RegionMetadata region) {
         return java.time.Instant.parse(region.addedDate()).toEpochMilli() / 1000.0d;
+    }
+
+    public synchronized TrustedTokenIssuer createTrustedTokenIssuer(JsonNode request, String callerAccountId) {
+        String instanceArn = required(request, "InstanceArn");
+        SsoInstance instance = requireInstance(instanceArn);
+        validateAccountId(callerAccountId);
+        String name = required(request, "Name");
+        if (name.length() > 255 || !INSTANCE_NAME.matcher(name).matches()) {
+            throw validation("Name must be 1-255 characters and match [\\w+=,.@-]+.");
+        }
+        String issuerType = required(request, "TrustedTokenIssuerType");
+        if (!"OIDC_JWT".equals(issuerType)) {
+            throw validation("TrustedTokenIssuerType must be OIDC_JWT.");
+        }
+        JsonNode configurationNode = request.get("TrustedTokenIssuerConfiguration");
+        if (configurationNode == null || !configurationNode.isObject()
+                || configurationNode.size() != 1
+                || !configurationNode.has("OidcJwtConfiguration")
+                || !configurationNode.get("OidcJwtConfiguration").isObject()) {
+            throw validation("TrustedTokenIssuerConfiguration must contain exactly one OidcJwtConfiguration.");
+        }
+        JsonNode oidcNode = configurationNode.get("OidcJwtConfiguration");
+        String claimAttributePath = required(oidcNode, "ClaimAttributePath");
+        if (claimAttributePath.length() > 255 || !OIDC_CLAIM_ATTRIBUTE_PATH.matcher(claimAttributePath).matches()) {
+            throw validation("ClaimAttributePath is invalid.");
+        }
+        String identityStoreAttributePath = required(oidcNode, "IdentityStoreAttributePath");
+        if (identityStoreAttributePath.length() > 255
+                || !OIDC_IDENTITY_STORE_ATTRIBUTE_PATH.matcher(identityStoreAttributePath).matches()) {
+            throw validation("IdentityStoreAttributePath is invalid.");
+        }
+        String issuerUrl = required(oidcNode, "IssuerUrl");
+        if (issuerUrl.length() > 512 || !OIDC_ISSUER_URL.matcher(issuerUrl).matches()) {
+            throw validation("IssuerUrl is invalid.");
+        }
+        String jwksRetrievalOption = required(oidcNode, "JwksRetrievalOption");
+        if (!"OPEN_ID_DISCOVERY".equals(jwksRetrievalOption)) {
+            throw validation("JwksRetrievalOption must be OPEN_ID_DISCOVERY.");
+        }
+        OidcJwtIssuerConfiguration oidcConfiguration = new OidcJwtIssuerConfiguration(
+                claimAttributePath, identityStoreAttributePath, issuerUrl, jwksRetrievalOption);
+        Map<String, String> tags = parseTags(request.get("Tags"));
+
+        JsonNode clientTokenNode = request.get("ClientToken");
+        String clientToken = null;
+        if (clientTokenNode != null && !clientTokenNode.isNull()) {
+            if (!clientTokenNode.isTextual()) {
+                throw validation("ClientToken must be a string.");
+            }
+            clientToken = clientTokenNode.textValue();
+            if (clientToken.isEmpty() || clientToken.length() > 64 || !CLIENT_TOKEN.matcher(clientToken).matches()) {
+                throw validation("ClientToken must be between 1 and 64 visible ASCII characters.");
+            }
+        }
+        String tokenKey = clientToken == null ? null : instanceArn + "::" + clientToken;
+        if (tokenKey != null) {
+            var priorArn = trustedTokenIssuerClientTokens.get(tokenKey);
+            if (priorArn.isPresent()) {
+                TrustedTokenIssuer prior = trustedTokenIssuers.get(priorArn.get()).orElse(null);
+                if (prior != null && trustedTokenIssuerMatches(prior, name, issuerType, oidcConfiguration, tags)) {
+                    return prior;
+                }
+                throw new AwsException("IdempotentParameterMismatch",
+                        "ClientToken was reused with different request parameters.", 400);
+            }
+        }
+        long count = trustedTokenIssuers.scan(ignored -> true).stream()
+                .filter(issuer -> instanceArn.equals(issuer.instanceArn()))
+                .count();
+        if (count >= TRUSTED_TOKEN_ISSUER_QUOTA) {
+            throw quota("An IAM Identity Center instance can have at most 10 trusted token issuers.");
+        }
+        String instanceId = instanceArn.substring(instanceArn.lastIndexOf('/') + 1);
+        String ownerAccountId = instance.ownerAccountId() == null ? callerAccountId : instance.ownerAccountId();
+        String issuerArn = "arn:aws:sso::" + ownerAccountId + ":trustedTokenIssuer/"
+                + instanceId + "/tti-" + UUID.randomUUID();
+        TrustedTokenIssuer issuer = new TrustedTokenIssuer(
+                issuerArn, instanceArn, name, issuerType, oidcConfiguration, tags);
+        trustedTokenIssuers.put(issuerArn, issuer);
+        if (tokenKey != null) {
+            trustedTokenIssuerClientTokens.put(tokenKey, issuerArn);
+        }
+        return issuer;
+    }
+
+    public TrustedTokenIssuer getTrustedTokenIssuer(String trustedTokenIssuerArn) {
+        return trustedTokenIssuers.get(trustedTokenIssuerArn)
+                .orElseThrow(() -> notFound("Trusted token issuer not found: " + trustedTokenIssuerArn));
+    }
+
+    private static boolean trustedTokenIssuerMatches(TrustedTokenIssuer issuer, String name, String issuerType,
+                                                       OidcJwtIssuerConfiguration oidcConfiguration,
+                                                       Map<String, String> tags) {
+        return java.util.Objects.equals(issuer.name(), name)
+                && java.util.Objects.equals(issuer.trustedTokenIssuerType(), issuerType)
+                && java.util.Objects.equals(issuer.oidcJwtConfiguration(), oidcConfiguration)
+                && java.util.Objects.equals(issuer.tags(), tags);
     }
 
     public synchronized InstanceAccessControlAttributeConfiguration createInstanceAccessControlAttributeConfiguration(JsonNode request) {
@@ -791,6 +902,8 @@ public class SsoAdminService implements Resettable {
         instances.clear();
         instanceClientTokens.clear();
         accessControlAttributeConfigurations.clear();
+        trustedTokenIssuers.clear();
+        trustedTokenIssuerClientTokens.clear();
         ensureBootstrapInstance(defaultAccountId, defaultRegion);
     }
 
