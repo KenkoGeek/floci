@@ -59,6 +59,12 @@ public class BedrockControlPlaneController {
         return execute("GetFoundationModelAvailability", null, Map.of("modelId", modelId), headers);
     }
 
+    @GET
+    @Path("/list-foundation-model-agreement-offers/{modelId:.+}")
+    public Response listFoundationModelAgreementOffers(@PathParam("modelId") String modelId, @Context HttpHeaders headers) {
+        return execute("ListFoundationModelAgreementOffers", null, Map.of("modelId", modelId), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(

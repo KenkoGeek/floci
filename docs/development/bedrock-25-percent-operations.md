@@ -7,3 +7,4 @@ Each task is checked against the Amazon Bedrock API Reference and the AWS SDK fo
 | BR-001 | `GetUseCaseForModelAccess` | `GET /use-case-for-model-access` | SDK marshaller contract, focused test added, compile, diff-check |
 | BR-002 | `PutUseCaseForModelAccess` | `POST /use-case-for-model-access` | SDK marshaller binding verified; diff-check |
 | BR-003 | `GetFoundationModelAvailability` | `GET /foundation-model-availability/{modelId}` | SDK marshaller binding verified; diff-check |
+| BR-004 | `ListFoundationModelAgreementOffers` | `GET /list-foundation-model-agreement-offers/{modelId}` | SDK marshaller binding verified; diff-check |
