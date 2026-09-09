@@ -161,6 +161,38 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void createTrustedTokenIssuerReturnsAwsArnAndSupportsIdempotency() {
+        String request = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
+                + "\"Name\":\"IntegrationIssuer\",\"ClientToken\":\"tti-integration-token\","
+                + "\"TrustedTokenIssuerType\":\"OIDC_JWT\",\"TrustedTokenIssuerConfiguration\":{"
+                + "\"OidcJwtConfiguration\":{\"ClaimAttributePath\":\"sub\","
+                + "\"IdentityStoreAttributePath\":\"userName\",\"IssuerUrl\":\"https://issuer.example.com\","
+                + "\"JwksRetrievalOption\":\"OPEN_ID_DISCOVERY\"}}}";
+
+        String arn = given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.CreateTrustedTokenIssuer")
+            .body(request)
+        .when().post("/")
+        .then()
+            .statusCode(200)
+            .body("TrustedTokenIssuerArn", matchesPattern(
+                    "arn:aws:sso::000000000000:trustedTokenIssuer/ssoins-[0-9a-f]{16}/tti-[0-9a-f-]{36}"))
+            .extract().path("TrustedTokenIssuerArn");
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.CreateTrustedTokenIssuer")
+            .body(request)
+        .when().post("/")
+        .then()
+            .statusCode(200)
+            .body("TrustedTokenIssuerArn", equalTo(arn));
+    }
+
+    @Test
     void createInstanceAccessControlAttributeConfigurationReturnsEmptyAwsResponse() {
         String request = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
                 + "\"InstanceAccessControlAttributeConfiguration\":{\"AccessControlAttributes\":[{"

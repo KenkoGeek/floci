@@ -131,6 +131,42 @@ class SsoAdminAccountAssignmentTest {
     }
 
     @Test
+    @DisplayName("creates trusted token issuers through the AWS SDK")
+    void createTrustedTokenIssuerUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses the emulator IAM Identity Center fixture");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient()) {
+            String instanceArn = sso.listInstances(request -> {}).instances().get(0).instanceArn();
+            var created = sso.createTrustedTokenIssuer(request -> request
+                    .instanceArn(instanceArn)
+                    .name("SdkIssuer")
+                    .clientToken("sdk-tti-token")
+                    .trustedTokenIssuerType("OIDC_JWT")
+                    .trustedTokenIssuerConfiguration(configuration -> configuration
+                            .oidcJwtConfiguration(oidc -> oidc
+                                    .claimAttributePath("sub")
+                                    .identityStoreAttributePath("userName")
+                                    .issuerUrl("https://issuer.example.com")
+                                    .jwksRetrievalOption("OPEN_ID_DISCOVERY"))));
+
+            assertThat(created.trustedTokenIssuerArn()).matches(
+                    "arn:aws:sso::000000000000:trustedTokenIssuer/ssoins-[0-9a-f]{16}/tti-[0-9a-f-]{36}");
+            var replay = sso.createTrustedTokenIssuer(request -> request
+                    .instanceArn(instanceArn)
+                    .name("SdkIssuer")
+                    .clientToken("sdk-tti-token")
+                    .trustedTokenIssuerType("OIDC_JWT")
+                    .trustedTokenIssuerConfiguration(configuration -> configuration
+                            .oidcJwtConfiguration(oidc -> oidc
+                                    .claimAttributePath("sub")
+                                    .identityStoreAttributePath("userName")
+                                    .issuerUrl("https://issuer.example.com")
+                                    .jwksRetrievalOption("OPEN_ID_DISCOVERY"))));
+            assertThat(replay.trustedTokenIssuerArn()).isEqualTo(created.trustedTokenIssuerArn());
+        }
+    }
+
+    @Test
     @DisplayName("creates an instance ABAC configuration through the AWS SDK")
     void createInstanceAccessControlAttributeConfigurationUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses the emulator IAM Identity Center fixture");

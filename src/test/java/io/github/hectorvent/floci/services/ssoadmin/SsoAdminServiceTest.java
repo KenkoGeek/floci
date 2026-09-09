@@ -12,6 +12,7 @@ import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
 import io.github.hectorvent.floci.services.ssoadmin.model.RegionMetadata;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoApplication;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoInstance;
+import io.github.hectorvent.floci.services.ssoadmin.model.TrustedTokenIssuer;
 import io.github.hectorvent.floci.services.organizations.OrganizationsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,10 +45,48 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, SsoInstance>(),
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, InstanceAccessControlAttributeConfiguration>(),
+                new InMemoryStorage<String, TrustedTokenIssuer>(),
+                new InMemoryStorage<String, String>(),
                 organizationsService,
                 ACCOUNT_ID,
                 "us-east-1");
         service.ensureBootstrapInstance(ACCOUNT_ID, "us-east-1");
+    }
+
+    @Test
+    void createTrustedTokenIssuerPersistsOidcConfigurationAndSupportsIdempotency() {
+        ObjectNode request = trustedTokenIssuerRequest("IssuerOne", "tti-token-one");
+
+        TrustedTokenIssuer created = service.createTrustedTokenIssuer(request, ACCOUNT_ID);
+        assertTrue(created.trustedTokenIssuerArn().matches(
+                "arn:aws:sso::123456789012:trustedTokenIssuer/ssoins-[0-9a-f]{16}/tti-[0-9a-f-]{36}"));
+        assertEquals("OIDC_JWT", created.trustedTokenIssuerType());
+        assertEquals("https://issuer.example.com", created.oidcJwtConfiguration().issuerUrl());
+        assertEquals(created, service.createTrustedTokenIssuer(request, ACCOUNT_ID));
+        assertEquals(created, service.getTrustedTokenIssuer(created.trustedTokenIssuerArn()));
+
+        ObjectNode mismatch = request.deepCopy();
+        mismatch.put("Name", "IssuerTwo");
+        assertError("IdempotentParameterMismatch",
+                () -> service.createTrustedTokenIssuer(mismatch, ACCOUNT_ID));
+    }
+
+    @Test
+    void createTrustedTokenIssuerValidatesUnionOidcFieldsAndQuota() {
+        ObjectNode invalidType = trustedTokenIssuerRequest("InvalidType", null);
+        invalidType.put("TrustedTokenIssuerType", "SAML");
+        assertError("ValidationException", () -> service.createTrustedTokenIssuer(invalidType, ACCOUNT_ID));
+
+        ObjectNode invalidIssuerUrl = trustedTokenIssuerRequest("InvalidUrl", null);
+        invalidIssuerUrl.withObject("TrustedTokenIssuerConfiguration")
+                .withObject("OidcJwtConfiguration").put("IssuerUrl", "ftp://issuer.example.com");
+        assertError("ValidationException", () -> service.createTrustedTokenIssuer(invalidIssuerUrl, ACCOUNT_ID));
+
+        for (int i = 0; i < 10; i++) {
+            service.createTrustedTokenIssuer(trustedTokenIssuerRequest("Issuer" + i, null), ACCOUNT_ID);
+        }
+        assertError("ServiceQuotaExceededException",
+                () -> service.createTrustedTokenIssuer(trustedTokenIssuerRequest("IssuerOverQuota", null), ACCOUNT_ID));
     }
 
     @Test
@@ -419,9 +458,28 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, SsoInstance>(),
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, InstanceAccessControlAttributeConfiguration>(),
+                new InMemoryStorage<String, TrustedTokenIssuer>(),
+                new InMemoryStorage<String, String>(),
                 organizationsService,
                 "999999999999",
                 "us-east-1");
+    }
+
+    private ObjectNode trustedTokenIssuerRequest(String name, String clientToken) {
+        ObjectNode request = mapper.createObjectNode();
+        request.put("InstanceArn", service.getInstanceArn());
+        request.put("Name", name);
+        request.put("TrustedTokenIssuerType", "OIDC_JWT");
+        if (clientToken != null) {
+            request.put("ClientToken", clientToken);
+        }
+        request.putObject("TrustedTokenIssuerConfiguration")
+                .putObject("OidcJwtConfiguration")
+                .put("ClaimAttributePath", "sub")
+                .put("IdentityStoreAttributePath", "userName")
+                .put("IssuerUrl", "https://issuer.example.com")
+                .put("JwksRetrievalOption", "OPEN_ID_DISCOVERY");
+        return request;
     }
 
     private SsoApplication createApplication(String name, String clientToken) {
