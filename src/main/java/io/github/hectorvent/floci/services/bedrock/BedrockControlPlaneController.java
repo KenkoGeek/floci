@@ -581,6 +581,12 @@ public class BedrockControlPlaneController {
         return execute("CreateAutomatedReasoningPolicyTestCase", body, Map.of("policyArn", policyArn), headers);
     }
 
+    @GET
+    @Path("/automated-reasoning-policies/{policyArn:.+}/test-cases/{testCaseId:.+}")
+    public Response getAutomatedReasoningPolicyTestCase(@PathParam("policyArn") String policyArn, @PathParam("testCaseId") String testCaseId, @Context HttpHeaders headers) {
+        return execute("GetAutomatedReasoningPolicyTestCase", null, Map.of("policyArn", policyArn, "testCaseId", testCaseId), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
