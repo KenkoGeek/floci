@@ -448,6 +448,12 @@ class SsoAdminAccountAssignmentTest {
             assertThat(described.permissionSetProvisioningStatus().requestId())
                     .isEqualTo(response.permissionSetProvisioningStatus().requestId());
             assertThat(described.permissionSetProvisioningStatus().statusAsString()).isEqualTo("SUCCEEDED");
+
+            var listed = sso.listPermissionSetProvisioningStatus(request -> request
+                    .instanceArn(instanceArn)
+                    .filter(filter -> filter.status("SUCCEEDED")));
+            assertThat(listed.permissionSetsProvisioningStatus())
+                    .anyMatch(status -> response.permissionSetProvisioningStatus().requestId().equals(status.requestId()));
         }
     }
 

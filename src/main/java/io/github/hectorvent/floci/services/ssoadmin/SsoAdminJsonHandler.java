@@ -54,6 +54,7 @@ public class SsoAdminJsonHandler {
             case "ListAccountAssignmentsForPrincipal" -> listAccountAssignmentsForPrincipal(request, callerAccountId);
             case "ProvisionPermissionSet" -> provisionPermissionSet(request);
             case "DescribePermissionSetProvisioningStatus" -> describePermissionSetProvisioningStatus(request);
+            case "ListPermissionSetProvisioningStatus" -> listPermissionSetProvisioningStatus(request);
             case "ListPermissionSetsProvisionedToAccount" -> listPermissionSetsProvisionedToAccount(request);
             case "ListAccountsForProvisionedPermissionSet" -> listAccountsForProvisionedPermissionSet(request);
             case "CreateAccountAssignment" -> createAccountAssignment(request);
@@ -293,6 +294,22 @@ public class SsoAdminJsonHandler {
         }
         if (operation.failureReason() != null) {
             status.put("FailureReason", operation.failureReason());
+        }
+        return Response.ok(response).build();
+    }
+
+    private Response listPermissionSetProvisioningStatus(JsonNode request) {
+        var page = service.listPermissionSetProvisioningStatus(request);
+        ObjectNode response = mapper.createObjectNode();
+        ArrayNode statuses = response.putArray("PermissionSetsProvisioningStatus");
+        for (PermissionSetProvisioningOperation operation : page.items()) {
+            ObjectNode status = statuses.addObject();
+            status.put("RequestId", operation.requestId());
+            status.put("Status", operation.status());
+            status.put("CreatedDate", operation.createdDateEpochMillis() / 1000.0d);
+        }
+        if (page.nextToken() != null) {
+            response.put("NextToken", page.nextToken());
         }
         return Response.ok(response).build();
     }
