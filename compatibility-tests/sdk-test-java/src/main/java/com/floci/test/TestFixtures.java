@@ -39,6 +39,7 @@ import software.amazon.awssdk.services.budgets.BudgetsClient;
 import software.amazon.awssdk.services.macie2.Macie2Client;
 import software.amazon.awssdk.services.controlcatalog.ControlCatalogClient;
 import software.amazon.awssdk.services.marketplacecatalog.MarketplaceCatalogClient;
+import software.amazon.awssdk.services.marketplaceagreement.MarketplaceAgreementClient;
 import software.amazon.awssdk.services.inspector2.Inspector2Client;
 import software.amazon.awssdk.services.securityhub.SecurityHubClient;
 import software.amazon.awssdk.services.detective.DetectiveClient;
@@ -362,6 +363,14 @@ public final class TestFixtures {
 
     public static MarketplaceCatalogClient marketplaceCatalogClient() {
         return MarketplaceCatalogClient.builder()
+                .endpointOverride(ENDPOINT)
+                .region(REGION)
+                .credentialsProvider(CREDENTIALS)
+                .build();
+    }
+
+    public static MarketplaceAgreementClient marketplaceAgreementClient() {
+        return MarketplaceAgreementClient.builder()
                 .endpointOverride(ENDPOINT)
                 .region(REGION)
                 .credentialsProvider(CREDENTIALS)

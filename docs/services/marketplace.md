@@ -2,7 +2,7 @@
 
 Floci emulates AWS Marketplace APIs under the shared `aws-marketplace` SigV4 signing scope.
 
-## Marketplace Catalog
+## Supported operations
 
 <!-- floci:actions:start -->
 | Action | Description |
@@ -22,9 +22,45 @@ Floci emulates AWS Marketplace APIs under the shared `aws-marketplace` SigV4 sig
 | `StartChangeSet` | Starts an idempotent Marketplace Catalog change set |
 | `TagResource` | Adds or replaces tags on a Marketplace Catalog resource |
 | `UntagResource` | Removes tag keys from a Marketplace Catalog resource |
+| `AcceptAgreementCancellationRequest` | Accepts an agreement cancellation request |
+| `AcceptAgreementPaymentRequest` | Accepts an agreement payment request |
+| `AcceptAgreementRequest` | Accepts an agreement request |
+| `BatchCreateBillingAdjustmentRequest` | Creates billing adjustment requests in a batch |
+| `CancelAgreement` | Cancels an agreement |
+| `CancelAgreementCancellationRequest` | Cancels an agreement cancellation request |
+| `CancelAgreementPaymentRequest` | Cancels an agreement payment request |
+| `CreateAgreementRequest` | Creates an agreement request |
+| `DescribeAgreement` | Describes an agreement |
+| `GetAgreementCancellationRequest` | Gets an agreement cancellation request |
+| `GetAgreementEntitlements` | Gets entitlements for an agreement |
+| `GetAgreementPaymentRequest` | Gets an agreement payment request |
+| `GetAgreementTerms` | Gets accepted agreement terms |
+| `GetBillingAdjustmentRequest` | Gets a billing adjustment request |
+| `ListAgreementCancellationRequests` | Lists agreement cancellation requests |
+| `ListAgreementCharges` | Lists agreement charges |
+| `ListAgreementInvoiceLineItems` | Lists agreement invoice line items |
+| `ListAgreementPaymentRequests` | Lists agreement payment requests |
+| `ListBillingAdjustmentRequests` | Lists billing adjustment requests |
+| `RejectAgreementCancellationRequest` | Rejects an agreement cancellation request |
+| `RejectAgreementPaymentRequest` | Rejects an agreement payment request |
+| `SearchAgreements` | Searches agreements |
+| `SendAgreementCancellationRequest` | Sends an agreement cancellation request |
+| `SendAgreementPaymentRequest` | Sends an agreement payment request |
+| `UpdatePurchaseOrders` | Updates purchase orders for an agreement |
 <!-- floci:actions:end -->
 
+## Marketplace Catalog
+
 Catalog change sets use AWS states (`PREPARING`, `APPLYING`, `SUCCEEDED`, and `CANCELLED`). Floci applies supported entity mutations locally when a change set is observed and persists entities, change sets, tags, resource policies, and assessments through `StorageFactory`, isolated by AWS account.
+
+## Marketplace Agreement
+
+Agreement request acceptance persists the resulting agreement and exposes it through subsequent read and search operations. State is isolated by AWS account through `StorageFactory`.
+
+### Known deviations
+
+- Accepted agreements use a local 365-day duration instead of deriving the end time from requested terms.
+- `PartyType` is validated for AWS-compatible values but does not otherwise change which locally stored agreements match.
 
 ## Configuration
 

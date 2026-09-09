@@ -85,6 +85,31 @@ services:
     doc: docs/services/marketplace.md
     sources:
       - { path: src/main/java/io/github/hectorvent/floci/services/marketplace/MarketplaceCatalogController.java, mode: rest }
+      - { path: src/main/java/io/github/hectorvent/floci/services/marketplace/MarketplaceAgreementService.java, mode: switch }
+    exclude_actions:
+      - AgreementType
+      - Status
+      - AcceptorAccountId
+      - OfferId
+      - OfferSetId
+      - ResourceIdentifier
+      - ResourceType
+      - PartyType
+      - BeforeStartTime
+      - AfterStartTime
+      - BeforeEndTime
+      - AfterEndTime
+      - BeforeLastUpdateTime
+      - AfterLastUpdateTime
+      - EndTimeBehaviorType
+      - EndTimeBehaviorReasonCode
+      - InitialAgreementId
+      - LicenseArn
+      - StartTime
+      - LastUpdateTime
+      - EndTime
+      - ASCENDING
+      - DESCENDING
   - service: comprehend
     doc: docs/services/comprehend.md
     sources:

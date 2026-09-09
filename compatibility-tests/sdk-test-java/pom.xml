@@ -287,6 +287,11 @@
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>marketplacecatalog</artifactId>
         </dependency>
+        <!-- AWS Marketplace Agreement client -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>marketplaceagreement</artifactId>
+        </dependency>
         <!-- IAM Access Analyzer client -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
