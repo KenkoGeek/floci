@@ -60,6 +60,7 @@ services:
     sources:
       - { path: src/main/java/io/github/hectorvent/floci/services/marketplace/MarketplaceCatalogController.java, mode: rest }
       - { path: src/main/java/io/github/hectorvent/floci/services/marketplace/MarketplaceAgreementService.java, mode: switch }
+      - { path: src/main/java/io/github/hectorvent/floci/services/marketplace/MarketplaceEntitlementService.java, mode: switch }
   - service: comprehend
     doc: docs/services/comprehend.md
     sources:

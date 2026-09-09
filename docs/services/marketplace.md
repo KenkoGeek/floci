@@ -55,6 +55,10 @@ Catalog change sets use AWS states (`PREPARING`, `APPLYING`, `SUCCEEDED`, and `C
 
 The AWS JSON 1.0 Agreement endpoint supports all 25 current public operations: agreement request creation and acceptance, agreement description/search/cancellation, agreement terms and entitlements, cancellation requests, payment requests, billing adjustments, charges, invoice line items, and purchase order updates. Agreement request acceptance persists the resulting agreement and exposes it through subsequent read and search operations.
 
+## Marketplace Entitlement
+
+`GetEntitlements` is supported through the AWS JSON 1.1 wire contract used by the current AWS CLI and through Floci's Smithy RPC v2 CBOR dispatcher. The service validates the documented filter keys, enforces the mutual exclusion of customer identifier and customer AWS account ID filters, supports pagination, and follows AWS Marketplace's `us-east-1` regional restriction.
+
 ## Configuration
 
 | Variable | Default | Description |
