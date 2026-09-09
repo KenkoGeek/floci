@@ -170,6 +170,7 @@ public class BedrockControlPlaneService implements Resettable {
             case "CreateCustomModelDeployment" -> createCustomModelDeployment(request, region);
             case "GetCustomModelDeployment" -> getGeneric("custom-model-deployment", path.get("customModelDeploymentIdentifier"), region);
             case "ListCustomModelDeployments" -> listGeneric("custom-model-deployment", "modelDeploymentSummaries", region);
+            case "UpdateCustomModelDeployment" -> updateCustomModelDeployment(path.get("customModelDeploymentIdentifier"), request, region);
             default -> throw new AwsException("UnknownOperationException", "Unsupported Bedrock operation: " + operation, 404);
         };
         return new Result(successStatus(operation), result.body());
