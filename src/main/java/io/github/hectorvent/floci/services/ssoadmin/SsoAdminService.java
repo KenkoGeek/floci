@@ -589,6 +589,19 @@ public class SsoAdminService implements Resettable {
         return applicationProviderArn;
     }
 
+    public PaginatedResult<ApplicationAssignment> listApplicationAssignments(JsonNode request) {
+        String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
+        getApplication(applicationArn);
+        List<ApplicationAssignment> matching = applicationAssignments.scan(key -> true).stream()
+                .filter(assignment -> applicationArn.equals(assignment.applicationArn()))
+                .sorted(Comparator.comparing(ApplicationAssignment::principalType)
+                        .thenComparing(ApplicationAssignment::principalId))
+                .toList();
+        return Pagination.paginate(matching,
+                assignment -> assignment.principalType() + ":" + assignment.principalId(),
+                optionalMaxResults(request), text(request, "NextToken"), 50, 100, "ValidationException");
+    }
+
     public synchronized void deleteApplicationAssignment(JsonNode request) {
         String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
         getApplication(applicationArn);

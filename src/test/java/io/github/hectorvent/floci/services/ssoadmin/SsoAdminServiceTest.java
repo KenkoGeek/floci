@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -491,6 +492,36 @@ class SsoAdminServiceTest {
         ObjectNode malformed = mapper.createObjectNode();
         malformed.put("ApplicationProviderArn", "not-an-arn");
         assertError("ValidationException", () -> service.describeApplicationProvider(malformed));
+    }
+
+    @Test
+    void listApplicationAssignmentsPaginatesAndScopesToApplication() {
+        SsoApplication application = createApplication("List Assignment App", "list-assignment-app-token");
+        ObjectNode user = mapper.createObjectNode();
+        user.put("ApplicationArn", application.applicationArn());
+        user.put("PrincipalId", "11111111-2222-3333-4444-555555555555");
+        user.put("PrincipalType", "USER");
+        service.createApplicationAssignment(user);
+        ObjectNode group = user.deepCopy();
+        group.put("PrincipalId", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+        group.put("PrincipalType", "GROUP");
+        service.createApplicationAssignment(group);
+
+        ObjectNode request = mapper.createObjectNode();
+        request.put("ApplicationArn", application.applicationArn());
+        request.put("MaxResults", 1);
+        var first = service.listApplicationAssignments(request);
+        assertEquals(1, first.items().size());
+        assertNotNull(first.nextToken());
+
+        request.put("NextToken", first.nextToken());
+        var second = service.listApplicationAssignments(request);
+        assertEquals(1, second.items().size());
+        assertNull(second.nextToken());
+
+        ObjectNode missing = mapper.createObjectNode();
+        missing.put("ApplicationArn", "arn:aws:sso::123456789012:application/ssoins-7223b02a5d9f7c8e/apl-1111111111111111");
+        assertError("ResourceNotFoundException", () -> service.listApplicationAssignments(missing));
     }
 
     @Test

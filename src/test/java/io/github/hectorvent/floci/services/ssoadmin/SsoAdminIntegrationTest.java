@@ -224,6 +224,18 @@ class SsoAdminIntegrationTest {
             .body("ApplicationArn", equalTo(applicationArn))
             .body("PrincipalId", equalTo("11111111-2222-3333-4444-555555555555"))
             .body("PrincipalType", equalTo("USER"));
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.ListApplicationAssignments")
+            .body("{\"ApplicationArn\":\"" + applicationArn + "\",\"MaxResults\":1}")
+        .when().post("/")
+        .then()
+            .statusCode(200)
+            .body("ApplicationAssignments[0].ApplicationArn", equalTo(applicationArn))
+            .body("ApplicationAssignments[0].PrincipalId", equalTo("11111111-2222-3333-4444-555555555555"))
+            .body("ApplicationAssignments[0].PrincipalType", equalTo("USER"));
     }
 
     @Test
