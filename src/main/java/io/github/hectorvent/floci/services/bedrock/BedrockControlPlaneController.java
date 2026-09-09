@@ -113,6 +113,12 @@ public class BedrockControlPlaneController {
         return execute("ListTagsForResource", body, Map.of(), headers);
     }
 
+    @POST
+    @Path("/tagResource")
+    public Response tagResource(String body, @Context HttpHeaders headers) {
+        return execute("TagResource", body, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(

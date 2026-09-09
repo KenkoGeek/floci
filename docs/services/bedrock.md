@@ -23,6 +23,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `PutModelInvocationLoggingConfiguration` | `PUT /logging/modelinvocations` | AWS-compatible control-plane emulation. |
 | `DeleteModelInvocationLoggingConfiguration` | `DELETE /logging/modelinvocations` | AWS-compatible control-plane emulation. |
 | `ListTagsForResource` | `POST /listTagsForResource` | AWS-compatible control-plane emulation. |
+| `TagResource` | `POST /tagResource` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 
