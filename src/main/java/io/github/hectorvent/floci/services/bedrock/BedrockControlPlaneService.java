@@ -167,6 +167,7 @@ public class BedrockControlPlaneService implements Resettable {
             case "DeletePromptRouter" -> deleteGeneric("prompt-router", path.get("promptRouterArn"), region);
             case "GetPromptRouter" -> getGeneric("prompt-router", path.get("promptRouterArn"), region);
             case "ListPromptRouters" -> listGeneric("prompt-router", "promptRouterSummaries", region);
+            case "CreateCustomModelDeployment" -> createCustomModelDeployment(request, region);
             default -> throw new AwsException("UnknownOperationException", "Unsupported Bedrock operation: " + operation, 404);
         };
         return new Result(successStatus(operation), result.body());

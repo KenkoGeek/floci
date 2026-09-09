@@ -455,6 +455,12 @@ public class BedrockControlPlaneController {
         return execute("ListPromptRouters", null, Map.of(), headers);
     }
 
+    @POST
+    @Path("/model-customization/custom-model-deployments")
+    public Response createCustomModelDeployment(String body, @Context HttpHeaders headers) {
+        return execute("CreateCustomModelDeployment", body, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
