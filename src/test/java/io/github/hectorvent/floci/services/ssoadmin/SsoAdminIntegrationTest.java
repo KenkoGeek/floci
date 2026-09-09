@@ -227,6 +227,35 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void deleteApplicationGrantValidatesGrantTypeAndMissingGrant() {
+        String appRequest = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
+                + "\"ApplicationProviderArn\":\"arn:aws:sso::aws:applicationProvider/custom\","
+                + "\"Name\":\"Delete Grant Integration\"}";
+        String applicationArn = given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.CreateApplication")
+                .body(appRequest)
+            .when().post("/")
+            .then().statusCode(200)
+            .extract().path("ApplicationArn");
+
+        given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.DeleteApplicationGrant")
+                .body("{\"ApplicationArn\":\"" + applicationArn + "\",\"GrantType\":\"authorization_code\"}")
+            .when().post("/")
+            .then().statusCode(400)
+            .body("__type", org.hamcrest.Matchers.containsString("ResourceNotFoundException"));
+
+        given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.DeleteApplicationGrant")
+                .body("{\"ApplicationArn\":\"" + applicationArn + "\",\"GrantType\":\"client_credentials\"}")
+            .when().post("/")
+            .then().statusCode(400)
+            .body("__type", org.hamcrest.Matchers.containsString("ValidationException"));
+    }
+
+    @Test
     void createTrustedTokenIssuerReturnsAwsArnAndSupportsIdempotency() {
         String request = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
                 + "\"Name\":\"IntegrationIssuer\",\"ClientToken\":\"tti-integration-token\","

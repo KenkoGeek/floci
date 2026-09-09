@@ -15,6 +15,7 @@ import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentDeletionOper
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAccessScope;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAssignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAuthenticationMethod;
+import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationGrant;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationPortalOptions;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationSignInOptions;
 import io.github.hectorvent.floci.services.ssoadmin.model.AccessControlAttribute;
@@ -72,6 +73,9 @@ public class SsoAdminService implements Resettable {
     private static final int APPLICATION_QUOTA = 7000;
     private static final int APPLICATION_GROUP_ASSIGNMENT_QUOTA = 100;
     private static final int TRUSTED_TOKEN_ISSUER_QUOTA = 10;
+    private static final Set<String> APPLICATION_GRANT_TYPES = Set.of(
+            "authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:jwt-bearer",
+            "urn:ietf:params:oauth:grant-type:token-exchange");
     private static final int MAX_INLINE_POLICY_BYTES = 32_768;
     private static final int MAX_INLINE_NON_WHITESPACE = 10_240;
     private static final Set<String> PRINCIPAL_TYPES = Set.of("USER", "GROUP");
@@ -86,6 +90,7 @@ public class SsoAdminService implements Resettable {
     private final StorageBackend<String, ApplicationAssignment> applicationAssignments;
     private final StorageBackend<String, ApplicationAccessScope> applicationAccessScopes;
     private final StorageBackend<String, ApplicationAuthenticationMethod> applicationAuthenticationMethods;
+    private final StorageBackend<String, ApplicationGrant> applicationGrants;
     private final StorageBackend<String, SsoInstance> instances;
     private final StorageBackend<String, String> instanceClientTokens;
     private final StorageBackend<String, InstanceAccessControlAttributeConfiguration> accessControlAttributeConfigurations;
@@ -109,6 +114,7 @@ public class SsoAdminService implements Resettable {
                 storageFactory.create("ssoadmin", "ssoadmin-application-assignments.json", new TypeReference<Map<String, ApplicationAssignment>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-application-access-scopes.json", new TypeReference<Map<String, ApplicationAccessScope>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-application-authentication-methods.json", new TypeReference<Map<String, ApplicationAuthenticationMethod>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-application-grants.json", new TypeReference<Map<String, ApplicationGrant>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instances.json", new TypeReference<Map<String, SsoInstance>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instance-client-tokens.json", new TypeReference<Map<String, String>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-access-control-attribute-configurations.json", new TypeReference<Map<String, InstanceAccessControlAttributeConfiguration>>() {}),
@@ -129,6 +135,7 @@ public class SsoAdminService implements Resettable {
                     StorageBackend<String, ApplicationAssignment> applicationAssignments,
                     StorageBackend<String, ApplicationAccessScope> applicationAccessScopes,
                     StorageBackend<String, ApplicationAuthenticationMethod> applicationAuthenticationMethods,
+                    StorageBackend<String, ApplicationGrant> applicationGrants,
                     StorageBackend<String, SsoInstance> instances,
                     StorageBackend<String, String> instanceClientTokens,
                     StorageBackend<String, InstanceAccessControlAttributeConfiguration> accessControlAttributeConfigurations,
@@ -147,6 +154,7 @@ public class SsoAdminService implements Resettable {
         this.applicationAssignments = applicationAssignments;
         this.applicationAccessScopes = applicationAccessScopes;
         this.applicationAuthenticationMethods = applicationAuthenticationMethods;
+        this.applicationGrants = applicationGrants;
         this.instances = instances;
         this.instanceClientTokens = instanceClientTokens;
         this.accessControlAttributeConfigurations = accessControlAttributeConfigurations;
@@ -412,6 +420,12 @@ public class SsoAdminService implements Resettable {
                 applicationAuthenticationMethods.delete(key);
             }
         }
+        for (String key : new java.util.ArrayList<>(applicationGrants.keys())) {
+            ApplicationGrant grant = applicationGrants.get(key).orElse(null);
+            if (grant != null && applicationArn.equals(grant.applicationArn())) {
+                applicationGrants.delete(key);
+            }
+        }
     }
 
     public synchronized void deleteApplicationAccessScope(JsonNode request) {
@@ -455,6 +469,20 @@ public class SsoAdminService implements Resettable {
             throw notFound("Application authentication method not found: " + authenticationMethodType);
         }
         applicationAuthenticationMethods.delete(key);
+    }
+
+    public synchronized void deleteApplicationGrant(JsonNode request) {
+        String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
+        getApplication(applicationArn);
+        String grantType = required(request, "GrantType");
+        if (!APPLICATION_GRANT_TYPES.contains(grantType)) {
+            throw validation("GrantType is invalid.");
+        }
+        String key = applicationGrantKey(applicationArn, grantType);
+        if (applicationGrants.get(key).isEmpty()) {
+            throw notFound("Application grant not found: " + grantType);
+        }
+        applicationGrants.delete(key);
     }
 
     public synchronized ApplicationAssignment createApplicationAssignment(JsonNode request) {
@@ -970,6 +998,10 @@ public class SsoAdminService implements Resettable {
         return applicationArn + "\n" + authenticationMethodType;
     }
 
+    static String applicationGrantKey(String applicationArn, String grantType) {
+        return applicationArn + "\n" + grantType;
+    }
+
     private static String validateRegionName(String value) {
         if (value == null || value.length() > 32 || !REGION_NAME.matcher(value).matches()) {
             throw validation("RegionName must be 1-32 characters and use an AWS Region name format.");
@@ -1034,6 +1066,7 @@ public class SsoAdminService implements Resettable {
         applicationAssignments.clear();
         applicationAccessScopes.clear();
         applicationAuthenticationMethods.clear();
+        applicationGrants.clear();
         instances.clear();
         instanceClientTokens.clear();
         accessControlAttributeConfigurations.clear();
