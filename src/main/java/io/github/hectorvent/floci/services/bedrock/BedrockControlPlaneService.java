@@ -185,6 +185,7 @@ public class BedrockControlPlaneService implements Resettable {
             case "CreateAutomatedReasoningPolicy" -> createAutomatedReasoningPolicy(request, region);
             case "GetAutomatedReasoningPolicy" -> getGeneric("automated-reasoning-policy", path.get("policyArn"), region);
             case "ListAutomatedReasoningPolicies" -> listGeneric("automated-reasoning-policy", "automatedReasoningPolicySummaries", region);
+            case "UpdateAutomatedReasoningPolicy" -> updateAutomatedReasoningPolicy(path.get("policyArn"), request, region);
             default -> throw new AwsException("UnknownOperationException", "Unsupported Bedrock operation: " + operation, 404);
         };
         return new Result(successStatus(operation), result.body());
