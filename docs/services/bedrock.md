@@ -21,6 +21,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `DeleteFoundationModelAgreement` | `POST /delete-foundation-model-agreement` | AWS-compatible control-plane emulation. |
 | `GetModelInvocationLoggingConfiguration` | `GET /logging/modelinvocations` | AWS-compatible control-plane emulation. |
 | `PutModelInvocationLoggingConfiguration` | `PUT /logging/modelinvocations` | AWS-compatible control-plane emulation. |
+| `DeleteModelInvocationLoggingConfiguration` | `DELETE /logging/modelinvocations` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 

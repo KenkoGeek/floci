@@ -101,6 +101,12 @@ public class BedrockControlPlaneController {
         return execute("PutModelInvocationLoggingConfiguration", body, Map.of(), headers);
     }
 
+    @DELETE
+    @Path("/logging/modelinvocations")
+    public Response deleteModelInvocationLoggingConfiguration(@Context HttpHeaders headers) {
+        return execute("DeleteModelInvocationLoggingConfiguration", null, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(

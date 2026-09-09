@@ -14,3 +14,4 @@ Each task is checked against the Amazon Bedrock API Reference and the AWS SDK fo
 | BR-008 | `DeleteFoundationModelAgreement` | `POST /delete-foundation-model-agreement` | SDK marshaller binding verified; diff-check |
 | BR-009 | `GetModelInvocationLoggingConfiguration` | `GET /logging/modelinvocations` | SDK marshaller binding verified; diff-check |
 | BR-010 | `PutModelInvocationLoggingConfiguration` | `PUT /logging/modelinvocations` | SDK marshaller binding verified; diff-check |
+| BR-011 | `DeleteModelInvocationLoggingConfiguration` | `DELETE /logging/modelinvocations` | SDK marshaller binding verified; diff-check |
