@@ -778,6 +778,30 @@ public class SsoAdminService implements Resettable {
         markPermissionSetProvisioningStale(current.arn());
     }
 
+    public synchronized void detachCustomerManagedPolicyReference(JsonNode request) {
+        PermissionSet current = getPermissionSet(required(request, "InstanceArn"), required(request, "PermissionSetArn"));
+        JsonNode reference = request.get("CustomerManagedPolicyReference");
+        if (reference == null || !reference.isObject()) {
+            throw validation("CustomerManagedPolicyReference must be an object.");
+        }
+        String name = required(reference, "Name");
+        if (name.length() > 128 || !CUSTOMER_MANAGED_POLICY_NAME.matcher(name).matches()) {
+            throw validation("CustomerManagedPolicyReference.Name is invalid.");
+        }
+        String path = text(reference, "Path");
+        if (path == null) {
+            path = "/";
+        } else if (path.length() > 512 || !CUSTOMER_MANAGED_POLICY_PATH.matcher(path).matches()) {
+            throw validation("CustomerManagedPolicyReference.Path is invalid.");
+        }
+        String key = customerManagedPolicyKey(name, path);
+        if (current.customerManagedPolicies().remove(key) == null) {
+            throw notFound("Customer managed policy reference is not attached to the permission set.");
+        }
+        permissionSets.put(current.arn(), current);
+        markPermissionSetProvisioningStale(current.arn());
+    }
+
     public synchronized void detachPolicy(String instanceArn, String arn, String policyArn) {
         PermissionSet current = getPermissionSet(instanceArn, arn);
         validateManagedPolicyArn(policyArn);
