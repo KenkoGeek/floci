@@ -49,6 +49,10 @@ Floci emulates AWS Marketplace APIs under the shared `aws-marketplace` SigV4 sig
 | `SendAgreementCancellationRequest` | - |
 | `SendAgreementPaymentRequest` | - |
 | `UpdatePurchaseOrders` | - |
+| `BatchMeterUsage` | - |
+| `MeterUsage` | - |
+| `RegisterUsage` | - |
+| `ResolveCustomer` | - |
 <!-- floci:actions:end -->
 
 Catalog change sets use AWS states (`PREPARING`, `APPLYING`, `SUCCEEDED`, and `CANCELLED`). Floci applies supported entity mutations locally when a change set is observed and persists entities, change sets, tags, resource policies, and assessments through `StorageFactory`, isolated by AWS account.
@@ -72,6 +76,10 @@ All nine Discovery API operations from the 2026-02-05 public API are supported. 
 ## Marketplace Reporting
 
 `GetBuyerDashboard` validates the two documented procurement-insights dashboard ARN forms and one or two embedding domains, then returns an opaque local QuickSight-style embedding URL together with the requested dashboard and domains. AWS organization-management and delegated-administrator IAM authorization is outside Floci's protocol emulation boundary.
+
+## Marketplace Metering
+
+All four AWS Marketplace Metering operations are supported through AWS JSON 1.1: `ResolveCustomer`, `MeterUsage`, `BatchMeterUsage`, and `RegisterUsage`. Local customer resolution is deterministic for an opaque registration token and returns the current new-integration fields (`CustomerAWSAccountId`, `ProductCode`, and `LicenseArn`). Metering enforces the documented 6-hour single-record window for `MeterUsage`, the 24-hour batch window and first-day billing grace rule for `BatchMeterUsage`, hourly deduplication, client-token conflicts, allocation totals, and allocation tag limits. Concurrent-agreement batch records can identify the purchase by `LicenseArn` without a request-level `ProductCode`, matching the 2026 AWS contract.
 
 ## Configuration
 
