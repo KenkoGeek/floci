@@ -11,6 +11,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | Action | Description |
 | --- | --- |
 | `ListInstances` | Lists the local IAM Identity Center instance. |
+| `CreateInstance` | Creates a standalone account instance with AWS-compatible singleton, idempotency, tags, and instance metadata. |
 | `AddRegion` | Adds a Region to the local IAM Identity Center instance and reports the initial `ADDING` status. |
 | `CreateApplication` | Creates a customer managed OAuth 2.0 application with AWS-compatible idempotency, portal options, status, and tags. |
 | `CreateApplicationAssignment` | Grants direct application access to a user or group. |
