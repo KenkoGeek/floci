@@ -354,6 +354,36 @@ class SsoAdminIntegrationTest {
             .body("Instances[0].Regions[0].IsPrimaryRegion", equalTo(true))
             .body("Instances[0].Regions[0].Status", equalTo("ACTIVE"));
     }
+    @Test
+    void deleteInstanceReturnsEmptyResponseAndRemovesAccountInstance() {
+        String auth = "AWS4-HMAC-SHA256 Credential=666677778888/20260101/us-east-1/sso/aws4_request";
+        String instanceArn = given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", auth)
+                .header("X-Amz-Target", "SWBExternalService.CreateInstance")
+                .body("{\"Name\":\"DisposableIntegrationInstance\"}")
+            .when().post("/")
+            .then().statusCode(200)
+            .extract().path("InstanceArn");
+
+        given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", auth)
+                .header("X-Amz-Target", "SWBExternalService.DeleteInstance")
+                .body("{\"InstanceArn\":\"" + instanceArn + "\"}")
+            .when().post("/")
+            .then().statusCode(200)
+            .body(org.hamcrest.Matchers.is(org.hamcrest.Matchers.emptyOrNullString()));
+
+        given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", auth)
+                .header("X-Amz-Target", "SWBExternalService.ListInstances")
+                .body("{}")
+            .when().post("/")
+            .then().statusCode(200)
+            .body("Instances.size()", equalTo(0));
+    }
 
     @Test
     void deleteApplicationReturnsEmptyResponseAndRemovesApplication() {

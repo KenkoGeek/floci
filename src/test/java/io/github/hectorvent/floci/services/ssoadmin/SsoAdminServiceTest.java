@@ -17,6 +17,7 @@ import io.github.hectorvent.floci.services.ssoadmin.model.RegionMetadata;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoApplication;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoInstance;
 import io.github.hectorvent.floci.services.ssoadmin.model.TrustedTokenIssuer;
+import io.github.hectorvent.floci.services.identitystore.IdentityStoreService;
 import io.github.hectorvent.floci.services.organizations.OrganizationsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,7 @@ class SsoAdminServiceTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
     private SsoAdminService service;
+    private IdentityStoreService identityStoreService;
     private OrganizationsService organizationsService;
     private InMemoryStorage<String, ApplicationAccessScope> applicationAccessScopes;
     private InMemoryStorage<String, ApplicationAuthenticationMethod> applicationAuthenticationMethods;
@@ -40,6 +42,7 @@ class SsoAdminServiceTest {
 
     @BeforeEach
     void setUp() {
+        identityStoreService = org.mockito.Mockito.mock(IdentityStoreService.class);
         organizationsService = org.mockito.Mockito.mock(OrganizationsService.class);
         applicationAccessScopes = new InMemoryStorage<>();
         applicationAuthenticationMethods = new InMemoryStorage<>();
@@ -58,9 +61,11 @@ class SsoAdminServiceTest {
                 applicationGrants,
                 new InMemoryStorage<String, SsoInstance>(),
                 new InMemoryStorage<String, String>(),
+                new InMemoryStorage<String, Boolean>(),
                 new InMemoryStorage<String, InstanceAccessControlAttributeConfiguration>(),
                 new InMemoryStorage<String, TrustedTokenIssuer>(),
                 new InMemoryStorage<String, String>(),
+                identityStoreService,
                 organizationsService,
                 ACCOUNT_ID,
                 "us-east-1");
@@ -156,6 +161,51 @@ class SsoAdminServiceTest {
                 .add("one").add("two");
         assertError("ValidationException",
                 () -> service.createInstanceAccessControlAttributeConfiguration(invalidSourceCount));
+    }
+
+    @Test
+    void deleteInstanceRequiresOwnerAndAllowsRecreation() {
+        SsoAdminService emptyService = emptyService();
+        ObjectNode create = mapper.createObjectNode();
+        create.put("Name", "DisposableInstance");
+        create.put("ClientToken", "delete-instance-token");
+        SsoInstance instance = emptyService.createInstance(create, ACCOUNT_ID, "us-west-2");
+
+        ObjectNode request = mapper.createObjectNode();
+        request.put("InstanceArn", instance.instanceArn());
+        assertError("AccessDeniedException", () -> emptyService.deleteInstance(request, "210987654321"));
+
+        emptyService.deleteInstance(request, ACCOUNT_ID);
+        assertTrue(emptyService.listInstances(ACCOUNT_ID).isEmpty());
+        assertError("AccessDeniedException", () -> emptyService.deleteInstance(request, ACCOUNT_ID));
+
+        ObjectNode recreate = mapper.createObjectNode();
+        recreate.put("Name", "ReplacementInstance");
+        recreate.put("ClientToken", "replacement-instance-token");
+        SsoInstance replacement = emptyService.createInstance(recreate, ACCOUNT_ID, "us-west-2");
+        assertFalse(replacement.instanceArn().equals(instance.instanceArn()));
+    }
+
+    @Test
+    void deleteInstanceRejectsMalformedArnAndCascadesOwnedResources() {
+        SsoAdminService emptyService = emptyService();
+        ObjectNode malformed = mapper.createObjectNode();
+        malformed.put("InstanceArn", "not-an-arn");
+        assertError("ValidationException", () -> emptyService.deleteInstance(malformed, ACCOUNT_ID));
+
+        SsoInstance instance = emptyService.createInstance(mapper.createObjectNode(), ACCOUNT_ID, "us-east-1");
+        ObjectNode application = mapper.createObjectNode();
+        application.put("InstanceArn", instance.instanceArn());
+        application.put("ApplicationProviderArn", "arn:aws:sso::aws:applicationProvider/custom");
+        application.put("Name", "AttachedApplication");
+        SsoApplication createdApplication = emptyService.createApplication(application, ACCOUNT_ID, "us-east-1");
+        assertEquals(instance.instanceArn(), createdApplication.instanceArn());
+
+        ObjectNode request = mapper.createObjectNode();
+        request.put("InstanceArn", instance.instanceArn());
+        emptyService.deleteInstance(request, ACCOUNT_ID);
+        assertError("ResourceNotFoundException", () -> emptyService.getApplication(createdApplication.applicationArn()));
+        org.mockito.Mockito.verify(identityStoreService).deleteIdentityStore(instance.identityStoreId());
     }
 
     @Test
@@ -611,9 +661,11 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, ApplicationGrant>(),
                 new InMemoryStorage<String, SsoInstance>(),
                 new InMemoryStorage<String, String>(),
+                new InMemoryStorage<String, Boolean>(),
                 new InMemoryStorage<String, InstanceAccessControlAttributeConfiguration>(),
                 new InMemoryStorage<String, TrustedTokenIssuer>(),
                 new InMemoryStorage<String, String>(),
+                identityStoreService,
                 organizationsService,
                 "999999999999",
                 "us-east-1");

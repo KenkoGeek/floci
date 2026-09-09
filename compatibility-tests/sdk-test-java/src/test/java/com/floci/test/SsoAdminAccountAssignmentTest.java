@@ -306,6 +306,27 @@ class SsoAdminAccountAssignmentTest {
     }
 
     @Test
+    @DisplayName("deletes an account instance through the AWS SDK")
+    void deleteInstanceUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses an emulator-only account instance");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient("555566667777")) {
+            String instanceArn = sso.createInstance(request -> request
+                    .name("SdkDisposableInstance")
+                    .clientToken("sdk-delete-instance"))
+                    .instanceArn();
+            sso.createApplication(request -> request
+                    .instanceArn(instanceArn)
+                    .applicationProviderArn("arn:aws:sso::aws:applicationProvider/custom")
+                    .name("SdkDisposableApplication"));
+
+            var deleted = sso.deleteInstance(request -> request.instanceArn(instanceArn));
+            assertThat(deleted.sdkHttpResponse().isSuccessful()).isTrue();
+            assertThat(sso.listInstances(request -> {}).instances()).isEmpty();
+        }
+    }
+
+    @Test
     @DisplayName("deletes application access scopes through the AWS SDK")
     void deleteApplicationAccessScopeUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses the emulator IAM Identity Center fixture");
