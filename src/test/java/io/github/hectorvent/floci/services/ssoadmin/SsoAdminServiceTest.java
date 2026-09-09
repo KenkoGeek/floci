@@ -589,6 +589,47 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void listAccountAssignmentsForPrincipalFiltersAndPaginatesUserOrGroupAccess() {
+        PermissionSet first = createPermissionSet("PrincipalListOne");
+        PermissionSet second = createPermissionSet("PrincipalListTwo");
+        service.createAssignment(assignmentRequest(first.arn()));
+        service.createAssignment(assignmentRequest(second.arn()));
+
+        ObjectNode request = mapper.createObjectNode();
+        request.put("InstanceArn", service.getInstanceArn());
+        request.put("PrincipalId", PRINCIPAL_ID);
+        request.put("PrincipalType", "GROUP");
+        request.put("MaxResults", 1);
+
+        var firstPage = service.listAssignmentsForPrincipal(request, ACCOUNT_ID);
+        assertEquals(1, firstPage.items().size());
+        assertNotNull(firstPage.nextToken());
+
+        request.put("NextToken", firstPage.nextToken());
+        var secondPage = service.listAssignmentsForPrincipal(request, ACCOUNT_ID);
+        assertEquals(1, secondPage.items().size());
+        assertTrue(secondPage.nextToken() == null);
+
+        request.remove("NextToken");
+        request.remove("MaxResults");
+        request.putObject("Filter").put("AccountId", ACCOUNT_ID);
+        assertEquals(2, service.listAssignmentsForPrincipal(request, ACCOUNT_ID).items().size());
+
+        ObjectNode invalidType = request.deepCopy();
+        invalidType.put("PrincipalType", "ROLE");
+        assertError("ValidationException", () -> service.listAssignmentsForPrincipal(invalidType, ACCOUNT_ID));
+
+        SsoAdminService accountInstanceService = emptyService();
+        SsoInstance accountInstance = accountInstanceService.createInstance(mapper.createObjectNode(), ACCOUNT_ID, "us-east-1");
+        ObjectNode accountInstanceRequest = mapper.createObjectNode();
+        accountInstanceRequest.put("InstanceArn", accountInstance.instanceArn());
+        accountInstanceRequest.put("PrincipalId", PRINCIPAL_ID);
+        accountInstanceRequest.put("PrincipalType", "USER");
+        assertError("AccessDeniedException",
+                () -> accountInstanceService.listAssignmentsForPrincipal(accountInstanceRequest, ACCOUNT_ID));
+    }
+
+    @Test
     void assignmentValidationAndDuplicateDetectionAreModeled() {
         PermissionSet permissionSet = createPermissionSet("AssignmentAdmins");
         ObjectNode request = assignmentRequest(permissionSet.arn());

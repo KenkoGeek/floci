@@ -788,6 +788,36 @@ public class SsoAdminService implements Resettable {
                 .sorted(Comparator.comparing(Assignment::principalId)).toList();
     }
 
+    public PaginatedResult<Assignment> listAssignmentsForPrincipal(JsonNode request, String callerAccountId) {
+        String instanceArn = required(request, "InstanceArn");
+        SsoInstance instance = requireInstance(instanceArn);
+        validateAccountId(callerAccountId);
+        if (instance.accountInstance() || !callerAccountId.equals(instance.ownerAccountId())) {
+            throw accessDenied("ListAccountAssignmentsForPrincipal must be called by the owner of an organization instance.");
+        }
+        String principalId = validatePrincipalId(required(request, "PrincipalId"));
+        String principalType = required(request, "PrincipalType");
+        if (!PRINCIPAL_TYPES.contains(principalType)) {
+            throw validation("PrincipalType must be USER or GROUP.");
+        }
+        String accountFilter = null;
+        JsonNode filter = request == null ? null : request.get("Filter");
+        if (filter != null && !filter.isNull()) {
+            if (!filter.isObject() || filter.size() > 1 || !filter.has("AccountId")) {
+                throw validation("Filter may contain only AccountId.");
+            }
+            accountFilter = validateAccountId(required(filter, "AccountId"));
+        }
+        String finalAccountFilter = accountFilter;
+        List<Assignment> matching = assignments.scan(key -> true).stream()
+                .filter(a -> principalId.equals(a.principalId()) && principalType.equals(a.principalType()))
+                .filter(a -> finalAccountFilter == null || finalAccountFilter.equals(a.accountId()))
+                .toList();
+        return Pagination.paginate(matching,
+                a -> a.accountId() + "::" + a.permissionSetArn(),
+                optionalMaxResults(request), text(request, "NextToken"), 50, 100, "ValidationException");
+    }
+
     public synchronized AssignmentOperation createAssignment(JsonNode request) {
         requireInstance(required(request, "InstanceArn"));
         String account = validateAccountId(required(request, "TargetId"));
