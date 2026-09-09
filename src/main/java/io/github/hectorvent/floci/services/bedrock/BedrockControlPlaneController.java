@@ -269,6 +269,12 @@ public class BedrockControlPlaneController {
         return execute("CreateModelImportJob", body, Map.of(), headers);
     }
 
+    @GET
+    @Path("/model-import-jobs/{jobIdentifier:.+}")
+    public Response getModelImportJob(@PathParam("jobIdentifier") String jobIdentifier, @Context HttpHeaders headers) {
+        return execute("GetModelImportJob", null, Map.of("jobIdentifier", jobIdentifier), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(

@@ -42,3 +42,4 @@ Each task is checked against the Amazon Bedrock API Reference and the AWS SDK fo
 | BR-036 | `UpdateProvisionedModelThroughput` | `PATCH /provisioned-model-throughput/{provisionedModelId}` | SDK marshaller binding verified; diff-check |
 | BR-037 | `DeleteProvisionedModelThroughput` | `DELETE /provisioned-model-throughput/{provisionedModelId}` | SDK marshaller binding verified; diff-check |
 | BR-038 | `CreateModelImportJob` | `POST /model-import-jobs` | SDK marshaller binding verified; diff-check |
+| BR-039 | `GetModelImportJob` | `GET /model-import-jobs/{jobIdentifier}` | SDK marshaller binding verified; diff-check |
