@@ -371,6 +371,54 @@ class SsoAdminAccountAssignmentTest {
     }
 
     @Test
+    @DisplayName("lists account assignments for a user or group through the AWS SDK")
+    void listAccountAssignmentsForPrincipalUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only account and principal identifiers");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient()) {
+            String instanceArn = sso.listInstances(request -> {}).instances().get(0).instanceArn();
+            String principalId = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff";
+            for (String name : java.util.List.of("PrincipalListSdkOne", "PrincipalListSdkTwo")) {
+                String permissionSetArn = sso.createPermissionSet(request -> request
+                                .instanceArn(instanceArn)
+                                .name(name))
+                        .permissionSet().permissionSetArn();
+                sso.createAccountAssignment(request -> request
+                        .instanceArn(instanceArn)
+                        .targetId("123456789012")
+                        .targetType(TargetType.AWS_ACCOUNT)
+                        .permissionSetArn(permissionSetArn)
+                        .principalType(PrincipalType.GROUP)
+                        .principalId(principalId));
+            }
+
+            var first = sso.listAccountAssignmentsForPrincipal(request -> request
+                    .instanceArn(instanceArn)
+                    .principalId(principalId)
+                    .principalType(PrincipalType.GROUP)
+                    .maxResults(1));
+            assertThat(first.accountAssignments()).hasSize(1);
+            assertThat(first.nextToken()).isNotBlank();
+
+            var second = sso.listAccountAssignmentsForPrincipal(request -> request
+                    .instanceArn(instanceArn)
+                    .principalId(principalId)
+                    .principalType(PrincipalType.GROUP)
+                    .maxResults(1)
+                    .nextToken(first.nextToken()));
+            assertThat(second.accountAssignments()).hasSize(1);
+            assertThat(second.nextToken()).isNull();
+
+            var filtered = sso.listAccountAssignmentsForPrincipal(request -> request
+                    .instanceArn(instanceArn)
+                    .principalId(principalId)
+                    .principalType(PrincipalType.GROUP)
+                    .filter(filter -> filter.accountId("123456789012")));
+            assertThat(filtered.accountAssignments()).hasSize(2);
+        }
+    }
+
+    @Test
     @DisplayName("deletes account assignments through the AWS SDK")
     void deleteAccountAssignmentUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only account and principal identifiers");

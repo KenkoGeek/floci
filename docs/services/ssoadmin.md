@@ -34,6 +34,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | `DeleteInlinePolicyFromPermissionSet` | Deletes the inline policy. |
 | `PutInlinePolicyToPermissionSet` | Creates or replaces the inline policy. |
 | `ListAccountAssignments` | Lists account assignments with AWS-compatible pagination. |
+| `ListAccountAssignmentsForPrincipal` | Lists the AWS account and permission set assignments for a user or group, with AccountId filtering and AWS-compatible pagination. |
 | `CreateAccountAssignment` | Creates an account assignment and operation record. |
 | `DeleteAccountAssignment` | Deletes an account assignment and returns a persisted deletion operation status. |
 | `DescribeAccountAssignmentCreationStatus` | Describes account-assignment creation status. |

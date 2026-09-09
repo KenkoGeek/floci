@@ -415,6 +415,38 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void listAccountAssignmentsForPrincipalReturnsPrincipalAccessWithPagination() {
+        String instanceArn = listInstancesArn();
+        String principalId = "cccccccc-dddd-eeee-ffff-000000000001";
+        for (String name : java.util.List.of("PrincipalIntegrationOne", "PrincipalIntegrationTwo")) {
+            String permissionSetArn = given()
+                    .contentType("application/x-amz-json-1.1")
+                    .header("Authorization", AUTH_HEADER)
+                    .header("X-Amz-Target", "SWBExternalService.CreatePermissionSet")
+                    .body("{\"InstanceArn\":\"" + instanceArn + "\",\"Name\":\"" + name + "\"}")
+                .when().post("/")
+                .then().statusCode(200)
+                .extract().path("PermissionSet.PermissionSetArn");
+            String assignmentRequest = "{\"InstanceArn\":\"" + instanceArn + "\",\"TargetId\":\"123456789012\","
+                    + "\"TargetType\":\"AWS_ACCOUNT\",\"PermissionSetArn\":\"" + permissionSetArn + "\","
+                    + "\"PrincipalType\":\"GROUP\",\"PrincipalId\":\"" + principalId + "\"}";
+            given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
+                    .header("X-Amz-Target", "SWBExternalService.CreateAccountAssignment")
+                    .body(assignmentRequest).when().post("/").then().statusCode(200);
+        }
+
+        String request = "{\"InstanceArn\":\"" + instanceArn + "\",\"PrincipalId\":\"" + principalId + "\","
+                + "\"PrincipalType\":\"GROUP\",\"MaxResults\":1}";
+        String nextToken = given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.ListAccountAssignmentsForPrincipal")
+                .body(request)
+            .when().post("/")
+            .then().statusCode(200)
+                .body("AccountAssignments.size()", equalTo(1))
+                .extract().path("NextToken");
+        org.junit.jupiter.api.Assertions.assertNotNull(nextToken);
+    }
+    @Test
     void deleteAccountAssignmentReturnsDeletionOperationAndRemovesAssignment() {
         String instanceArn = listInstancesArn();
         String permissionSetArn = given()

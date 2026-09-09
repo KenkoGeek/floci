@@ -50,6 +50,7 @@ public class SsoAdminJsonHandler {
             case "DeleteInlinePolicyFromPermissionSet" -> deleteInlinePolicy(request);
             case "PutInlinePolicyToPermissionSet" -> putInlinePolicy(request);
             case "ListAccountAssignments" -> listAccountAssignments(request);
+            case "ListAccountAssignmentsForPrincipal" -> listAccountAssignmentsForPrincipal(request, callerAccountId);
             case "CreateAccountAssignment" -> createAccountAssignment(request);
             case "DeleteAccountAssignment" -> deleteAccountAssignment(request);
             case "DescribeAccountAssignmentCreationStatus" -> describeAssignment(request);
@@ -229,6 +230,23 @@ public class SsoAdminJsonHandler {
         for (Assignment a : page.items()) {
             array.addObject().put("AccountId", a.accountId()).put("PermissionSetArn", a.permissionSetArn())
                     .put("PrincipalId", a.principalId()).put("PrincipalType", a.principalType());
+        }
+        if (page.nextToken() != null) {
+            response.put("NextToken", page.nextToken());
+        }
+        return Response.ok(response).build();
+    }
+
+    private Response listAccountAssignmentsForPrincipal(JsonNode request, String callerAccountId) {
+        var page = service.listAssignmentsForPrincipal(request, callerAccountId);
+        ObjectNode response = mapper.createObjectNode();
+        ArrayNode array = response.putArray("AccountAssignments");
+        for (Assignment assignment : page.items()) {
+            array.addObject()
+                    .put("AccountId", assignment.accountId())
+                    .put("PermissionSetArn", assignment.permissionSetArn())
+                    .put("PrincipalId", assignment.principalId())
+                    .put("PrincipalType", assignment.principalType());
         }
         if (page.nextToken() != null) {
             response.put("NextToken", page.nextToken());
