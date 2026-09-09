@@ -320,6 +320,29 @@ class ScimIntegrationTest {
     }
 
     @Test
+    void getSchemaReturnsAwsScimSchema() {
+        given()
+                .header("Authorization", BEARER)
+            .when()
+                .get("/" + TENANT + "/scim/v2/Schemas/urn:ietf:params:scim:schemas:core:2.0:User")
+            .then()
+                .statusCode(200)
+                .body("id", equalTo("urn:ietf:params:scim:schemas:core:2.0:User"))
+                .body("name", equalTo("User"))
+                .body("description", equalTo("User Schema"))
+                .body("attributes.name", hasItem("userName"))
+                .body("attributes.find { it.name == 'userName' }.required", equalTo(true));
+
+        given()
+                .header("Authorization", BEARER)
+            .when()
+                .get("/" + TENANT + "/scim/v2/Schemas/urn:example:missing")
+            .then()
+                .statusCode(404)
+                .body("status", equalTo("404"));
+    }
+
+    @Test
     void listUsersSupportsAwsFiltersAndCursorPagination() {
         String managerId = given()
                 .contentType("application/json")
