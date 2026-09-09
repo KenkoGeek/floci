@@ -55,6 +55,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `ListImportedModels` | `GET /imported-models` | AWS-compatible control-plane emulation. |
 | `DeleteImportedModel` | `DELETE /imported-models/{modelIdentifier}` | AWS-compatible control-plane emulation. |
 | `CreateCustomModel` | `POST /custom-models/create-custom-model` | AWS-compatible control-plane emulation. |
+| `GetCustomModel` | `GET /custom-models/{modelIdentifier}` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 

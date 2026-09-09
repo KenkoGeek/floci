@@ -305,6 +305,12 @@ public class BedrockControlPlaneController {
         return execute("CreateCustomModel", body, Map.of(), headers);
     }
 
+    @GET
+    @Path("/custom-models/{modelIdentifier:.+}")
+    public Response getCustomModel(@PathParam("modelIdentifier") String modelIdentifier, @Context HttpHeaders headers) {
+        return execute("GetCustomModel", null, Map.of("modelIdentifier", modelIdentifier), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
