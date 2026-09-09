@@ -63,6 +63,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `ListModelCustomizationJobs` | `GET /model-customization-jobs` | AWS-compatible control-plane emulation. |
 | `StopModelCustomizationJob` | `POST /model-customization-jobs/{jobIdentifier}/stop` | AWS-compatible control-plane emulation. |
 | `CreateModelCopyJob` | `POST /model-copy-jobs` | AWS-compatible control-plane emulation. |
+| `GetModelCopyJob` | `GET /model-copy-jobs/{jobArn}` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 

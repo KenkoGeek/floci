@@ -353,6 +353,12 @@ public class BedrockControlPlaneController {
         return execute("CreateModelCopyJob", body, Map.of(), headers);
     }
 
+    @GET
+    @Path("/model-copy-jobs/{jobArn:.+}")
+    public Response getModelCopyJob(@PathParam("jobArn") String jobArn, @Context HttpHeaders headers) {
+        return execute("GetModelCopyJob", null, Map.of("jobArn", jobArn), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
