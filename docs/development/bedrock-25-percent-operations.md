@@ -17,3 +17,4 @@ Each task is checked against the Amazon Bedrock API Reference and the AWS SDK fo
 | BR-011 | `DeleteModelInvocationLoggingConfiguration` | `DELETE /logging/modelinvocations` | SDK marshaller binding verified; diff-check |
 | BR-012 | `ListTagsForResource` | `POST /listTagsForResource` | SDK marshaller binding verified; diff-check |
 | BR-013 | `TagResource` | `POST /tagResource` | SDK marshaller binding verified; diff-check |
+| BR-014 | `UntagResource` | `POST /untagResource` | SDK marshaller binding verified; diff-check |
