@@ -332,6 +332,16 @@ class SsoAdminIntegrationTest {
         .when().post("/")
         .then().statusCode(200)
             .body(org.hamcrest.Matchers.is(org.hamcrest.Matchers.emptyOrNullString()));
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.GetApplicationAccessScope")
+            .body("{\"ApplicationArn\":\"" + applicationArn + "\",\"Scope\":\"api:read\"}")
+        .when().post("/")
+        .then().statusCode(200)
+            .body("Scope", equalTo("api:read"))
+            .body("AuthorizedTargets[0]", equalTo("arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e"));
     }
 
     @Test

@@ -412,6 +412,7 @@ class SsoAdminServiceTest {
         ApplicationAccessScope created = service.putApplicationAccessScope(request);
         assertEquals("api:read", created.scope());
         assertEquals(java.util.List.of(service.getInstanceArn()), created.authorizedTargets());
+        assertEquals(created, service.getApplicationAccessScope(request));
 
         request.putArray("AuthorizedTargets").add(application.applicationArn());
         ApplicationAccessScope updated = service.putApplicationAccessScope(request);
