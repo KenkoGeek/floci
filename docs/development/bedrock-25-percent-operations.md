@@ -53,3 +53,4 @@ Each task is checked against the Amazon Bedrock API Reference and the AWS SDK fo
 | BR-047 | `DeleteCustomModel` | `DELETE /custom-models/{modelIdentifier}` | SDK marshaller binding verified; diff-check |
 | BR-048 | `CreateModelCustomizationJob` | `POST /model-customization-jobs` | SDK marshaller binding verified; diff-check |
 | BR-049 | `GetModelCustomizationJob` | `GET /model-customization-jobs/{jobIdentifier}` | SDK marshaller binding verified; diff-check |
+| BR-050 | `ListModelCustomizationJobs` | `GET /model-customization-jobs` | SDK marshaller binding verified; diff-check |

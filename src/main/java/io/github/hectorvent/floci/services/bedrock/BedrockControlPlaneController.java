@@ -335,6 +335,12 @@ public class BedrockControlPlaneController {
         return execute("GetModelCustomizationJob", null, Map.of("jobIdentifier", jobIdentifier), headers);
     }
 
+    @GET
+    @Path("/model-customization-jobs")
+    public Response listModelCustomizationJobs(@Context HttpHeaders headers) {
+        return execute("ListModelCustomizationJobs", null, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
