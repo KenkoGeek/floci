@@ -275,6 +275,8 @@ class SsoAdminServiceTest {
         assertTrue(created.accountInstance());
         assertTrue(created.instanceArn().matches("arn:aws:sso:::instance/ssoins-[0-9a-f]{16}"));
         assertTrue(created.identityStoreId().matches("d-[0-9a-f]{10}"));
+        ObjectNode describeRequest = mapper.createObjectNode().put("InstanceArn", created.instanceArn());
+        assertEquals(created, emptyService.describeInstance(describeRequest));
         assertEquals(created.instanceArn(), emptyService.createInstance(request, ACCOUNT_ID, "us-west-2").instanceArn());
         assertEquals(1, emptyService.listInstances(ACCOUNT_ID).size());
 

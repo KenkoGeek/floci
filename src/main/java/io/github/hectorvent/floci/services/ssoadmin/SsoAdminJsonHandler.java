@@ -30,6 +30,7 @@ public class SsoAdminJsonHandler {
         return switch (action) {
             case "ListInstances" -> listInstances(callerAccountId);
             case "CreateInstance" -> createInstance(request, callerAccountId, region);
+            case "DescribeInstance" -> describeInstance(request);
             case "DeleteInstance" -> deleteInstance(request, callerAccountId);
             case "CreateInstanceAccessControlAttributeConfiguration" -> createInstanceAccessControlAttributeConfiguration(request);
             case "DeleteInstanceAccessControlAttributeConfiguration" -> deleteInstanceAccessControlAttributeConfiguration(request);
@@ -111,6 +112,24 @@ public class SsoAdminJsonHandler {
     private Response createInstance(JsonNode request, String callerAccountId, String region) {
         var instance = service.createInstance(request, callerAccountId, region);
         return Response.ok(mapper.createObjectNode().put("InstanceArn", instance.instanceArn())).build();
+    }
+
+    private Response describeInstance(JsonNode request) {
+        var instance = service.describeInstance(request);
+        ObjectNode response = mapper.createObjectNode();
+        response.put("CreatedDate", instance.createdDateEpochMillis() / 1000.0d);
+        response.put("IdentityStoreId", instance.identityStoreId());
+        response.put("InstanceArn", instance.instanceArn());
+        if (instance.name() != null) {
+            response.put("Name", instance.name());
+        }
+        response.put("OwnerAccountId", instance.ownerAccountId());
+        response.put("PermissionSetsEnabled", !instance.accountInstance());
+        response.put("Status", instance.status());
+        if (instance.statusReason() != null) {
+            response.put("StatusReason", instance.statusReason());
+        }
+        return Response.ok(response).build();
     }
 
     private Response deleteInstance(JsonNode request, String callerAccountId) {
