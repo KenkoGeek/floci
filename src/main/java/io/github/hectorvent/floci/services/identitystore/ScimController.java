@@ -72,6 +72,28 @@ public class ScimController {
     }
 
     @GET
+    @Path("/Schemas")
+    public Response listSchemas(@PathParam("tenantId") String tenantId,
+                                @HeaderParam("Authorization") String authorization) {
+        try {
+            requireBearer(authorization);
+            resolveIdentityStore(tenantId);
+            ObjectNode response = mapper.createObjectNode();
+            response.putArray("schemas").add(LIST_SCHEMA);
+            response.put("totalResults", 3);
+            response.put("itemsPerPage", 3);
+            response.put("startIndex", 1);
+            ArrayNode resources = response.putArray("Resources");
+            resources.add(userSchema());
+            resources.add(enterpriseUserSchema());
+            resources.add(groupSchema());
+            return Response.ok(response).build();
+        } catch (AwsException exception) {
+            return scimError(scimStatus(exception), exception.getMessage());
+        }
+    }
+
+    @GET
     @Path("/Schemas/{schemaId}")
     public Response getSchema(@PathParam("tenantId") String tenantId,
                               @PathParam("schemaId") String schemaId,

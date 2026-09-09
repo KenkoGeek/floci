@@ -64,6 +64,8 @@ Floci also accepts IAM Identity Center SCIM v2 requests under `/{tenant_id}/scim
 
 `GetSchema` is supported through `GET /{tenant_id}/scim/v2/Schemas/{schemaId}` for the IAM Identity Center User, Group, and Enterprise User schemas. The returned schema metadata reflects the writable/read-only characteristics used by the emulator's SCIM implementation and the AWS-supported user/group attributes.
 
+`ListSchemas` is supported through `GET /{tenant_id}/scim/v2/Schemas` and returns the IAM Identity Center SCIM list response with the three supported schema documents: User, Enterprise User, and Group.
+
 SCIM validation failures use the standard `urn:ietf:params:scim:api:messages:2.0:Error` response shape. See the [IAM Identity Center SCIM implementation](https://docs.aws.amazon.com/singlesignon/latest/developerguide/what-is-scim.html) and [CreateGroup](https://docs.aws.amazon.com/singlesignon/latest/developerguide/creategroup.html) documentation.
 
 ## AWS-compatible failures
