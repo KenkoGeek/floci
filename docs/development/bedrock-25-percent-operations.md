@@ -11,3 +11,4 @@ Each task is checked against the Amazon Bedrock API Reference and the AWS SDK fo
 | BR-005 | `CreateFoundationModelAgreement` | `POST /create-foundation-model-agreement` | SDK marshaller binding verified; diff-check |
 | BR-006 | `GetFoundationModel` | `GET /foundation-models/{modelIdentifier}` | SDK marshaller binding verified; diff-check |
 | BR-007 | `ListFoundationModels` | `GET /foundation-models` | SDK marshaller binding verified; diff-check |
+| BR-008 | `DeleteFoundationModelAgreement` | `POST /delete-foundation-model-agreement` | SDK marshaller binding verified; diff-check |
