@@ -182,6 +182,7 @@ public class BedrockControlPlaneService implements Resettable {
             case "ListAdvancedPromptOptimizationJobs" -> listGeneric("advanced-prompt-optimization-job", "jobSummaries", region);
             case "StopAdvancedPromptOptimizationJob" -> stopGeneric("advanced-prompt-optimization-job", path.get("jobIdentifier"), region);
             case "BatchDeleteAdvancedPromptOptimizationJob" -> batchDeleteJobs("advanced-prompt-optimization-job", request, region, "advancedPromptOptimizationJobs");
+            case "CreateAutomatedReasoningPolicy" -> createAutomatedReasoningPolicy(request, region);
             default -> throw new AwsException("UnknownOperationException", "Unsupported Bedrock operation: " + operation, 404);
         };
         return new Result(successStatus(operation), result.body());

@@ -545,6 +545,12 @@ public class BedrockControlPlaneController {
         return execute("BatchDeleteAdvancedPromptOptimizationJob", body, Map.of(), headers);
     }
 
+    @POST
+    @Path("/automated-reasoning-policies")
+    public Response createAutomatedReasoningPolicy(String body, @Context HttpHeaders headers) {
+        return execute("CreateAutomatedReasoningPolicy", body, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
