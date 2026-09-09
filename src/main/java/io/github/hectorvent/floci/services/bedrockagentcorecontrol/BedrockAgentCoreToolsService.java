@@ -97,6 +97,22 @@ public class BedrockAgentCoreToolsService {
                         "Browser not found: " + browserId, 404));
     }
 
+    public ObjectNode deleteBrowser(String browserId, String clientToken, String region) {
+        if ("aws.browser.v1".equals(browserId)) {
+            throw new AwsException("ValidationException", "System browser cannot be deleted", 400);
+        }
+        if (clientToken != null && !clientToken.isBlank()
+                && (clientToken.length() < 33 || clientToken.length() > 256
+                || !clientToken.matches("[a-zA-Z0-9](-*[a-zA-Z0-9]){0,256}"))) {
+            throw new AwsException("ValidationException", "clientToken does not satisfy length or pattern constraints", 400);
+        }
+        ObjectNode browser = getBrowser(browserId, region);
+        storage.delete(key("browser", region, browserId));
+        browser.put("status", "DELETING");
+        browser.put("lastUpdatedAt", Instant.now().toString());
+        return browser;
+    }
+
     public PaginatedResult<ObjectNode> listBrowsers(Integer maxResults, String nextToken, String type, String region) {
         if (type != null && !type.isBlank() && !"SYSTEM".equals(type) && !"CUSTOM".equals(type)) {
             throw new AwsException("ValidationException", "type must be SYSTEM or CUSTOM", 400);

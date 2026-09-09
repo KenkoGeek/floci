@@ -12,6 +12,8 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.BrowserNetw
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.BrowserNetworkMode;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CreateBrowserRequest;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CreateBrowserResponse;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.DeleteBrowserRequest;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.DeleteBrowserResponse;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetBrowserRequest;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetBrowserResponse;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.ListBrowsersRequest;
@@ -84,5 +86,17 @@ class BedrockAgentCoreToolsTest {
 
         assertThat(response.browserSummaries())
                 .anyMatch(summary -> browserId.equals(summary.browserId()));
+    }
+
+    @Test
+    @Order(4)
+    void deleteBrowser() {
+        DeleteBrowserResponse response = client.deleteBrowser(DeleteBrowserRequest.builder()
+                .browserId(browserId)
+                .build());
+
+        assertThat(response.browserId()).isEqualTo(browserId);
+        assertThat(response.statusAsString()).isEqualTo("DELETING");
+        assertThat(response.lastUpdatedAt()).isNotNull();
     }
 }

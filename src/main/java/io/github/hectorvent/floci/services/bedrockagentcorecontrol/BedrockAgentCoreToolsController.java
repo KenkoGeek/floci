@@ -9,6 +9,7 @@ import io.github.hectorvent.floci.core.common.Pagination;
 import io.github.hectorvent.floci.core.common.RegionResolver;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.PUT;
@@ -72,6 +73,24 @@ public class BedrockAgentCoreToolsController {
             return Response.ok(response).build();
         } catch (Exception e) {
             return error(e, "getting browser");
+        }
+    }
+
+    @DELETE
+    @Path("/browsers/{browserId}")
+    public Response deleteBrowser(@Context HttpHeaders headers,
+                                  @PathParam("browserId") String browserId,
+                                  @QueryParam("clientToken") String clientToken) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            ObjectNode browser = service.deleteBrowser(browserId, clientToken, region);
+            ObjectNode response = objectMapper.createObjectNode();
+            response.put("browserId", browser.path("browserId").asText());
+            response.put("lastUpdatedAt", browser.path("lastUpdatedAt").asText());
+            response.put("status", browser.path("status").asText());
+            return Response.status(202).entity(response).build();
+        } catch (Exception e) {
+            return error(e, "deleting browser");
         }
     }
 
