@@ -26,6 +26,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | `DescribeApplication` | Returns the full persisted IAM Identity Center application metadata, including portal options, status, creation Region, and identity store ARN. |
 | `CreateApplicationAssignment` | Grants direct application access to a user or group. |
 | `DescribeApplicationAssignment` | Retrieves a direct user or group assignment to an IAM Identity Center application with AWS-compatible validation. |
+| `DescribeApplicationProvider` | Returns the supported custom OAuth application provider metadata with AWS-compatible ARN validation and not-found behavior. |
 | `DeleteApplication` | Deletes the IAM Identity Center application association and its local assignment state. |
 | `DeleteApplicationAccessScope` | Deletes an application access scope after validating its AWS scope name and application ARN. |
 | `DeleteApplicationAssignment` | Revokes a direct user or group assignment from an IAM Identity Center application. |

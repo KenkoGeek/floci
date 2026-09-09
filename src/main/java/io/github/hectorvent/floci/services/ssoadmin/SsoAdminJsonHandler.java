@@ -44,6 +44,7 @@ public class SsoAdminJsonHandler {
             case "DescribeApplication" -> describeApplication(request);
             case "CreateApplicationAssignment" -> createApplicationAssignment(request);
             case "DescribeApplicationAssignment" -> describeApplicationAssignment(request);
+            case "DescribeApplicationProvider" -> describeApplicationProvider(request);
             case "DeleteApplication" -> deleteApplication(request);
             case "DeleteApplicationAccessScope" -> deleteApplicationAccessScope(request);
             case "DeleteApplicationAssignment" -> deleteApplicationAssignment(request);
@@ -230,6 +231,14 @@ public class SsoAdminJsonHandler {
         response.put("ApplicationArn", assignment.applicationArn());
         response.put("PrincipalId", assignment.principalId());
         response.put("PrincipalType", assignment.principalType());
+        return Response.ok(response).build();
+    }
+
+    private Response describeApplicationProvider(JsonNode request) {
+        String applicationProviderArn = service.describeApplicationProvider(request);
+        ObjectNode response = mapper.createObjectNode();
+        response.put("ApplicationProviderArn", applicationProviderArn);
+        response.put("FederationProtocol", "OAUTH");
         return Response.ok(response).build();
     }
 

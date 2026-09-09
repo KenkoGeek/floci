@@ -479,6 +479,21 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void describeApplicationProviderReturnsCustomOauthProviderAndValidatesArn() {
+        ObjectNode request = mapper.createObjectNode();
+        request.put("ApplicationProviderArn", "arn:aws:sso::aws:applicationProvider/custom");
+        assertEquals("arn:aws:sso::aws:applicationProvider/custom", service.describeApplicationProvider(request));
+
+        ObjectNode missing = mapper.createObjectNode();
+        missing.put("ApplicationProviderArn", "arn:aws:sso::aws:applicationProvider/example");
+        assertError("ResourceNotFoundException", () -> service.describeApplicationProvider(missing));
+
+        ObjectNode malformed = mapper.createObjectNode();
+        malformed.put("ApplicationProviderArn", "not-an-arn");
+        assertError("ValidationException", () -> service.describeApplicationProvider(malformed));
+    }
+
+    @Test
     void deleteApplicationAssignmentRevokesDirectAssignmentAndValidatesPrincipal() {
         SsoApplication application = createApplication("Delete Assignment App", "delete-assignment-app-token");
         ObjectNode request = mapper.createObjectNode();

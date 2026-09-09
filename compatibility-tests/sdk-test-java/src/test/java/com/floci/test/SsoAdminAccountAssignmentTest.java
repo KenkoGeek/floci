@@ -143,6 +143,11 @@ class SsoAdminAccountAssignmentTest {
             assertThat(described.statusAsString()).isEqualTo("DISABLED");
             assertThat(described.portalOptions().visibilityAsString()).isEqualTo("ENABLED");
             assertThat(described.portalOptions().signInOptions().originAsString()).isEqualTo("APPLICATION");
+
+            var provider = sso.describeApplicationProvider(request -> request
+                    .applicationProviderArn("arn:aws:sso::aws:applicationProvider/custom"));
+            assertThat(provider.applicationProviderArn()).isEqualTo("arn:aws:sso::aws:applicationProvider/custom");
+            assertThat(provider.federationProtocolAsString()).isEqualTo("OAUTH");
         }
     }
 
