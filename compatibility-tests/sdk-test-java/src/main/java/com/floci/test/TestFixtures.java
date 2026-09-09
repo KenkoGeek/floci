@@ -43,6 +43,7 @@ import software.amazon.awssdk.services.securityhub.SecurityHubClient;
 import software.amazon.awssdk.services.detective.DetectiveClient;
 import software.amazon.awssdk.services.rum.RumClient;
 import software.amazon.awssdk.services.resourceexplorer2.ResourceExplorer2Client;
+import software.amazon.awssdk.services.ram.RamClient;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.endpoints.Endpoint;
@@ -527,10 +528,14 @@ public final class TestFixtures {
     }
 
     public static IamClient iamClient() {
+        return iamClient("test");
+    }
+
+    public static IamClient iamClient(String accountId) {
         return IamClient.builder()
                 .endpointOverride(ENDPOINT)
                 .region(REGION)
-                .credentialsProvider(CREDENTIALS)
+                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(accountId, "test")))
                 .build();
     }
 
@@ -891,6 +896,18 @@ public final class TestFixtures {
                 .endpointOverride(ENDPOINT)
                 .region(REGION)
                 .credentialsProvider(CREDENTIALS)
+                .build();
+    }
+
+    public static RamClient ramClient() {
+        return ramClient("test");
+    }
+
+    public static RamClient ramClient(String accountId) {
+        return RamClient.builder()
+                .endpointOverride(ENDPOINT)
+                .region(REGION)
+                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(accountId, "test")))
                 .build();
     }
 

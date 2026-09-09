@@ -341,6 +341,11 @@
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>guardduty</artifactId>
         </dependency>
+        <!-- AWS Resource Access Manager client -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>ram</artifactId>
+        </dependency>
         <!-- Secrets Manager client -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
