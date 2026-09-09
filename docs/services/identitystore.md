@@ -50,6 +50,8 @@ Floci also accepts IAM Identity Center SCIM v2 requests under `/{tenant_id}/scim
 
 `CreateUser` is supported through `POST /{tenant_id}/scim/v2/Users`. It enforces the IAM Identity Center SCIM requirements for `givenName`, `familyName`, `userName`, and `displayName`; allows only one value for multi-value attributes such as `emails`, `addresses`, `phoneNumbers`, and `roles`; requires the email value to be primary; rejects `groups` during creation and the AWS-documented unsupported attributes/subattributes; and persists the resulting user into the shared Identity Store state. The response uses the AWS SCIM `201` user representation, including the enterprise extension when supplied.
 
+`DeleteGroup` is supported through `DELETE /{tenant_id}/scim/v2/Groups/{id}` and returns HTTP `204` with an empty body. Deletion removes the shared Identity Store group and its local membership records. Missing groups return the SCIM-documented HTTP `404` `ResourceNotFoundException` mapping.
+
 SCIM validation failures use the standard `urn:ietf:params:scim:api:messages:2.0:Error` response shape. See the [IAM Identity Center SCIM implementation](https://docs.aws.amazon.com/singlesignon/latest/developerguide/what-is-scim.html) and [CreateGroup](https://docs.aws.amazon.com/singlesignon/latest/developerguide/creategroup.html) documentation.
 
 ## AWS-compatible failures
