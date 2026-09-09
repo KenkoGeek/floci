@@ -533,6 +533,12 @@ public class BedrockControlPlaneController {
         return execute("ListAdvancedPromptOptimizationJobs", null, Map.of(), headers);
     }
 
+    @POST
+    @Path("/advanced-prompt-optimization-jobs/{jobIdentifier:.+}/stop")
+    public Response stopAdvancedPromptOptimizationJob(@PathParam("jobIdentifier") String jobIdentifier, String body, @Context HttpHeaders headers) {
+        return execute("StopAdvancedPromptOptimizationJob", body, Map.of("jobIdentifier", jobIdentifier), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
