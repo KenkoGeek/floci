@@ -161,4 +161,11 @@ class BedrockAgentCoreCredentialProviderTest {
                 .isEqualTo("updated-client-id");
         assertThat(response.lastUpdatedTime()).isNotNull();
     }
+
+    @Test
+    @Order(10)
+    void deleteOauth2CredentialProvider() {
+        var response = client.deleteOauth2CredentialProvider(builder -> builder.name(oauth2ProviderName));
+        assertThat(response.sdkHttpResponse().statusCode()).isEqualTo(204);
+    }
 }
