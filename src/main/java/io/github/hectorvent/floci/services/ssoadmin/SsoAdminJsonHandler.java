@@ -49,6 +49,7 @@ public class SsoAdminJsonHandler {
             case "AttachManagedPolicyToPermissionSet" -> attachManagedPolicy(request);
             case "AttachCustomerManagedPolicyReferenceToPermissionSet" -> attachCustomerManagedPolicyReference(request);
             case "DetachCustomerManagedPolicyReferenceFromPermissionSet" -> detachCustomerManagedPolicyReference(request);
+            case "ListCustomerManagedPolicyReferencesInPermissionSet" -> listCustomerManagedPolicyReferences(request);
             case "DetachManagedPolicyFromPermissionSet" -> detachManagedPolicy(request);
             case "DeleteInlinePolicyFromPermissionSet" -> deleteInlinePolicy(request);
             case "PutInlinePolicyToPermissionSet" -> putInlinePolicy(request);
@@ -227,6 +228,19 @@ public class SsoAdminJsonHandler {
     private Response detachCustomerManagedPolicyReference(JsonNode request) {
         service.detachCustomerManagedPolicyReference(request);
         return Response.ok().build();
+    }
+
+    private Response listCustomerManagedPolicyReferences(JsonNode request) {
+        var page = service.listCustomerManagedPolicyReferences(request);
+        ObjectNode response = mapper.createObjectNode();
+        ArrayNode references = response.putArray("CustomerManagedPolicyReferences");
+        page.items().forEach(reference -> references.addObject()
+                .put("Name", reference.name())
+                .put("Path", reference.path()));
+        if (page.nextToken() != null) {
+            response.put("NextToken", page.nextToken());
+        }
+        return Response.ok(response).build();
     }
 
     private Response detachManagedPolicy(JsonNode request) {

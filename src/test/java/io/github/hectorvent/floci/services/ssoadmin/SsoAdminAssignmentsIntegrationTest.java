@@ -78,6 +78,11 @@ class SsoAdminAssignmentsIntegrationTest {
                 + "\",\"CustomerManagedPolicyReference\":{\"Name\":\"PlatformPolicy\",\"Path\":\"/platform/\"}}";
         json("SWBExternalService.AttachCustomerManagedPolicyReferenceToPermissionSet", body)
                 .then().statusCode(200);
+        json("SWBExternalService.ListCustomerManagedPolicyReferencesInPermissionSet",
+                "{\"InstanceArn\":\"" + instanceArn + "\",\"PermissionSetArn\":\"" + permissionSetArn + "\"}")
+                .then().statusCode(200)
+                .body("CustomerManagedPolicyReferences[0].Name", equalTo("PlatformPolicy"))
+                .body("CustomerManagedPolicyReferences[0].Path", equalTo("/platform/"));
         json("SWBExternalService.DetachCustomerManagedPolicyReferenceFromPermissionSet", body)
                 .then().statusCode(200).body(equalTo(""));
     }

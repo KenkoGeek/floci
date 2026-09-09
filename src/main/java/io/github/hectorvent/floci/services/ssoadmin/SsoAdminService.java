@@ -802,6 +802,17 @@ public class SsoAdminService implements Resettable {
         markPermissionSetProvisioningStale(current.arn());
     }
 
+    public PaginatedResult<CustomerManagedPolicyReference> listCustomerManagedPolicyReferences(JsonNode request) {
+        PermissionSet current = getPermissionSet(required(request, "InstanceArn"), required(request, "PermissionSetArn"));
+        List<CustomerManagedPolicyReference> references = current.customerManagedPolicies().values().stream()
+                .sorted(Comparator.comparing(CustomerManagedPolicyReference::name, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(CustomerManagedPolicyReference::path))
+                .toList();
+        return Pagination.paginate(references,
+                reference -> reference.name().toLowerCase(java.util.Locale.ROOT) + "\n" + reference.path(),
+                optionalMaxResults(request), text(request, "NextToken"), 50, 100, "ValidationException");
+    }
+
     public synchronized void detachPolicy(String instanceArn, String arn, String policyArn) {
         PermissionSet current = getPermissionSet(instanceArn, arn);
         validateManagedPolicyArn(policyArn);
