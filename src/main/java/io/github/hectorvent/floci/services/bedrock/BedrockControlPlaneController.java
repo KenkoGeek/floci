@@ -425,6 +425,12 @@ public class BedrockControlPlaneController {
         return execute("RegisterMarketplaceModelEndpoint", body, Map.of("endpointIdentifier", endpointIdentifier), headers);
     }
 
+    @DELETE
+    @Path("/marketplace-model/endpoints/{endpointArn:.+}/registration")
+    public Response deregisterMarketplaceModelEndpoint(@PathParam("endpointArn") String endpointArn, @Context HttpHeaders headers) {
+        return execute("DeregisterMarketplaceModelEndpoint", null, Map.of("endpointArn", endpointArn), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
