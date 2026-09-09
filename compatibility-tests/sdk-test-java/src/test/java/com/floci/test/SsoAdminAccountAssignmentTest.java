@@ -569,6 +569,14 @@ class SsoAdminAccountAssignmentTest {
                     .permissionSetArn(permissionSetArn));
             assertThat(boundary.permissionsBoundary().managedPolicyArn())
                     .isEqualTo("arn:aws:iam::aws:policy/PowerUserAccess");
+            var deleted = sso.deletePermissionsBoundaryFromPermissionSet(request -> request
+                    .instanceArn(instanceArn)
+                    .permissionSetArn(permissionSetArn));
+            assertThat(deleted.sdkHttpResponse().isSuccessful()).isTrue();
+            assertThatThrownBy(() -> sso.getPermissionsBoundaryForPermissionSet(request -> request
+                    .instanceArn(instanceArn)
+                    .permissionSetArn(permissionSetArn)))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ResourceNotFoundException.class);
         }
     }
 
