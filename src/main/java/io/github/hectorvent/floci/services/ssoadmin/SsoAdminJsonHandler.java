@@ -43,6 +43,7 @@ public class SsoAdminJsonHandler {
             case "DescribeRegion" -> describeRegion(request);
             case "CreateApplication" -> createApplication(request, callerAccountId, region);
             case "DescribeApplication" -> describeApplication(request);
+            case "ListApplications" -> listApplications(request, callerAccountId);
             case "CreateApplicationAssignment" -> createApplicationAssignment(request);
             case "DescribeApplicationAssignment" -> describeApplicationAssignment(request);
             case "DescribeApplicationProvider" -> describeApplicationProvider(request);
@@ -295,7 +296,21 @@ public class SsoAdminJsonHandler {
     }
 
     private Response describeApplication(JsonNode request) {
-        SsoApplication application = service.describeApplication(request);
+        return Response.ok(applicationNode(service.describeApplication(request))).build();
+    }
+
+    private Response listApplications(JsonNode request, String callerAccountId) {
+        var page = service.listApplications(request, callerAccountId);
+        ObjectNode response = mapper.createObjectNode();
+        ArrayNode applications = response.putArray("Applications");
+        page.items().forEach(application -> applications.add(applicationNode(application)));
+        if (page.nextToken() != null) {
+            response.put("NextToken", page.nextToken());
+        }
+        return Response.ok(response).build();
+    }
+
+    private ObjectNode applicationNode(SsoApplication application) {
         ObjectNode response = mapper.createObjectNode();
         response.put("ApplicationAccount", application.applicationAccount());
         response.put("ApplicationArn", application.applicationArn());
@@ -322,7 +337,7 @@ public class SsoAdminJsonHandler {
             }
         }
         response.put("Status", application.status());
-        return Response.ok(response).build();
+        return response;
     }
 
     private Response listPermissionSets(JsonNode request) {

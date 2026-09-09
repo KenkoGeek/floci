@@ -183,6 +183,17 @@ class SsoAdminIntegrationTest {
             .body("PortalOptions.SignInOptions.Origin", equalTo("APPLICATION"))
             .body("PortalOptions.SignInOptions.ApplicationUrl", equalTo("https://example.com/login"))
             .body("Status", equalTo("DISABLED"));
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.ListApplications")
+            .body("{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
+                    + "\"Filter\":{\"ApplicationAccount\":\"000000000000\","
+                    + "\"ApplicationProvider\":\"arn:aws:sso::aws:applicationProvider/custom\"}}")
+        .when().post("/")
+        .then().statusCode(200)
+            .body("Applications.ApplicationArn", org.hamcrest.Matchers.hasItem(applicationArn));
     }
 
     @Test
