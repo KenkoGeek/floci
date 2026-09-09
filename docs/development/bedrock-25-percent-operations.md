@@ -54,3 +54,4 @@ Each task is checked against the Amazon Bedrock API Reference and the AWS SDK fo
 | BR-048 | `CreateModelCustomizationJob` | `POST /model-customization-jobs` | SDK marshaller binding verified; diff-check |
 | BR-049 | `GetModelCustomizationJob` | `GET /model-customization-jobs/{jobIdentifier}` | SDK marshaller binding verified; diff-check |
 | BR-050 | `ListModelCustomizationJobs` | `GET /model-customization-jobs` | SDK marshaller binding verified; diff-check |
+| BR-051 | `StopModelCustomizationJob` | `POST /model-customization-jobs/{jobIdentifier}/stop` | SDK marshaller binding verified; diff-check |

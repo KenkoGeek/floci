@@ -341,6 +341,12 @@ public class BedrockControlPlaneController {
         return execute("ListModelCustomizationJobs", null, Map.of(), headers);
     }
 
+    @POST
+    @Path("/model-customization-jobs/{jobIdentifier:.+}/stop")
+    public Response stopModelCustomizationJob(@PathParam("jobIdentifier") String jobIdentifier, String body, @Context HttpHeaders headers) {
+        return execute("StopModelCustomizationJob", body, Map.of("jobIdentifier", jobIdentifier), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
