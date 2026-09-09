@@ -45,6 +45,7 @@ public class SsoAdminJsonHandler {
             case "PutInlinePolicyToPermissionSet" -> putInlinePolicy(request);
             case "ListAccountAssignments" -> listAccountAssignments(request);
             case "CreateAccountAssignment" -> createAccountAssignment(request);
+            case "DeleteAccountAssignment" -> deleteAccountAssignment(request);
             case "DescribeAccountAssignmentCreationStatus" -> describeAssignment(request);
             default -> throw new AwsException("UnknownOperationException", "Operation " + action + " is not supported.", 400);
         };
@@ -203,6 +204,24 @@ public class SsoAdminJsonHandler {
         AssignmentOperation op = service.createAssignment(request);
         ObjectNode response = mapper.createObjectNode();
         response.set("AccountAssignmentCreationStatus", assignmentOperationNode(op));
+        return Response.ok(response).build();
+    }
+
+    private Response deleteAccountAssignment(JsonNode request) {
+        var operation = service.deleteAssignment(request);
+        ObjectNode response = mapper.createObjectNode();
+        ObjectNode status = response.putObject("AccountAssignmentDeletionStatus");
+        status.put("RequestId", operation.requestId());
+        status.put("Status", operation.status());
+        status.put("CreatedDate", operation.createdDateEpochMillis() / 1000.0d);
+        status.put("TargetId", operation.accountId());
+        status.put("TargetType", "AWS_ACCOUNT");
+        status.put("PermissionSetArn", operation.permissionSetArn());
+        status.put("PrincipalId", operation.principalId());
+        status.put("PrincipalType", operation.principalType());
+        if (operation.failureReason() != null) {
+            status.put("FailureReason", operation.failureReason());
+        }
         return Response.ok(response).build();
     }
 

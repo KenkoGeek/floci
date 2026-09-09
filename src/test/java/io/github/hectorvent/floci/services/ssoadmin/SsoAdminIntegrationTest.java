@@ -261,6 +261,36 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void deleteAccountAssignmentReturnsDeletionOperationAndRemovesAssignment() {
+        String instanceArn = listInstancesArn();
+        String permissionSetArn = given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.CreatePermissionSet")
+                .body("{\"InstanceArn\":\"" + instanceArn + "\",\"Name\":\"DeleteAssignmentIntegration\"}")
+            .when().post("/")
+            .then().statusCode(200)
+            .extract().path("PermissionSet.PermissionSetArn");
+        String assignmentRequest = "{\"InstanceArn\":\"" + instanceArn + "\",\"TargetId\":\"123456789012\","
+                + "\"TargetType\":\"AWS_ACCOUNT\",\"PermissionSetArn\":\"" + permissionSetArn + "\","
+                + "\"PrincipalType\":\"GROUP\",\"PrincipalId\":\"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\"}";
+
+        given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.CreateAccountAssignment")
+                .body(assignmentRequest).when().post("/").then().statusCode(200);
+
+        given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.DeleteAccountAssignment")
+                .body(assignmentRequest)
+            .when().post("/")
+            .then()
+                .statusCode(200)
+                .body("AccountAssignmentDeletionStatus.Status", equalTo("SUCCEEDED"))
+                .body("AccountAssignmentDeletionStatus.RequestId", matchesPattern("[0-9a-f-]{36}"))
+                .body("AccountAssignmentDeletionStatus.CreatedDate", org.hamcrest.Matchers.greaterThan(0.0f));
+    }
+
+    @Test
     void unknownAction_returnsUnknownOperationException() {
         given()
             .contentType("application/x-amz-json-1.1")
