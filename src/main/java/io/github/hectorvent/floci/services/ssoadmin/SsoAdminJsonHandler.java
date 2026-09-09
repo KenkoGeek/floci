@@ -45,6 +45,7 @@ public class SsoAdminJsonHandler {
             case "CreateApplicationAssignment" -> createApplicationAssignment(request);
             case "DescribeApplicationAssignment" -> describeApplicationAssignment(request);
             case "DescribeApplicationProvider" -> describeApplicationProvider(request);
+            case "ListApplicationAssignments" -> listApplicationAssignments(request);
             case "DeleteApplication" -> deleteApplication(request);
             case "DeleteApplicationAccessScope" -> deleteApplicationAccessScope(request);
             case "DeleteApplicationAssignment" -> deleteApplicationAssignment(request);
@@ -239,6 +240,22 @@ public class SsoAdminJsonHandler {
         ObjectNode response = mapper.createObjectNode();
         response.put("ApplicationProviderArn", applicationProviderArn);
         response.put("FederationProtocol", "OAUTH");
+        return Response.ok(response).build();
+    }
+
+    private Response listApplicationAssignments(JsonNode request) {
+        var page = service.listApplicationAssignments(request);
+        ObjectNode response = mapper.createObjectNode();
+        ArrayNode assignments = response.putArray("ApplicationAssignments");
+        page.items().forEach(assignment -> {
+            ObjectNode node = assignments.addObject();
+            node.put("ApplicationArn", assignment.applicationArn());
+            node.put("PrincipalId", assignment.principalId());
+            node.put("PrincipalType", assignment.principalType());
+        });
+        if (page.nextToken() != null) {
+            response.put("NextToken", page.nextToken());
+        }
         return Response.ok(response).build();
     }
 
