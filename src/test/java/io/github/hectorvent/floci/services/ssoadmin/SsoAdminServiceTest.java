@@ -283,6 +283,27 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void deleteApplicationAssignmentRevokesDirectAssignmentAndValidatesPrincipal() {
+        SsoApplication application = createApplication("Delete Assignment App", "delete-assignment-app-token");
+        ObjectNode request = mapper.createObjectNode();
+        request.put("ApplicationArn", application.applicationArn());
+        request.put("PrincipalId", PRINCIPAL_ID);
+        request.put("PrincipalType", "USER");
+        service.createApplicationAssignment(request);
+
+        service.deleteApplicationAssignment(request);
+        assertError("ResourceNotFoundException", () -> service.deleteApplicationAssignment(request));
+
+        ObjectNode invalidType = request.deepCopy();
+        invalidType.put("PrincipalType", "ROLE");
+        assertError("ValidationException", () -> service.deleteApplicationAssignment(invalidType));
+
+        ObjectNode invalidPrincipal = request.deepCopy();
+        invalidPrincipal.put("PrincipalId", "not-a-guid");
+        assertError("ValidationException", () -> service.deleteApplicationAssignment(invalidPrincipal));
+    }
+
+    @Test
     void createApplicationAssignmentEnforcesTheDocumentedGroupQuota() {
         SsoApplication application = createApplication("Group Quota App", "group-quota-app-token");
         for (int i = 0; i < 100; i++) {
