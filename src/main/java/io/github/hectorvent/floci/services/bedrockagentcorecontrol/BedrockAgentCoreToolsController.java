@@ -76,6 +76,37 @@ public class BedrockAgentCoreToolsController {
         }
     }
 
+    @POST
+    @Path("/code-interpreters")
+    public Response listCodeInterpreters(@Context HttpHeaders headers,
+                                         @QueryParam("maxResults") String maxResultsParam,
+                                         @QueryParam("nextToken") String nextToken,
+                                         @QueryParam("type") String type) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            Integer maxResults = Pagination.parseMaxResults(maxResultsParam, "ValidationException");
+            var result = service.listCodeInterpreters(maxResults, nextToken, type, region);
+            ObjectNode response = objectMapper.createObjectNode();
+            var summaries = response.putArray("codeInterpreterSummaries");
+            for (ObjectNode interpreter : result.items()) {
+                ObjectNode summary = summaries.addObject();
+                copyText(interpreter, summary, "codeInterpreterArn");
+                copyText(interpreter, summary, "codeInterpreterId");
+                copyText(interpreter, summary, "createdAt");
+                copyText(interpreter, summary, "description");
+                copyText(interpreter, summary, "lastUpdatedAt");
+                copyText(interpreter, summary, "name");
+                copyText(interpreter, summary, "status");
+            }
+            if (result.nextToken() != null) {
+                response.put("nextToken", result.nextToken());
+            }
+            return Response.ok(response).build();
+        } catch (Exception e) {
+            return error(e, "listing code interpreters");
+        }
+    }
+
     @PUT
     @Path("/code-interpreters")
     public Response createCodeInterpreter(@Context HttpHeaders headers, String body) {

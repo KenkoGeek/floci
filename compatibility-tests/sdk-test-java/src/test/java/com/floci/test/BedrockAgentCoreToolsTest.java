@@ -177,4 +177,16 @@ class BedrockAgentCoreToolsTest {
         assertThat(response.networkConfiguration().networkModeAsString()).isEqualTo("PUBLIC");
         assertThat(response.statusAsString()).isEqualTo("READY");
     }
+
+    @Test
+    @Order(11)
+    void listCodeInterpreters() {
+        ListCodeInterpretersResponse response = client.listCodeInterpreters(ListCodeInterpretersRequest.builder()
+                .type(ResourceType.CUSTOM)
+                .maxResults(100)
+                .build());
+
+        assertThat(response.codeInterpreterSummaries())
+                .anyMatch(summary -> codeInterpreterId.equals(summary.codeInterpreterId()));
+    }
 }

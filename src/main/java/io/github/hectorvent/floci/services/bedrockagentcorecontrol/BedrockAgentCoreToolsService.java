@@ -190,6 +190,25 @@ public class BedrockAgentCoreToolsService {
                         "Code interpreter not found: " + codeInterpreterId, 404));
     }
 
+    public PaginatedResult<ObjectNode> listCodeInterpreters(Integer maxResults, String nextToken,
+                                                             String type, String region) {
+        if (type != null && !type.isBlank() && !"SYSTEM".equals(type) && !"CUSTOM".equals(type)) {
+            throw new AwsException("ValidationException", "type must be SYSTEM or CUSTOM", 400);
+        }
+        List<ObjectNode> interpreters = new ArrayList<>();
+        if (type == null || type.isBlank() || "SYSTEM".equals(type)) {
+            interpreters.add(getCodeInterpreter("aws.codeinterpreter.v1", region));
+        }
+        if (type == null || type.isBlank() || "CUSTOM".equals(type)) {
+            storage.scan(k -> k.startsWith(prefix("code-interpreter", region))).stream()
+                    .map(ObjectNode::deepCopy)
+                    .forEach(interpreters::add);
+        }
+        return Pagination.paginate(interpreters,
+                node -> node.path("codeInterpreterId").asText(), maxResults, nextToken,
+                100, 100, "ValidationException");
+    }
+
     public ObjectNode getBrowserProfile(String profileId, String region) {
         if (profileId == null || !profileId.matches("[a-zA-Z][a-zA-Z0-9_]{0,47}-[a-zA-Z0-9]{10}")) {
             throw new AwsException("ValidationException", "profileId does not satisfy the required pattern", 400);
