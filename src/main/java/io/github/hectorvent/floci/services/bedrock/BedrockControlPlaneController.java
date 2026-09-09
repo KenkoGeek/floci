@@ -95,6 +95,12 @@ public class BedrockControlPlaneController {
         return execute("GetModelInvocationLoggingConfiguration", null, Map.of(), headers);
     }
 
+    @PUT
+    @Path("/logging/modelinvocations")
+    public Response putModelInvocationLoggingConfiguration(String body, @Context HttpHeaders headers) {
+        return execute("PutModelInvocationLoggingConfiguration", body, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
