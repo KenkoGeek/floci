@@ -431,6 +431,12 @@ public class BedrockControlPlaneController {
         return execute("DeregisterMarketplaceModelEndpoint", null, Map.of("endpointArn", endpointArn), headers);
     }
 
+    @POST
+    @Path("/prompt-routers")
+    public Response createPromptRouter(String body, @Context HttpHeaders headers) {
+        return execute("CreatePromptRouter", body, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(

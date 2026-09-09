@@ -76,6 +76,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `DeleteMarketplaceModelEndpoint` | `DELETE /marketplace-model/endpoints/{endpointArn}` | AWS-compatible control-plane emulation. |
 | `RegisterMarketplaceModelEndpoint` | `POST /marketplace-model/endpoints/{endpointIdentifier}/registration` | AWS-compatible control-plane emulation. |
 | `DeregisterMarketplaceModelEndpoint` | `DELETE /marketplace-model/endpoints/{endpointArn}/registration` | AWS-compatible control-plane emulation. |
+| `CreatePromptRouter` | `POST /prompt-routers` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 

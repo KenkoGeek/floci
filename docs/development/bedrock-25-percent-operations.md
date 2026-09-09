@@ -69,3 +69,4 @@ Each task is checked against the Amazon Bedrock API Reference and the AWS SDK fo
 | BR-063 | `DeleteMarketplaceModelEndpoint` | `DELETE /marketplace-model/endpoints/{endpointArn}` | SDK marshaller binding verified; diff-check |
 | BR-064 | `RegisterMarketplaceModelEndpoint` | `POST /marketplace-model/endpoints/{endpointIdentifier}/registration` | SDK marshaller binding verified; diff-check |
 | BR-065 | `DeregisterMarketplaceModelEndpoint` | `DELETE /marketplace-model/endpoints/{endpointArn}/registration` | SDK marshaller binding verified; diff-check |
+| BR-066 | `CreatePromptRouter` | `POST /prompt-routers` | SDK marshaller binding verified; diff-check |
