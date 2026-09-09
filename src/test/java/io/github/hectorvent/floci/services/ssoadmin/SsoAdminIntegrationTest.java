@@ -306,6 +306,56 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void deleteInstanceAccessControlAttributeConfigurationReturnsEmptyAwsResponse() {
+        String createRequest = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
+                + "\"InstanceAccessControlAttributeConfiguration\":{\"AccessControlAttributes\":[{"
+                + "\"Key\":\"CostCenter\",\"Value\":{\"Source\":[\"${path:enterprise.costCenter}\"]}}]}}";
+
+        String request = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\"}";
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.DeleteInstanceAccessControlAttributeConfiguration")
+            .body(request)
+        .when()
+            .post("/")
+        .then()
+            .statusCode(org.hamcrest.Matchers.anyOf(org.hamcrest.Matchers.is(200), org.hamcrest.Matchers.is(400)));
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.CreateInstanceAccessControlAttributeConfiguration")
+            .body(createRequest)
+        .when()
+            .post("/")
+        .then()
+            .statusCode(200);
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.DeleteInstanceAccessControlAttributeConfiguration")
+            .body(request)
+        .when()
+            .post("/")
+        .then()
+            .statusCode(200)
+            .body(org.hamcrest.Matchers.is(org.hamcrest.Matchers.emptyOrNullString()));
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.DeleteInstanceAccessControlAttributeConfiguration")
+            .body(request)
+        .when()
+            .post("/")
+        .then()
+            .statusCode(400)
+            .body("__type", org.hamcrest.Matchers.containsString("ResourceNotFoundException"));
+    }
+
+    @Test
     void createInstanceCreatesOneAccountInstanceAndReplaysClientToken() {
         String auth = "AWS4-HMAC-SHA256 Credential=222233334444/20260101/us-west-2/sso/aws4_request";
         String request = "{\"Name\":\"StandaloneInstance\",\"ClientToken\":\"instance-integration-token\","
