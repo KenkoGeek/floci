@@ -6,6 +6,7 @@ import io.github.hectorvent.floci.core.common.AwsException;
 import io.github.hectorvent.floci.core.storage.InMemoryStorage;
 import io.github.hectorvent.floci.services.ssoadmin.model.Assignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentOperation;
+import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAssignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
 import io.github.hectorvent.floci.services.ssoadmin.model.RegionMetadata;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoApplication;
@@ -33,7 +34,49 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, AssignmentOperation>(),
                 new InMemoryStorage<String, RegionMetadata>(),
                 new InMemoryStorage<String, SsoApplication>(),
-                new InMemoryStorage<String, String>());
+                new InMemoryStorage<String, String>(),
+                new InMemoryStorage<String, ApplicationAssignment>());
+    }
+
+    @Test
+    void createApplicationAssignmentValidatesApplicationPrincipalAndDuplicates() {
+        SsoApplication application = createApplication("Assignment App", "assignment-app-token");
+        ObjectNode request = mapper.createObjectNode();
+        request.put("ApplicationArn", application.applicationArn());
+        request.put("PrincipalId", PRINCIPAL_ID);
+        request.put("PrincipalType", "GROUP");
+
+        ApplicationAssignment assignment = service.createApplicationAssignment(request);
+        assertEquals(application.applicationArn(), assignment.applicationArn());
+        assertEquals(PRINCIPAL_ID, assignment.principalId());
+        assertEquals("GROUP", assignment.principalType());
+        assertError("ConflictException", () -> service.createApplicationAssignment(request));
+
+        ObjectNode invalidPrincipalType = request.deepCopy();
+        invalidPrincipalType.put("PrincipalType", "ROLE");
+        invalidPrincipalType.put("PrincipalId", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+        assertError("ValidationException", () -> service.createApplicationAssignment(invalidPrincipalType));
+
+        ObjectNode missingApplication = request.deepCopy();
+        missingApplication.put("ApplicationArn", "arn:aws:sso::123456789012:application/ssoins-7223b02a5d9f7c8e/apl-1111111111111111");
+        assertError("ResourceNotFoundException", () -> service.createApplicationAssignment(missingApplication));
+    }
+
+    @Test
+    void createApplicationAssignmentEnforcesTheDocumentedGroupQuota() {
+        SsoApplication application = createApplication("Group Quota App", "group-quota-app-token");
+        for (int i = 0; i < 100; i++) {
+            ObjectNode request = mapper.createObjectNode();
+            request.put("ApplicationArn", application.applicationArn());
+            request.put("PrincipalId", "00000000-0000-0000-0000-" + String.format("%012x", i));
+            request.put("PrincipalType", "GROUP");
+            service.createApplicationAssignment(request);
+        }
+        ObjectNode overQuota = mapper.createObjectNode();
+        overQuota.put("ApplicationArn", application.applicationArn());
+        overQuota.put("PrincipalId", "00000000-0000-0000-0000-000000000100");
+        overQuota.put("PrincipalType", "GROUP");
+        assertError("ServiceQuotaExceededException", () -> service.createApplicationAssignment(overQuota));
     }
 
     @Test
@@ -231,6 +274,15 @@ class SsoAdminServiceTest {
         assertTrue(service.listPermissionSets(service.getInstanceArn()).isEmpty());
         assertError("ResourceNotFoundException",
                 () -> service.getAssignmentOperation(service.getInstanceArn(), operation.requestId()));
+    }
+
+    private SsoApplication createApplication(String name, String clientToken) {
+        ObjectNode request = mapper.createObjectNode();
+        request.put("InstanceArn", service.getInstanceArn());
+        request.put("ApplicationProviderArn", "arn:aws:sso::aws:applicationProvider/custom");
+        request.put("Name", name);
+        request.put("ClientToken", clientToken);
+        return service.createApplication(request, ACCOUNT_ID, "us-east-1");
     }
 
     private PermissionSet createPermissionSet(String name) {

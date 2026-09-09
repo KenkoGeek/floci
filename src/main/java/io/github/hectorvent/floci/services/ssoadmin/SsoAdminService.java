@@ -10,6 +10,7 @@ import io.github.hectorvent.floci.core.storage.StorageBackend;
 import io.github.hectorvent.floci.core.storage.StorageFactory;
 import io.github.hectorvent.floci.services.ssoadmin.model.Assignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentOperation;
+import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAssignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationPortalOptions;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationSignInOptions;
 import io.github.hectorvent.floci.services.ssoadmin.model.CustomerManagedPolicyReference;
@@ -41,6 +42,7 @@ public class SsoAdminService implements Resettable {
     private static final Pattern CUSTOMER_MANAGED_POLICY_PATH = Pattern.compile("((/[A-Za-z0-9\\.,\\+@=_-]+)*)/");
     private static final Pattern REGION_NAME = Pattern.compile("([a-z]+-){2,3}\\d");
     private static final Pattern APPLICATION_PROVIDER_ARN = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:sso::aws:applicationProvider/[a-zA-Z0-9-/]+");
+    private static final Pattern APPLICATION_ARN = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:sso::\\d{12}:application/(?:sso)?ins-[a-zA-Z0-9-.]{16}/apl-[a-zA-Z0-9]{16}");
     private static final Pattern CLIENT_TOKEN = Pattern.compile("[!-~]+");
     private static final Pattern APPLICATION_URL = Pattern.compile("http(s)?://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#/%?=~_|]");
     private static final Pattern TAG_VALUE = Pattern.compile("[\\p{L}\\p{Z}\\p{N}_.:/=+\\-@]*");
@@ -49,6 +51,7 @@ public class SsoAdminService implements Resettable {
     private static final int REGION_QUOTA = 6;
     private static final int MANAGED_POLICY_QUOTA = 25;
     private static final int APPLICATION_QUOTA = 7000;
+    private static final int APPLICATION_GROUP_ASSIGNMENT_QUOTA = 100;
     private static final int MAX_INLINE_POLICY_BYTES = 32_768;
     private static final int MAX_INLINE_NON_WHITESPACE = 10_240;
     private static final Set<String> PRINCIPAL_TYPES = Set.of("USER", "GROUP");
@@ -59,6 +62,7 @@ public class SsoAdminService implements Resettable {
     private final StorageBackend<String, RegionMetadata> regions;
     private final StorageBackend<String, SsoApplication> applications;
     private final StorageBackend<String, String> applicationClientTokens;
+    private final StorageBackend<String, ApplicationAssignment> applicationAssignments;
 
     @Inject
     public SsoAdminService(StorageFactory storageFactory) {
@@ -68,7 +72,8 @@ public class SsoAdminService implements Resettable {
                 storageFactory.create("ssoadmin", "ssoadmin-assignment-operations.json", new TypeReference<Map<String, AssignmentOperation>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-regions.json", new TypeReference<Map<String, RegionMetadata>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-applications.json", new TypeReference<Map<String, SsoApplication>>() {}),
-                storageFactory.create("ssoadmin", "ssoadmin-application-client-tokens.json", new TypeReference<Map<String, String>>() {}));
+                storageFactory.create("ssoadmin", "ssoadmin-application-client-tokens.json", new TypeReference<Map<String, String>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-application-assignments.json", new TypeReference<Map<String, ApplicationAssignment>>() {}));
     }
 
     SsoAdminService(StorageBackend<String, PermissionSet> permissionSets,
@@ -76,17 +81,42 @@ public class SsoAdminService implements Resettable {
                     StorageBackend<String, AssignmentOperation> assignmentOperations,
                     StorageBackend<String, RegionMetadata> regions,
                     StorageBackend<String, SsoApplication> applications,
-                    StorageBackend<String, String> applicationClientTokens) {
+                    StorageBackend<String, String> applicationClientTokens,
+                    StorageBackend<String, ApplicationAssignment> applicationAssignments) {
         this.permissionSets = permissionSets;
         this.assignments = assignments;
         this.assignmentOperations = assignmentOperations;
         this.regions = regions;
         this.applications = applications;
         this.applicationClientTokens = applicationClientTokens;
+        this.applicationAssignments = applicationAssignments;
     }
 
     public String getInstanceArn() { return INSTANCE_ARN; }
     public String getIdentityStoreId() { return IDENTITY_STORE_ID; }
+
+    public synchronized ApplicationAssignment createApplicationAssignment(JsonNode request) {
+        String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
+        getApplication(applicationArn);
+        String principalId = validatePrincipalId(required(request, "PrincipalId"));
+        String principalType = required(request, "PrincipalType");
+        if (!PRINCIPAL_TYPES.contains(principalType)) {
+            throw validation("PrincipalType must be USER or GROUP.");
+        }
+        String key = applicationAssignmentKey(applicationArn, principalId, principalType);
+        if (applicationAssignments.get(key).isPresent()) {
+            throw conflict("The application assignment already exists.");
+        }
+        if ("GROUP".equals(principalType)
+                && applicationAssignments.scan(ignored -> true).stream()
+                        .filter(a -> applicationArn.equals(a.applicationArn()) && "GROUP".equals(a.principalType()))
+                        .count() >= APPLICATION_GROUP_ASSIGNMENT_QUOTA) {
+            throw quota("An application can have at most 100 directly assigned groups.");
+        }
+        ApplicationAssignment assignment = new ApplicationAssignment(applicationArn, principalId, principalType);
+        applicationAssignments.put(key, assignment);
+        return assignment;
+    }
 
     public synchronized SsoApplication createApplication(JsonNode request, String callerAccountId, String region) {
         requireInstance(required(request, "InstanceArn"));
@@ -416,6 +446,22 @@ public class SsoAdminService implements Resettable {
         }
     }
 
+    SsoApplication getApplication(String applicationArn) {
+        validateApplicationArn(applicationArn);
+        return applications.get(applicationArn).orElseThrow(() -> notFound("Application not found: " + applicationArn));
+    }
+
+    private static String validateApplicationArn(String arn) {
+        if (arn == null || arn.length() > 1224 || !APPLICATION_ARN.matcher(arn).matches()) {
+            throw validation("ApplicationArn is invalid.");
+        }
+        return arn;
+    }
+
+    private static String applicationAssignmentKey(String applicationArn, String principalId, String principalType) {
+        return applicationArn + "::" + principalType + "::" + principalId;
+    }
+
     private static boolean applicationMatches(SsoApplication application, String providerArn, String description,
                                               String name, ApplicationPortalOptions portalOptions, String status,
                                               Map<String, String> tags) {
@@ -549,6 +595,7 @@ public class SsoAdminService implements Resettable {
         regions.clear();
         applications.clear();
         applicationClientTokens.clear();
+        applicationAssignments.clear();
     }
 
 }

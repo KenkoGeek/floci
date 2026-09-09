@@ -29,6 +29,7 @@ public class SsoAdminJsonHandler {
             case "ListInstances" -> listInstances(callerAccountId);
             case "AddRegion" -> addRegion(request);
             case "CreateApplication" -> createApplication(request, callerAccountId, region);
+            case "CreateApplicationAssignment" -> createApplicationAssignment(request);
             case "ListPermissionSets" -> listPermissionSets(request);
             case "CreatePermissionSet" -> createPermissionSet(request);
             case "DescribePermissionSet" -> describePermissionSet(request);
@@ -60,6 +61,11 @@ public class SsoAdminJsonHandler {
     private Response addRegion(JsonNode request) {
         var region = service.addRegion(request);
         return Response.ok(mapper.createObjectNode().put("Status", region.status())).build();
+    }
+
+    private Response createApplicationAssignment(JsonNode request) {
+        service.createApplicationAssignment(request);
+        return Response.ok().build();
     }
 
     private Response createApplication(JsonNode request, String callerAccountId, String region) {

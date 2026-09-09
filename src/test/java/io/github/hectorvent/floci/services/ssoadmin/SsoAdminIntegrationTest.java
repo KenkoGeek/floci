@@ -133,6 +133,34 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void createApplicationAssignmentGrantsDirectAccessWithEmptyResponse() {
+        String appRequest = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
+                + "\"ApplicationProviderArn\":\"arn:aws:sso::aws:applicationProvider/custom\","
+                + "\"Name\":\"Assignment Integration\",\"ClientToken\":\"assignment-integration-token\"}";
+        String applicationArn = given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.CreateApplication")
+                .body(appRequest)
+            .when().post("/")
+            .then().statusCode(200)
+            .extract().path("ApplicationArn");
+
+        String assignmentRequest = "{\"ApplicationArn\":\"" + applicationArn + "\","
+                + "\"PrincipalId\":\"11111111-2222-3333-4444-555555555555\",\"PrincipalType\":\"USER\"}";
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.CreateApplicationAssignment")
+            .body(assignmentRequest)
+        .when()
+            .post("/")
+        .then()
+            .statusCode(200)
+            .body(org.hamcrest.Matchers.is(org.hamcrest.Matchers.emptyOrNullString()));
+    }
+
+    @Test
     void unknownAction_returnsUnknownOperationException() {
         given()
             .contentType("application/x-amz-json-1.1")

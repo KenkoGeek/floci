@@ -105,6 +105,32 @@ class SsoAdminAccountAssignmentTest {
     }
 
     @Test
+    @DisplayName("creates application assignments through the AWS SDK")
+    void createApplicationAssignmentUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses the emulator IAM Identity Center instance");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient()) {
+            String instanceArn = sso.listInstances(request -> {}).instances().get(0).instanceArn();
+            String applicationArn = sso.createApplication(request -> request
+                    .instanceArn(instanceArn)
+                    .applicationProviderArn("arn:aws:sso::aws:applicationProvider/custom")
+                    .name("SDK Assignment App")
+                    .clientToken("sdk-assignment-app-token")).applicationArn();
+
+            var response = sso.createApplicationAssignment(request -> request
+                    .applicationArn(applicationArn)
+                    .principalId("11111111-2222-3333-4444-555555555555")
+                    .principalType("USER"));
+            assertThat(response.sdkHttpResponse().isSuccessful()).isTrue();
+            assertThatThrownBy(() -> sso.createApplicationAssignment(request -> request
+                    .applicationArn(applicationArn)
+                    .principalId("11111111-2222-3333-4444-555555555555")
+                    .principalType("USER")))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ConflictException.class);
+        }
+    }
+
+    @Test
     @DisplayName("creates and describes account assignments through the AWS SDK")
     void accountAssignmentLifecycleUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only account and principal identifiers");
