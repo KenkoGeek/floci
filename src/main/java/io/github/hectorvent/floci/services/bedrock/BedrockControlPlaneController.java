@@ -497,6 +497,12 @@ public class BedrockControlPlaneController {
         return execute("GetEvaluationJob", null, Map.of("jobIdentifier", jobIdentifier), headers);
     }
 
+    @GET
+    @Path("/evaluation-jobs")
+    public Response listEvaluationJobs(@Context HttpHeaders headers) {
+        return execute("ListEvaluationJobs", null, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
