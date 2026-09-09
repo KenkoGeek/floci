@@ -203,6 +203,12 @@ public class BedrockControlPlaneController {
         return execute("PutEnforcedGuardrailConfiguration", body, Map.of(), headers);
     }
 
+    @DELETE
+    @Path("/enforcedGuardrailsConfiguration/{configId:.+}")
+    public Response deleteEnforcedGuardrailConfiguration(@PathParam("configId") String configId, @Context HttpHeaders headers) {
+        return execute("DeleteEnforcedGuardrailConfiguration", null, Map.of("configId", configId), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(

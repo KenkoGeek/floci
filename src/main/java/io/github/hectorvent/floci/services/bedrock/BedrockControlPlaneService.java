@@ -71,7 +71,7 @@ public class BedrockControlPlaneService implements Resettable {
             case "UpdateGuardrail" -> updateGuardrail(path.get("guardrailIdentifier"), request);
             case "ListEnforcedGuardrailsConfiguration" -> listEnforcedGuardrailsConfiguration();
             case "PutEnforcedGuardrailConfiguration" -> putEnforcedGuardrailsConfiguration(request);
-            case "DeleteEnforcedGuardrailsConfiguration" -> deleteEnforcedGuardrailsConfiguration(path.get("configId"));
+            case "DeleteEnforcedGuardrailConfiguration" -> deleteEnforcedGuardrailsConfiguration(path.get("configId"));
             case "CreateInferenceProfile" -> createInferenceProfile(request, region);
             case "GetInferenceProfile" -> getGeneric("inference-profile", path.get("inferenceProfileIdentifier"));
             case "ListInferenceProfiles" -> listGeneric("inference-profile", "inferenceProfileSummaries");

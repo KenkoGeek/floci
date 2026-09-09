@@ -38,6 +38,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `UpdateGuardrail` | `PUT /guardrails/{guardrailIdentifier}` | AWS-compatible control-plane emulation. |
 | `ListEnforcedGuardrailsConfiguration` | `GET /enforcedGuardrailsConfiguration` | AWS-compatible control-plane emulation. |
 | `PutEnforcedGuardrailConfiguration` | `PUT /enforcedGuardrailsConfiguration` | AWS-compatible control-plane emulation. |
+| `DeleteEnforcedGuardrailConfiguration` | `DELETE /enforcedGuardrailsConfiguration/{configId}` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 
