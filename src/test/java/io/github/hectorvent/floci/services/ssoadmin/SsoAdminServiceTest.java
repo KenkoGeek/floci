@@ -691,6 +691,15 @@ class SsoAdminServiceTest {
         assertEquals("ACTIVE", described.status());
         assertFalse(described.primaryRegion());
 
+        ObjectNode listRequest = mapper.createObjectNode();
+        listRequest.put("InstanceArn", service.getInstanceArn());
+        listRequest.put("MaxResults", 1);
+        var firstPage = service.listRegions(listRequest);
+        assertEquals(1, firstPage.items().size());
+        assertNotNull(firstPage.nextToken());
+        listRequest.put("NextToken", firstPage.nextToken());
+        assertEquals(1, service.listRegions(listRequest).items().size());
+
         ObjectNode primaryDescribe = mapper.createObjectNode();
         primaryDescribe.put("InstanceArn", service.getInstanceArn());
         primaryDescribe.put("RegionName", "us-east-1");

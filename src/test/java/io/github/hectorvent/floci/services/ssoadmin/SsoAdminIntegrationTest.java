@@ -81,6 +81,18 @@ class SsoAdminIntegrationTest {
         given()
             .contentType("application/x-amz-json-1.1")
             .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.ListRegions")
+            .body("{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\"}")
+        .when()
+            .post("/")
+        .then()
+            .statusCode(200)
+            .body("Regions.RegionName", org.hamcrest.Matchers.hasItem("eu-west-2"))
+            .body("Regions.find { it.RegionName == 'eu-west-2' }.Status", equalTo("ACTIVE"));
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
             .header("X-Amz-Target", "SWBExternalService.AddRegion")
             .body(request)
         .when()
