@@ -31,6 +31,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `GetAccountDataRetention` | `GET /data-retention` | AWS-compatible control-plane emulation. |
 | `PutAccountDataRetention` | `PUT /data-retention` | AWS-compatible control-plane emulation. |
 | `CreateGuardrail` | `POST /guardrails` | AWS-compatible control-plane emulation. |
+| `CreateGuardrailVersion` | `POST /guardrails/{guardrailIdentifier}` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 
