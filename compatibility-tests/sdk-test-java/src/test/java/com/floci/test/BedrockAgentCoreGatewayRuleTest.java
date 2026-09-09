@@ -113,4 +113,16 @@ class BedrockAgentCoreGatewayRuleTest {
         assertThat(response.statusAsString()).isEqualTo("ACTIVE");
         assertThat(response.updatedAt()).isNotNull();
     }
+
+    @Test
+    @Order(5)
+    void deleteGatewayRule() {
+        DeleteGatewayRuleResponse response = client.deleteGatewayRule(DeleteGatewayRuleRequest.builder()
+                .gatewayIdentifier(gatewayId)
+                .ruleId(ruleId)
+                .build());
+
+        assertThat(response.ruleId()).isEqualTo(ruleId);
+        assertThat(response.statusAsString()).isEqualTo("DELETING");
+    }
 }

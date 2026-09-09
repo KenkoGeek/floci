@@ -139,6 +139,15 @@ public class BedrockAgentCoreGatewayRuleService {
         return rule.deepCopy();
     }
 
+    public ObjectNode delete(String gatewayId, String ruleId, String region) {
+        ObjectNode rule = get(gatewayId, ruleId, region);
+        storage.delete(key(region, gatewayId, ruleId));
+        ObjectNode response = rule.objectNode();
+        response.put("ruleId", ruleId);
+        response.put("status", "DELETING");
+        return response;
+    }
+
     private static String key(String region, String gatewayId, String ruleId) {
         return prefix(region, gatewayId) + ruleId;
     }

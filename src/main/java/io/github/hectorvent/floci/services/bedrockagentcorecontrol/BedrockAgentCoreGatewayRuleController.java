@@ -9,6 +9,7 @@ import io.github.hectorvent.floci.core.common.Pagination;
 import io.github.hectorvent.floci.core.common.RegionResolver;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.PATCH;
 import jakarta.ws.rs.POST;
@@ -113,6 +114,19 @@ public class BedrockAgentCoreGatewayRuleController {
             return Response.status(202).entity(response).build();
         } catch (Exception e) {
             return error(e, "updating gateway rule");
+        }
+    }
+
+    @DELETE
+    @Path("/{gatewayIdentifier}/rules/{ruleId}")
+    public Response deleteGatewayRule(@Context HttpHeaders headers,
+                                      @PathParam("gatewayIdentifier") String gatewayId,
+                                      @PathParam("ruleId") String ruleId) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            return Response.status(202).entity(service.delete(gatewayId, ruleId, region)).build();
+        } catch (Exception e) {
+            return error(e, "deleting gateway rule");
         }
     }
 
