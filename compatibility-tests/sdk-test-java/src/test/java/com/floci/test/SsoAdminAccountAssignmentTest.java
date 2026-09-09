@@ -344,6 +344,13 @@ class SsoAdminAccountAssignmentTest {
                     .tags(tag -> tag.key("Environment").value("test")))
                     .instanceArn();
 
+            var described = sso.describeInstance(request -> request.instanceArn(instanceArn));
+            assertThat(described.instanceArn()).isEqualTo(instanceArn);
+            assertThat(described.ownerAccountId()).isEqualTo("333344445555");
+            assertThat(described.name()).isEqualTo("SdkAccountInstance");
+            assertThat(described.statusAsString()).isEqualTo("ACTIVE");
+            assertThat(described.permissionSetsEnabled()).isFalse();
+
             var listed = sso.listInstances(request -> {}).instances();
             assertThat(listed).hasSize(1);
             assertThat(listed.get(0).instanceArn()).isEqualTo(instanceArn);

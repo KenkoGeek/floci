@@ -455,6 +455,10 @@ public class SsoAdminService implements Resettable {
         return instance;
     }
 
+    public SsoInstance describeInstance(JsonNode request) {
+        return requireInstance(required(request, "InstanceArn"));
+    }
+
     public synchronized void deleteInstance(JsonNode request, String callerAccountId) {
         validateAccountId(callerAccountId);
         String instanceArn = required(request, "InstanceArn");
