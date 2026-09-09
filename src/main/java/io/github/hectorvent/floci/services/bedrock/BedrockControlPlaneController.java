@@ -449,6 +449,12 @@ public class BedrockControlPlaneController {
         return execute("GetPromptRouter", null, Map.of("promptRouterArn", promptRouterArn), headers);
     }
 
+    @GET
+    @Path("/prompt-routers")
+    public Response listPromptRouters(@Context HttpHeaders headers) {
+        return execute("ListPromptRouters", null, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
