@@ -28,6 +28,7 @@ public class SsoAdminJsonHandler {
         return switch (action) {
             case "ListInstances" -> listInstances(callerAccountId);
             case "CreateInstance" -> createInstance(request, callerAccountId, region);
+            case "DeleteInstance" -> deleteInstance(request, callerAccountId);
             case "CreateInstanceAccessControlAttributeConfiguration" -> createInstanceAccessControlAttributeConfiguration(request);
             case "CreateTrustedTokenIssuer" -> createTrustedTokenIssuer(request, callerAccountId);
             case "AddRegion" -> addRegion(request);
@@ -88,6 +89,11 @@ public class SsoAdminJsonHandler {
     private Response createInstance(JsonNode request, String callerAccountId, String region) {
         var instance = service.createInstance(request, callerAccountId, region);
         return Response.ok(mapper.createObjectNode().put("InstanceArn", instance.instanceArn())).build();
+    }
+
+    private Response deleteInstance(JsonNode request, String callerAccountId) {
+        service.deleteInstance(request, callerAccountId);
+        return Response.ok().build();
     }
 
     private Response createInstanceAccessControlAttributeConfiguration(JsonNode request) {

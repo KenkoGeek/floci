@@ -27,6 +27,7 @@ import io.github.hectorvent.floci.services.ssoadmin.model.RegionMetadata;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoApplication;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoInstance;
 import io.github.hectorvent.floci.services.ssoadmin.model.TrustedTokenIssuer;
+import io.github.hectorvent.floci.services.identitystore.IdentityStoreService;
 import io.github.hectorvent.floci.services.organizations.OrganizationsService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -93,16 +94,18 @@ public class SsoAdminService implements Resettable {
     private final StorageBackend<String, ApplicationGrant> applicationGrants;
     private final StorageBackend<String, SsoInstance> instances;
     private final StorageBackend<String, String> instanceClientTokens;
+    private final StorageBackend<String, Boolean> instanceDeletionMarkers;
     private final StorageBackend<String, InstanceAccessControlAttributeConfiguration> accessControlAttributeConfigurations;
     private final StorageBackend<String, TrustedTokenIssuer> trustedTokenIssuers;
     private final StorageBackend<String, String> trustedTokenIssuerClientTokens;
+    private final IdentityStoreService identityStoreService;
     private final OrganizationsService organizationsService;
     private final String defaultAccountId;
     private final String defaultRegion;
 
     @Inject
-    public SsoAdminService(StorageFactory storageFactory, OrganizationsService organizationsService,
-                           EmulatorConfig config) {
+    public SsoAdminService(StorageFactory storageFactory, IdentityStoreService identityStoreService,
+                           OrganizationsService organizationsService, EmulatorConfig config) {
         this(
                 storageFactory.create("ssoadmin", "ssoadmin-permission-sets.json", new TypeReference<Map<String, PermissionSet>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-assignments.json", new TypeReference<Map<String, Assignment>>() {}),
@@ -117,9 +120,11 @@ public class SsoAdminService implements Resettable {
                 storageFactory.create("ssoadmin", "ssoadmin-application-grants.json", new TypeReference<Map<String, ApplicationGrant>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instances.json", new TypeReference<Map<String, SsoInstance>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instance-client-tokens.json", new TypeReference<Map<String, String>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-instance-deletion-markers.json", new TypeReference<Map<String, Boolean>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-access-control-attribute-configurations.json", new TypeReference<Map<String, InstanceAccessControlAttributeConfiguration>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-trusted-token-issuers.json", new TypeReference<Map<String, TrustedTokenIssuer>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-trusted-token-issuer-client-tokens.json", new TypeReference<Map<String, String>>() {}),
+                identityStoreService,
                 organizationsService,
                 config.defaultAccountId(),
                 config.defaultRegion());
@@ -138,9 +143,11 @@ public class SsoAdminService implements Resettable {
                     StorageBackend<String, ApplicationGrant> applicationGrants,
                     StorageBackend<String, SsoInstance> instances,
                     StorageBackend<String, String> instanceClientTokens,
+                    StorageBackend<String, Boolean> instanceDeletionMarkers,
                     StorageBackend<String, InstanceAccessControlAttributeConfiguration> accessControlAttributeConfigurations,
                     StorageBackend<String, TrustedTokenIssuer> trustedTokenIssuers,
                     StorageBackend<String, String> trustedTokenIssuerClientTokens,
+                    IdentityStoreService identityStoreService,
                     OrganizationsService organizationsService,
                     String defaultAccountId,
                     String defaultRegion) {
@@ -157,9 +164,11 @@ public class SsoAdminService implements Resettable {
         this.applicationGrants = applicationGrants;
         this.instances = instances;
         this.instanceClientTokens = instanceClientTokens;
+        this.instanceDeletionMarkers = instanceDeletionMarkers;
         this.accessControlAttributeConfigurations = accessControlAttributeConfigurations;
         this.trustedTokenIssuers = trustedTokenIssuers;
         this.trustedTokenIssuerClientTokens = trustedTokenIssuerClientTokens;
+        this.identityStoreService = identityStoreService;
         this.organizationsService = organizationsService;
         this.defaultAccountId = defaultAccountId;
         this.defaultRegion = defaultRegion;
@@ -170,6 +179,9 @@ public class SsoAdminService implements Resettable {
     public String getIdentityStoreId() { return IDENTITY_STORE_ID; }
 
     void ensureBootstrapInstance(String ownerAccountId, String region) {
+        if (instanceDeletionMarkers.get(ownerAccountId).orElse(false)) {
+            return;
+        }
         if (instances.get(ownerAccountId).isEmpty()) {
             instances.put(ownerAccountId, new SsoInstance(INSTANCE_ARN, IDENTITY_STORE_ID, "floci-identity-center",
                     ownerAccountId, region, System.currentTimeMillis(), "ACTIVE", null, false,
@@ -390,8 +402,57 @@ public class SsoAdminService implements Resettable {
         SsoInstance instance = new SsoInstance(instanceArn, identityStoreId, name, callerAccountId, region,
                 System.currentTimeMillis(), "ACTIVE", null, true, tags);
         instances.put(callerAccountId, instance);
+        instanceDeletionMarkers.delete(callerAccountId);
         instanceClientTokens.put(tokenKey, instanceArn);
         return instance;
+    }
+
+    public synchronized void deleteInstance(JsonNode request, String callerAccountId) {
+        validateAccountId(callerAccountId);
+        String instanceArn = required(request, "InstanceArn");
+        if (instanceArn.length() < 10 || instanceArn.length() > 1224 || !INSTANCE_ARN_PATTERN.matcher(instanceArn).matches()) {
+            throw validation("InstanceArn is invalid.");
+        }
+        SsoInstance instance = findInstanceByArn(instanceArn);
+        if (instance == null || !callerAccountId.equals(instance.ownerAccountId())) {
+            throw accessDenied("Only the account that owns the IAM Identity Center instance can delete it.");
+        }
+        if (!regions.scan(key -> true).isEmpty()) {
+            throw conflict("Remove all additional IAM Identity Center Regions before deleting the instance.");
+        }
+        List<String> applicationArns = applications.scan(key -> true).stream()
+                .filter(application -> instanceArn.equals(application.instanceArn()))
+                .map(SsoApplication::applicationArn)
+                .toList();
+        for (String applicationArn : applicationArns) {
+            deleteApplication(applicationArn);
+        }
+
+        permissionSets.clear();
+        assignments.clear();
+        assignmentOperations.clear();
+        assignmentDeletionOperations.clear();
+        accessControlAttributeConfigurations.delete(instanceArn);
+        for (String key : new java.util.ArrayList<>(trustedTokenIssuers.keys())) {
+            TrustedTokenIssuer issuer = trustedTokenIssuers.get(key).orElse(null);
+            if (issuer != null && instanceArn.equals(issuer.instanceArn())) {
+                trustedTokenIssuers.delete(key);
+            }
+        }
+        for (String key : new java.util.ArrayList<>(trustedTokenIssuerClientTokens.keys())) {
+            String issuerArn = trustedTokenIssuerClientTokens.get(key).orElse(null);
+            if (issuerArn != null && trustedTokenIssuers.get(issuerArn).isEmpty()) {
+                trustedTokenIssuerClientTokens.delete(key);
+            }
+        }
+        for (String key : new java.util.ArrayList<>(instanceClientTokens.keys())) {
+            if (instanceArn.equals(instanceClientTokens.get(key).orElse(null))) {
+                instanceClientTokens.delete(key);
+            }
+        }
+        identityStoreService.deleteIdentityStore(instance.identityStoreId());
+        instances.delete(callerAccountId);
+        instanceDeletionMarkers.put(callerAccountId, true);
     }
 
     public synchronized void deleteApplication(String applicationArn) {
@@ -509,7 +570,8 @@ public class SsoAdminService implements Resettable {
     }
 
     public synchronized SsoApplication createApplication(JsonNode request, String callerAccountId, String region) {
-        requireInstance(required(request, "InstanceArn"));
+        String instanceArn = required(request, "InstanceArn");
+        SsoInstance instance = requireInstance(instanceArn);
         validateAccountId(callerAccountId);
         validateRegionName(region);
         String providerArn = required(request, "ApplicationProviderArn");
@@ -552,11 +614,14 @@ public class SsoAdminService implements Resettable {
             throw quota("The IAM Identity Center application quota has been exceeded.");
         }
 
-        String applicationArn = "arn:aws:sso::" + callerAccountId
-                + ":application/ssoins-7223b02a5d9f7c8e/apl-" + shortId();
-        String identityStoreArn = "arn:aws:identitystore::" + callerAccountId + ":identitystore/" + IDENTITY_STORE_ID;
-        SsoApplication application = new SsoApplication(callerAccountId, applicationArn, providerArn,
-                System.currentTimeMillis(), region, description, identityStoreArn, INSTANCE_ARN, name,
+        String instanceId = instanceArn.substring(instanceArn.lastIndexOf('/') + 1);
+        String ownerAccountId = instance.ownerAccountId() == null ? callerAccountId : instance.ownerAccountId();
+        String applicationArn = "arn:aws:sso::" + ownerAccountId
+                + ":application/" + instanceId + "/apl-" + shortId();
+        String identityStoreArn = "arn:aws:identitystore::" + ownerAccountId
+                + ":identitystore/" + instance.identityStoreId();
+        SsoApplication application = new SsoApplication(ownerAccountId, applicationArn, providerArn,
+                System.currentTimeMillis(), region, description, identityStoreArn, instanceArn, name,
                 portalOptions, status, tags);
         applications.put(applicationArn, application);
         if (tokenKey != null) {
@@ -1069,6 +1134,7 @@ public class SsoAdminService implements Resettable {
         applicationGrants.clear();
         instances.clear();
         instanceClientTokens.clear();
+        instanceDeletionMarkers.clear();
         accessControlAttributeConfigurations.clear();
         trustedTokenIssuers.clear();
         trustedTokenIssuerClientTokens.clear();

@@ -301,6 +301,19 @@ public class IdentityStoreService implements Resettable {
                 .toList();
     }
 
+    public synchronized void deleteIdentityStore(String storeId) {
+        storeId = requireStore(storeId);
+        for (Membership membership : listMembershipsAll(storeId)) {
+            memberships.deleteForAccount(GLOBAL_PARTITION, membershipKey(storeId, membership.membershipId()));
+        }
+        for (Group group : scanGroups(storeId)) {
+            groups.deleteForAccount(GLOBAL_PARTITION, groupKey(storeId, group.groupId()));
+        }
+        for (User user : scanUsers(storeId)) {
+            users.deleteForAccount(GLOBAL_PARTITION, userKey(storeId, user.userId()));
+        }
+    }
+
     @Override
     public void clear() {
         groups.clear();
