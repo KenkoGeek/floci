@@ -199,6 +199,19 @@ public class BedrockAgentCoreIdentityController {
         }
     }
 
+    @POST
+    @Path("/DeleteApiKeyCredentialProvider")
+    public Response deleteApiKeyCredentialProvider(@Context HttpHeaders headers, String body) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            ObjectNode req = object(body);
+            credentialProviderService.deleteApiKey(text(req, "name"), region);
+            return Response.noContent().build();
+        } catch (Exception e) {
+            return error(e, "deleting API key credential provider");
+        }
+    }
+
     private ObjectNode identityNode(WorkloadIdentity identity, boolean full) {
         ObjectNode node = objectMapper.createObjectNode();
         node.put("name", identity.getName());

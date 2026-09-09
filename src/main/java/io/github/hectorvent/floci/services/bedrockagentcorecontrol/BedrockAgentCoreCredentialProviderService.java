@@ -153,6 +153,11 @@ public class BedrockAgentCoreCredentialProviderService {
         return item.deepCopy();
     }
 
+    public void deleteApiKey(String name, String region) {
+        getApiKey(name, region);
+        storage.delete(key("apikey", region, name));
+    }
+
     private String credentialProviderArn(String region, String name) {
         return "arn:aws:acps:" + region + ":" + regionResolver.getAccountId()
                 + ":token-vault/default/apikeycredentialprovider/" + name;

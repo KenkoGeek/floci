@@ -86,4 +86,11 @@ class BedrockAgentCoreCredentialProviderTest {
         assertThat(response.apiKeySecretSourceAsString()).isEqualTo("MANAGED");
         assertThat(response.lastUpdatedTime()).isNotNull();
     }
+
+    @Test
+    @Order(5)
+    void deleteApiKeyCredentialProvider() {
+        var response = client.deleteApiKeyCredentialProvider(builder -> builder.name(apiKeyProviderName));
+        assertThat(response.sdkHttpResponse().statusCode()).isEqualTo(204);
+    }
 }
