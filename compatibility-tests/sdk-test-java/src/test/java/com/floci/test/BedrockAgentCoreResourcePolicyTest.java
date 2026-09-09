@@ -4,8 +4,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetResourcePolicyRequest;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.PutResourcePolicyRequest;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.ResourceNotFoundException;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("Bedrock AgentCore resource policy")
@@ -21,6 +23,23 @@ class BedrockAgentCoreResourcePolicyTest {
                     .resourceArn(RESOURCE_ARN)
                     .build()))
                     .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
+
+    @Test
+    void putAndGetResourcePolicy() {
+        try (BedrockAgentCoreControlClient client = TestFixtures.bedrockAgentCoreControlClient()) {
+            String policy = "{\"Version\":\"2012-10-17\",\"Statement\":[]}";
+            var put = client.putResourcePolicy(PutResourcePolicyRequest.builder()
+                    .resourceArn(RESOURCE_ARN)
+                    .policy(policy)
+                    .build());
+            assertThat(put.policy()).isEqualTo(policy);
+
+            var get = client.getResourcePolicy(GetResourcePolicyRequest.builder()
+                    .resourceArn(RESOURCE_ARN)
+                    .build());
+            assertThat(get.policy()).isEqualTo(policy);
         }
     }
 }

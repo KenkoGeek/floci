@@ -1,5 +1,6 @@
 package io.github.hectorvent.floci.services.bedrockagentcorecontrol;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.hectorvent.floci.core.common.AwsErrorResponse;
@@ -7,6 +8,7 @@ import io.github.hectorvent.floci.core.common.AwsException;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
@@ -40,6 +42,22 @@ public class BedrockAgentCoreResourcePolicyController {
             return Response.ok(out).build();
         } catch (Exception e) {
             return error(e, "getting resource policy");
+        }
+    }
+
+    @PUT
+    @Path("/{resourceArn:.+}")
+    public Response putResourcePolicy(@PathParam("resourceArn") String resourceArn, String body) {
+        try {
+            JsonNode request = objectMapper.readTree(body != null && !body.isBlank() ? body : "{}");
+            if (!request.isObject() || !request.hasNonNull("policy")) {
+                throw new AwsException("ValidationException", "policy is required", 400);
+            }
+            ObjectNode out = objectMapper.createObjectNode();
+            out.put("policy", service.put(resourceArn, request.get("policy").asText()));
+            return Response.status(201).entity(out).build();
+        } catch (Exception e) {
+            return error(e, "putting resource policy");
         }
     }
 

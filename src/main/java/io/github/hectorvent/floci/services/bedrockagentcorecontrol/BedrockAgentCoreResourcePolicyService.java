@@ -31,6 +31,16 @@ public class BedrockAgentCoreResourcePolicyService {
                         "Resource policy not found for: " + resourceArn, 404));
     }
 
+    public String put(String resourceArn, String policy) {
+        validateResourceArn(resourceArn);
+        if (policy == null || policy.length() < 1 || policy.length() > 20480) {
+            throw new AwsException("ValidationException",
+                    "policy must be between 1 and 20480 characters", 400);
+        }
+        storage.put(resourceArn, policy);
+        return policy;
+    }
+
     private static void validateResourceArn(String resourceArn) {
         if (resourceArn == null || resourceArn.length() < 20 || resourceArn.length() > 1011) {
             throw new AwsException("ValidationException",
