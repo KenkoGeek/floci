@@ -37,14 +37,17 @@ public class BedrockAgentCoreIdentityController {
     private static final Logger LOG = Logger.getLogger(BedrockAgentCoreIdentityController.class);
 
     private final BedrockAgentCoreIdentityService service;
+    private final BedrockAgentCoreCredentialProviderService credentialProviderService;
     private final RegionResolver regionResolver;
     private final ObjectMapper objectMapper;
 
     @Inject
     public BedrockAgentCoreIdentityController(BedrockAgentCoreIdentityService service,
+                                              BedrockAgentCoreCredentialProviderService credentialProviderService,
                                               RegionResolver regionResolver,
                                               ObjectMapper objectMapper) {
         this.service = service;
+        this.credentialProviderService = credentialProviderService;
         this.regionResolver = regionResolver;
         this.objectMapper = objectMapper;
     }
@@ -128,6 +131,20 @@ public class BedrockAgentCoreIdentityController {
         }
     }
 
+    @POST
+    @Path("/CreateApiKeyCredentialProvider")
+    public Response createApiKeyCredentialProvider(@Context HttpHeaders headers, String body) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            ObjectNode item = credentialProviderService.createApiKey(object(body), region);
+            ObjectNode out = item.deepCopy();
+            out.remove(List.of("createdTime", "lastUpdatedTime", "tags"));
+            return Response.status(201).entity(out).build();
+        } catch (Exception e) {
+            return error(e, "creating API key credential provider");
+        }
+    }
+
     private ObjectNode identityNode(WorkloadIdentity identity, boolean full) {
         ObjectNode node = objectMapper.createObjectNode();
         node.put("name", identity.getName());
@@ -149,6 +166,14 @@ public class BedrockAgentCoreIdentityController {
             // unlike the runtime timestamps which are ISO-8601 strings.
             node.put(field, instant.getEpochSecond());
         }
+    }
+
+    private ObjectNode object(String body) throws Exception {
+        JsonNode request = objectMapper.readTree(body != null && !body.isBlank() ? body : "{}");
+        if (!request.isObject()) {
+            throw new AwsException("ValidationException", "request body must be a JSON object", 400);
+        }
+        return (ObjectNode) request;
     }
 
     private static String text(JsonNode node, String field) {
