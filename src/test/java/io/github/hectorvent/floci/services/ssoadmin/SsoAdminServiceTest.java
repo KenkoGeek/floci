@@ -449,6 +449,30 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void describeApplicationAssignmentReturnsDirectAssignmentAndValidatesRequest() {
+        SsoApplication application = createApplication("Describe Assignment App", "describe-assignment-app-token");
+        ObjectNode request = mapper.createObjectNode();
+        request.put("ApplicationArn", application.applicationArn());
+        request.put("PrincipalId", PRINCIPAL_ID);
+        request.put("PrincipalType", "GROUP");
+        ApplicationAssignment created = service.createApplicationAssignment(request);
+
+        assertEquals(created, service.describeApplicationAssignment(request));
+
+        ObjectNode wrongType = request.deepCopy();
+        wrongType.put("PrincipalType", "USER");
+        assertError("ResourceNotFoundException", () -> service.describeApplicationAssignment(wrongType));
+
+        ObjectNode invalidType = request.deepCopy();
+        invalidType.put("PrincipalType", "ROLE");
+        assertError("ValidationException", () -> service.describeApplicationAssignment(invalidType));
+
+        ObjectNode invalidPrincipal = request.deepCopy();
+        invalidPrincipal.put("PrincipalId", "not-a-guid");
+        assertError("ValidationException", () -> service.describeApplicationAssignment(invalidPrincipal));
+    }
+
+    @Test
     void deleteApplicationAssignmentRevokesDirectAssignmentAndValidatesPrincipal() {
         SsoApplication application = createApplication("Delete Assignment App", "delete-assignment-app-token");
         ObjectNode request = mapper.createObjectNode();
