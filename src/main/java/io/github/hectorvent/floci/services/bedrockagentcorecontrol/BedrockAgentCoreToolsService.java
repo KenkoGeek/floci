@@ -97,6 +97,38 @@ public class BedrockAgentCoreToolsService {
                         "Browser not found: " + browserId, 404));
     }
 
+    public ObjectNode createBrowserProfile(ObjectNode request, String region) {
+        String name = requiredText(request, "name");
+        if (!TOOL_NAME.matcher(name).matches()) {
+            throw new AwsException("ValidationException",
+                    "name must match [a-zA-Z][a-zA-Z0-9_]{0,47}", 400);
+        }
+        String clientToken = optionalText(request, "clientToken");
+        if (clientToken != null) {
+            if (clientToken.length() < 33 || clientToken.length() > 256
+                    || !clientToken.matches("[a-zA-Z0-9](-*[a-zA-Z0-9]){0,256}")) {
+                throw new AwsException("ValidationException", "clientToken does not satisfy length or pattern constraints", 400);
+            }
+            ObjectNode existing = findByClientToken("browser-profile", region, clientToken);
+            if (existing != null) {
+                return existing.deepCopy();
+            }
+        }
+        if (findByName("browser-profile", region, name) != null) {
+            throw new AwsException("ConflictException", "Browser profile already exists: " + name, 409);
+        }
+        String id = name + "-" + random(10);
+        Instant now = Instant.now();
+        ObjectNode profile = request.deepCopy();
+        profile.put("profileId", id);
+        profile.put("profileArn", regionResolver.buildArn("bedrock-agentcore", region, "browser-profile/" + id));
+        profile.put("status", "READY");
+        profile.put("createdAt", now.toString());
+        profile.put("lastUpdatedAt", now.toString());
+        storage.put(key("browser-profile", region, id), profile);
+        return profile.deepCopy();
+    }
+
     public ObjectNode deleteBrowser(String browserId, String clientToken, String region) {
         if ("aws.browser.v1".equals(browserId)) {
             throw new AwsException("ValidationException", "System browser cannot be deleted", 400);

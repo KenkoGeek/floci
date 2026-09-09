@@ -8,17 +8,7 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
-import software.amazon.awssdk.services.bedrockagentcorecontrol.model.BrowserNetworkConfiguration;
-import software.amazon.awssdk.services.bedrockagentcorecontrol.model.BrowserNetworkMode;
-import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CreateBrowserRequest;
-import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CreateBrowserResponse;
-import software.amazon.awssdk.services.bedrockagentcorecontrol.model.DeleteBrowserRequest;
-import software.amazon.awssdk.services.bedrockagentcorecontrol.model.DeleteBrowserResponse;
-import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetBrowserRequest;
-import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetBrowserResponse;
-import software.amazon.awssdk.services.bedrockagentcorecontrol.model.ListBrowsersRequest;
-import software.amazon.awssdk.services.bedrockagentcorecontrol.model.ListBrowsersResponse;
-import software.amazon.awssdk.services.bedrockagentcorecontrol.model.ResourceType;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.*;
 
 import java.util.UUID;
 
@@ -31,11 +21,14 @@ class BedrockAgentCoreToolsTest {
     private static BedrockAgentCoreControlClient client;
     private static String browserName;
     private static String browserId;
+    private static String profileName;
+    private static String profileId;
 
     @BeforeAll
     static void setup() {
         client = TestFixtures.bedrockAgentCoreControlClient();
         browserName = "browser" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        profileName = "profile" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
     }
 
     @AfterAll
@@ -98,5 +91,20 @@ class BedrockAgentCoreToolsTest {
         assertThat(response.browserId()).isEqualTo(browserId);
         assertThat(response.statusAsString()).isEqualTo("DELETING");
         assertThat(response.lastUpdatedAt()).isNotNull();
+    }
+
+    @Test
+    @Order(5)
+    void createBrowserProfile() {
+        CreateBrowserProfileResponse response = client.createBrowserProfile(CreateBrowserProfileRequest.builder()
+                .name(profileName)
+                .description("profile")
+                .build());
+
+        profileId = response.profileId();
+        assertThat(profileId).startsWith(profileName + "-");
+        assertThat(response.profileArn()).contains(":browser-profile/");
+        assertThat(response.statusAsString()).isEqualTo("READY");
+        assertThat(response.createdAt()).isNotNull();
     }
 }

@@ -61,6 +61,23 @@ public class BedrockAgentCoreToolsController {
         }
     }
 
+    @PUT
+    @Path("/browser-profiles")
+    public Response createBrowserProfile(@Context HttpHeaders headers, String body) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            ObjectNode profile = service.createBrowserProfile(object(body), region);
+            ObjectNode response = objectMapper.createObjectNode();
+            response.put("createdAt", profile.path("createdAt").asText());
+            response.put("profileArn", profile.path("profileArn").asText());
+            response.put("profileId", profile.path("profileId").asText());
+            response.put("status", profile.path("status").asText());
+            return Response.ok(response).build();
+        } catch (Exception e) {
+            return error(e, "creating browser profile");
+        }
+    }
+
     @GET
     @Path("/browsers/{browserId}")
     public Response getBrowser(@Context HttpHeaders headers, @PathParam("browserId") String browserId) {
