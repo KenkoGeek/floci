@@ -143,6 +143,12 @@ public class BedrockControlPlaneController {
         return execute("DeleteResourcePolicy", null, Map.of("resourceArn", resourceArn), headers);
     }
 
+    @GET
+    @Path("/data-retention")
+    public Response getAccountDataRetention(@Context HttpHeaders headers) {
+        return execute("GetAccountDataRetention", null, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
