@@ -1330,6 +1330,10 @@ public class SsoAdminService implements Resettable {
         }
     }
 
+    public SsoApplication describeApplication(JsonNode request) {
+        return getApplication(validateApplicationArn(required(request, "ApplicationArn")));
+    }
+
     SsoApplication getApplication(String applicationArn) {
         validateApplicationArn(applicationArn);
         return applications.get(applicationArn).orElseThrow(() -> notFound("Application not found: " + applicationArn));

@@ -36,6 +36,7 @@ public class SsoAdminJsonHandler {
             case "DeleteTrustedTokenIssuer" -> deleteTrustedTokenIssuer(request);
             case "AddRegion" -> addRegion(request);
             case "CreateApplication" -> createApplication(request, callerAccountId, region);
+            case "DescribeApplication" -> describeApplication(request);
             case "CreateApplicationAssignment" -> createApplicationAssignment(request);
             case "DeleteApplication" -> deleteApplication(request);
             case "DeleteApplicationAccessScope" -> deleteApplicationAccessScope(request);
@@ -177,6 +178,37 @@ public class SsoAdminJsonHandler {
         response.put("ApplicationArn", application.applicationArn());
         response.put("IdentityStoreArn", application.identityStoreArn());
         response.put("InstanceArn", application.instanceArn());
+        return Response.ok(response).build();
+    }
+
+    private Response describeApplication(JsonNode request) {
+        SsoApplication application = service.describeApplication(request);
+        ObjectNode response = mapper.createObjectNode();
+        response.put("ApplicationAccount", application.applicationAccount());
+        response.put("ApplicationArn", application.applicationArn());
+        response.put("ApplicationProviderArn", application.applicationProviderArn());
+        response.put("CreatedDate", application.createdDateEpochMillis() / 1000.0d);
+        response.put("CreatedFrom", application.createdFrom());
+        if (application.description() != null) {
+            response.put("Description", application.description());
+        }
+        response.put("IdentityStoreArn", application.identityStoreArn());
+        response.put("InstanceArn", application.instanceArn());
+        response.put("Name", application.name());
+        if (application.portalOptions() != null) {
+            ObjectNode portal = response.putObject("PortalOptions");
+            if (application.portalOptions().visibility() != null) {
+                portal.put("Visibility", application.portalOptions().visibility());
+            }
+            if (application.portalOptions().signInOptions() != null) {
+                ObjectNode signIn = portal.putObject("SignInOptions");
+                signIn.put("Origin", application.portalOptions().signInOptions().origin());
+                if (application.portalOptions().signInOptions().applicationUrl() != null) {
+                    signIn.put("ApplicationUrl", application.portalOptions().signInOptions().applicationUrl());
+                }
+            }
+        }
+        response.put("Status", application.status());
         return Response.ok(response).build();
     }
 

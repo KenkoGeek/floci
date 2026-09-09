@@ -133,6 +133,45 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void describeApplicationReturnsAwsApplicationShape() {
+        String createRequest = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
+                + "\"ApplicationProviderArn\":\"arn:aws:sso::aws:applicationProvider/custom\","
+                + "\"Name\":\"Describe Integration\",\"Description\":\"Describe application\","
+                + "\"Status\":\"DISABLED\",\"ClientToken\":\"describe-integration-token\","
+                + "\"PortalOptions\":{\"Visibility\":\"ENABLED\",\"SignInOptions\":{"
+                + "\"Origin\":\"APPLICATION\",\"ApplicationUrl\":\"https://example.com/login\"}}}";
+        String applicationArn = given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.CreateApplication")
+            .body(createRequest)
+        .when().post("/")
+        .then().statusCode(200)
+            .extract().path("ApplicationArn");
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.DescribeApplication")
+            .body("{\"ApplicationArn\":\"" + applicationArn + "\"}")
+        .when().post("/")
+        .then().statusCode(200)
+            .body("ApplicationAccount", equalTo("000000000000"))
+            .body("ApplicationArn", equalTo(applicationArn))
+            .body("ApplicationProviderArn", equalTo("arn:aws:sso::aws:applicationProvider/custom"))
+            .body("CreatedDate", org.hamcrest.Matchers.notNullValue())
+            .body("CreatedFrom", equalTo("us-east-1"))
+            .body("Description", equalTo("Describe application"))
+            .body("IdentityStoreArn", equalTo("arn:aws:identitystore::000000000000:identitystore/d-9067f2a3c1"))
+            .body("InstanceArn", equalTo("arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e"))
+            .body("Name", equalTo("Describe Integration"))
+            .body("PortalOptions.Visibility", equalTo("ENABLED"))
+            .body("PortalOptions.SignInOptions.Origin", equalTo("APPLICATION"))
+            .body("PortalOptions.SignInOptions.ApplicationUrl", equalTo("https://example.com/login"))
+            .body("Status", equalTo("DISABLED"));
+    }
+
+    @Test
     void createApplicationAssignmentGrantsDirectAccessWithEmptyResponse() {
         String appRequest = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
                 + "\"ApplicationProviderArn\":\"arn:aws:sso::aws:applicationProvider/custom\","
