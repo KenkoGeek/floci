@@ -15,6 +15,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `PutUseCaseForModelAccess` | `POST /use-case-for-model-access` | Validates base64 form data and AWS 10-16384 byte limits; returns HTTP 201. |
 | `GetFoundationModelAvailability` | `GET /foundation-model-availability/{modelId}` | Returns agreement, authorization, entitlement, and regional availability state. |
 | `ListFoundationModelAgreementOffers` | `GET /list-foundation-model-agreement-offers/{modelId}` | Returns a deterministic local public offer and opaque offer token. |
+| `CreateFoundationModelAgreement` | `POST /create-foundation-model-agreement` | Validates the offer token, persists agreement state, and returns HTTP 202. |
 
 ## Configuration
 
