@@ -50,3 +50,4 @@ Each task is checked against the Amazon Bedrock API Reference and the AWS SDK fo
 | BR-044 | `CreateCustomModel` | `POST /custom-models/create-custom-model` | SDK marshaller binding verified; diff-check |
 | BR-045 | `GetCustomModel` | `GET /custom-models/{modelIdentifier}` | SDK marshaller binding verified; diff-check |
 | BR-046 | `ListCustomModels` | `GET /custom-models` | SDK marshaller binding verified; diff-check |
+| BR-047 | `DeleteCustomModel` | `DELETE /custom-models/{modelIdentifier}` | SDK marshaller binding verified; diff-check |
