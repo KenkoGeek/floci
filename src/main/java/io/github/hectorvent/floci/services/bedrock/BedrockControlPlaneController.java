@@ -467,6 +467,12 @@ public class BedrockControlPlaneController {
         return execute("GetCustomModelDeployment", null, Map.of("customModelDeploymentIdentifier", customModelDeploymentIdentifier), headers);
     }
 
+    @GET
+    @Path("/model-customization/custom-model-deployments")
+    public Response listCustomModelDeployments(@Context HttpHeaders headers) {
+        return execute("ListCustomModelDeployments", null, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
