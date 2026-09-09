@@ -109,6 +109,50 @@ public class BedrockAgentCoreCredentialProviderService {
                 maxResults, nextToken, 100, 100, "ValidationException");
     }
 
+    public ObjectNode updateApiKey(ObjectNode request, String region) {
+        String name = requiredName(request);
+        ObjectNode item = getApiKey(name, region);
+        String apiKey = text(request, "apiKey");
+        if (apiKey != null && apiKey.length() > 65536) {
+            throw new AwsException("ValidationException", "apiKey exceeds maximum length of 65536", 400);
+        }
+        String source = text(request, "apiKeySecretSource");
+        JsonNode secretConfig = request.get("apiKeySecretConfig");
+        if (source != null) {
+            if (!source.equals("MANAGED") && !source.equals("EXTERNAL")) {
+                throw new AwsException("ValidationException", "apiKeySecretSource must be MANAGED or EXTERNAL", 400);
+            }
+            item.put("apiKeySecretSource", source);
+        } else {
+            source = item.path("apiKeySecretSource").asText("MANAGED");
+        }
+        if (source.equals("EXTERNAL")) {
+            if (secretConfig == null || !secretConfig.isObject()
+                    || !secretConfig.hasNonNull("secretId") || !secretConfig.hasNonNull("jsonKey")) {
+                throw new AwsException("ValidationException",
+                        "apiKeySecretConfig with secretId and jsonKey is required for EXTERNAL source", 400);
+            }
+        }
+        if (secretConfig != null && secretConfig.isObject()) {
+            String secretId = secretConfig.path("secretId").asText();
+            String jsonKey = secretConfig.path("jsonKey").asText();
+            if (secretId.length() < 1 || secretId.length() > 2048) {
+                throw new AwsException("ValidationException", "secretId must be between 1 and 2048 characters", 400);
+            }
+            if (jsonKey.length() < 1 || jsonKey.length() > 128) {
+                throw new AwsException("ValidationException", "jsonKey must be between 1 and 128 characters", 400);
+            }
+            item.putObject("apiKeySecretArn").put("secretArn", secretId);
+            item.put("apiKeySecretJsonKey", jsonKey);
+        } else if (source.equals("MANAGED")) {
+            item.putObject("apiKeySecretArn").put("secretArn", managedSecretArn(region, name));
+            item.put("apiKeySecretJsonKey", "apiKey");
+        }
+        item.put("lastUpdatedTime", Instant.now().getEpochSecond());
+        storage.put(key("apikey", region, name), item);
+        return item.deepCopy();
+    }
+
     private String credentialProviderArn(String region, String name) {
         return "arn:aws:acps:" + region + ":" + regionResolver.getAccountId()
                 + ":token-vault/default/apikeycredentialprovider/" + name;

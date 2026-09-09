@@ -73,4 +73,17 @@ class BedrockAgentCoreCredentialProviderTest {
         assertThat(response.credentialProviders())
                 .anyMatch(provider -> apiKeyProviderName.equals(provider.name()));
     }
+
+    @Test
+    @Order(4)
+    void updateApiKeyCredentialProvider() {
+        var response = client.updateApiKeyCredentialProvider(builder -> builder
+                .name(apiKeyProviderName)
+                .apiKey("rotated-value")
+                .apiKeySecretSource(SecretSourceType.MANAGED));
+
+        assertThat(response.name()).isEqualTo(apiKeyProviderName);
+        assertThat(response.apiKeySecretSourceAsString()).isEqualTo("MANAGED");
+        assertThat(response.lastUpdatedTime()).isNotNull();
+    }
 }
