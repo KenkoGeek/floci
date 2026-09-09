@@ -23,6 +23,7 @@ Floci emulates AWS Marketplace APIs under the shared `aws-marketplace` SigV4 sig
 | `TagResource` | Adds or replaces tags on a Marketplace Catalog resource |
 | `UntagResource` | Removes tag keys from a Marketplace Catalog resource |
 | `PutDeploymentParameter` | - |
+| `GetBuyerDashboard` | - |
 | `AcceptAgreementCancellationRequest` | - |
 | `AcceptAgreementPaymentRequest` | - |
 | `AcceptAgreementRequest` | - |
@@ -67,6 +68,10 @@ The four Deployment Service operations are supported for Quick Launch workflows.
 ## Marketplace Discovery
 
 All nine Discovery API operations from the 2026-02-05 public API are supported. Local Marketplace Catalog product, offer, and offer-set entities are projected into buyer-facing Discovery resources, so seller-side catalog changes can be exercised through `GetProduct`, `GetListing`, offer reads, purchase and fulfillment option lists, listing search, and facet search. Discovery requests enforce the documented service regions: `us-east-1`, `us-west-2`, and `eu-west-1`.
+
+## Marketplace Reporting
+
+`GetBuyerDashboard` validates the two documented procurement-insights dashboard ARN forms and one or two embedding domains, then returns an opaque local QuickSight-style embedding URL together with the requested dashboard and domains. AWS organization-management and delegated-administrator IAM authorization is outside Floci's protocol emulation boundary.
 
 ## Configuration
 
