@@ -62,6 +62,7 @@ public class SsoAdminService implements Resettable {
     private static final Pattern APPLICATION_ARN = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:sso::\\d{12}:application/(?:sso)?ins-[a-zA-Z0-9-.]{16}/apl-[a-zA-Z0-9]{16}");
     private static final Pattern TRUSTED_TOKEN_ISSUER_ARN = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:sso::\\d{12}:trustedTokenIssuer/(?:sso)?ins-[a-zA-Z0-9-.]{16}/tti-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}");
     private static final Pattern APPLICATION_ACCESS_SCOPE = Pattern.compile("([A-Za-z0-9_]{1,50})(:[A-Za-z0-9_]{1,50}){0,1}(:[A-Za-z0-9_]{1,50}){0,1}");
+    private static final Pattern APPLICATION_ACCESS_TARGET = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:sso::(?:\\d{12}:application/(?:sso)?ins-[a-zA-Z0-9-.]{16}/apl-[a-zA-Z0-9]{16}|:instance/(?:sso)?ins-[a-zA-Z0-9-.]{16})");
     private static final Pattern CLIENT_TOKEN = Pattern.compile("[!-~]+");
     private static final Pattern APPLICATION_URL = Pattern.compile("http(s)?://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#/%?=~_|]");
     private static final Pattern TAG_VALUE = Pattern.compile("[\\p{L}\\p{Z}\\p{N}_.:/=+\\-@]*");
@@ -560,6 +561,32 @@ public class SsoAdminService implements Resettable {
                 applicationGrants.delete(key);
             }
         }
+    }
+
+    public synchronized ApplicationAccessScope putApplicationAccessScope(JsonNode request) {
+        String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
+        getApplication(applicationArn);
+        String scope = required(request, "Scope");
+        if (!APPLICATION_ACCESS_SCOPE.matcher(scope).matches()) {
+            throw validation("Scope is invalid.");
+        }
+        List<String> authorizedTargets = new ArrayList<>();
+        JsonNode targets = request == null ? null : request.get("AuthorizedTargets");
+        if (targets != null && !targets.isNull()) {
+            if (!targets.isArray() || targets.size() < 1 || targets.size() > 10) {
+                throw validation("AuthorizedTargets must contain between 1 and 10 ARNs.");
+            }
+            for (JsonNode target : targets) {
+                if (!target.isTextual() || target.textValue().length() > 100
+                        || !APPLICATION_ACCESS_TARGET.matcher(target.textValue()).matches()) {
+                    throw validation("AuthorizedTargets contains an invalid ARN.");
+                }
+                authorizedTargets.add(target.textValue());
+            }
+        }
+        ApplicationAccessScope accessScope = new ApplicationAccessScope(applicationArn, scope, authorizedTargets);
+        applicationAccessScopes.put(applicationAccessScopeKey(applicationArn, scope), accessScope);
+        return accessScope;
     }
 
     public synchronized void deleteApplicationAccessScope(JsonNode request) {

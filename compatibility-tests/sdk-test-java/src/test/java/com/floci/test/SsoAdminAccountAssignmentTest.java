@@ -169,6 +169,12 @@ class SsoAdminAccountAssignmentTest {
                             .applicationProvider("arn:aws:sso::aws:applicationProvider/custom")));
             assertThat(applications.applications()).anySatisfy(application ->
                     assertThat(application.applicationArn()).isEqualTo(created.applicationArn()));
+
+            var putScope = sso.putApplicationAccessScope(request -> request
+                    .applicationArn(created.applicationArn())
+                    .scope("api:read")
+                    .authorizedTargets(instanceArn));
+            assertThat(putScope.sdkHttpResponse().isSuccessful()).isTrue();
         }
     }
 

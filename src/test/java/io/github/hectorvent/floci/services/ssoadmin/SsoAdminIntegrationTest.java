@@ -311,6 +311,30 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void putApplicationAccessScopeReturnsEmptyAwsResponse() {
+        String applicationArn = given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.CreateApplication")
+            .body("{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
+                    + "\"ApplicationProviderArn\":\"arn:aws:sso::aws:applicationProvider/custom\","
+                    + "\"Name\":\"Put Scope Integration\"}")
+        .when().post("/")
+        .then().statusCode(200)
+            .extract().path("ApplicationArn");
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.PutApplicationAccessScope")
+            .body("{\"ApplicationArn\":\"" + applicationArn + "\",\"Scope\":\"api:read\","
+                    + "\"AuthorizedTargets\":[\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\"]}")
+        .when().post("/")
+        .then().statusCode(200)
+            .body(org.hamcrest.Matchers.is(org.hamcrest.Matchers.emptyOrNullString()));
+    }
+
+    @Test
     void listApplicationProvidersReturnsCustomOauthProvider() {
         given()
             .contentType("application/x-amz-json-1.1")

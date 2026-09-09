@@ -34,6 +34,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | `ListApplicationAssignments` | Lists direct user and group assignments for an IAM Identity Center application with AWS-compatible pagination. |
 | `ListApplicationAssignmentsForPrincipal` | Lists effective application access for a user or group, including group-derived user access, with instance-aware filtering and pagination. |
 | `DeleteApplication` | Deletes the IAM Identity Center application association and its local assignment state. |
+| `PutApplicationAccessScope` | Creates or updates an application access scope and its authorized IAM Identity Center targets with AWS-compatible validation. |
 | `DeleteApplicationAccessScope` | Deletes an application access scope after validating its AWS scope name and application ARN. |
 | `DeleteApplicationAssignment` | Revokes a direct user or group assignment from an IAM Identity Center application. |
 | `DeleteApplicationAuthenticationMethod` | Deletes the IAM authentication method configured for an IAM Identity Center application. |
