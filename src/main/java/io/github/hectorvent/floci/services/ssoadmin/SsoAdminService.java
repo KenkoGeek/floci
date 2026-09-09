@@ -10,9 +10,12 @@ import io.github.hectorvent.floci.core.storage.StorageBackend;
 import io.github.hectorvent.floci.core.storage.StorageFactory;
 import io.github.hectorvent.floci.services.ssoadmin.model.Assignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentOperation;
+import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationPortalOptions;
+import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationSignInOptions;
 import io.github.hectorvent.floci.services.ssoadmin.model.CustomerManagedPolicyReference;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
 import io.github.hectorvent.floci.services.ssoadmin.model.RegionMetadata;
+import io.github.hectorvent.floci.services.ssoadmin.model.SsoApplication;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -37,9 +40,15 @@ public class SsoAdminService implements Resettable {
     private static final Pattern CUSTOMER_MANAGED_POLICY_NAME = Pattern.compile("[\\w+=,.@-]+");
     private static final Pattern CUSTOMER_MANAGED_POLICY_PATH = Pattern.compile("((/[A-Za-z0-9\\.,\\+@=_-]+)*)/");
     private static final Pattern REGION_NAME = Pattern.compile("([a-z]+-){2,3}\\d");
+    private static final Pattern APPLICATION_PROVIDER_ARN = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:sso::aws:applicationProvider/[a-zA-Z0-9-/]+");
+    private static final Pattern CLIENT_TOKEN = Pattern.compile("[!-~]+");
+    private static final Pattern APPLICATION_URL = Pattern.compile("http(s)?://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#/%?=~_|]");
+    private static final Pattern TAG_VALUE = Pattern.compile("[\\p{L}\\p{Z}\\p{N}_.:/=+\\-@]*");
+    private static final String CUSTOM_APPLICATION_PROVIDER_ARN = "arn:aws:sso::aws:applicationProvider/custom";
     private static final int PERMISSION_SET_QUOTA = 3500;
     private static final int REGION_QUOTA = 6;
     private static final int MANAGED_POLICY_QUOTA = 25;
+    private static final int APPLICATION_QUOTA = 7000;
     private static final int MAX_INLINE_POLICY_BYTES = 32_768;
     private static final int MAX_INLINE_NON_WHITESPACE = 10_240;
     private static final Set<String> PRINCIPAL_TYPES = Set.of("USER", "GROUP");
@@ -48,6 +57,8 @@ public class SsoAdminService implements Resettable {
     private final StorageBackend<String, Assignment> assignments;
     private final StorageBackend<String, AssignmentOperation> assignmentOperations;
     private final StorageBackend<String, RegionMetadata> regions;
+    private final StorageBackend<String, SsoApplication> applications;
+    private final StorageBackend<String, String> applicationClientTokens;
 
     @Inject
     public SsoAdminService(StorageFactory storageFactory) {
@@ -55,21 +66,84 @@ public class SsoAdminService implements Resettable {
                 storageFactory.create("ssoadmin", "ssoadmin-permission-sets.json", new TypeReference<Map<String, PermissionSet>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-assignments.json", new TypeReference<Map<String, Assignment>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-assignment-operations.json", new TypeReference<Map<String, AssignmentOperation>>() {}),
-                storageFactory.create("ssoadmin", "ssoadmin-regions.json", new TypeReference<Map<String, RegionMetadata>>() {}));
+                storageFactory.create("ssoadmin", "ssoadmin-regions.json", new TypeReference<Map<String, RegionMetadata>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-applications.json", new TypeReference<Map<String, SsoApplication>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-application-client-tokens.json", new TypeReference<Map<String, String>>() {}));
     }
 
     SsoAdminService(StorageBackend<String, PermissionSet> permissionSets,
                     StorageBackend<String, Assignment> assignments,
                     StorageBackend<String, AssignmentOperation> assignmentOperations,
-                    StorageBackend<String, RegionMetadata> regions) {
+                    StorageBackend<String, RegionMetadata> regions,
+                    StorageBackend<String, SsoApplication> applications,
+                    StorageBackend<String, String> applicationClientTokens) {
         this.permissionSets = permissionSets;
         this.assignments = assignments;
         this.assignmentOperations = assignmentOperations;
         this.regions = regions;
+        this.applications = applications;
+        this.applicationClientTokens = applicationClientTokens;
     }
 
     public String getInstanceArn() { return INSTANCE_ARN; }
     public String getIdentityStoreId() { return IDENTITY_STORE_ID; }
+
+    public synchronized SsoApplication createApplication(JsonNode request, String callerAccountId, String region) {
+        requireInstance(required(request, "InstanceArn"));
+        validateAccountId(callerAccountId);
+        validateRegionName(region);
+        String providerArn = required(request, "ApplicationProviderArn");
+        if (providerArn.length() > 1224 || !APPLICATION_PROVIDER_ARN.matcher(providerArn).matches()) {
+            throw validation("ApplicationProviderArn is invalid.");
+        }
+        if (!CUSTOM_APPLICATION_PROVIDER_ARN.equals(providerArn)) {
+            throw notFound("Application provider not found: " + providerArn);
+        }
+        String name = required(request, "Name");
+        if (name.length() > 100) {
+            throw validation("Name must be between 1 and 100 characters.");
+        }
+        String description = optionalString(request, "Description", 1, 128);
+        String status = text(request, "Status");
+        if (status == null) {
+            status = "ENABLED";
+        } else if (!Set.of("ENABLED", "DISABLED").contains(status)) {
+            throw validation("Status must be ENABLED or DISABLED.");
+        }
+        ApplicationPortalOptions portalOptions = parsePortalOptions(request.get("PortalOptions"));
+        Map<String, String> tags = parseTags(request.get("Tags"));
+        String clientToken = text(request, "ClientToken");
+        if (clientToken != null && (clientToken.length() > 64 || !CLIENT_TOKEN.matcher(clientToken).matches())) {
+            throw validation("ClientToken must be between 1 and 64 visible ASCII characters.");
+        }
+
+        String tokenKey = clientToken == null ? null : callerAccountId + "::" + region + "::" + clientToken;
+        if (tokenKey != null) {
+            var existingArn = applicationClientTokens.get(tokenKey);
+            if (existingArn.isPresent()) {
+                SsoApplication existing = applications.get(existingArn.get()).orElse(null);
+                if (existing != null && applicationMatches(existing, providerArn, description, name, portalOptions, status, tags)) {
+                    return existing;
+                }
+                throw new AwsException("IdempotentParameterMismatch", "ClientToken was reused with different request parameters.", 400);
+            }
+        }
+        if (applications.scan(a -> true).stream().filter(a -> callerAccountId.equals(a.applicationAccount())).count() >= APPLICATION_QUOTA) {
+            throw quota("The IAM Identity Center application quota has been exceeded.");
+        }
+
+        String applicationArn = "arn:aws:sso::" + callerAccountId
+                + ":application/ssoins-7223b02a5d9f7c8e/apl-" + shortId();
+        String identityStoreArn = "arn:aws:identitystore::" + callerAccountId + ":identitystore/" + IDENTITY_STORE_ID;
+        SsoApplication application = new SsoApplication(callerAccountId, applicationArn, providerArn,
+                System.currentTimeMillis(), region, description, identityStoreArn, INSTANCE_ARN, name,
+                portalOptions, status, tags);
+        applications.put(applicationArn, application);
+        if (tokenKey != null) {
+            applicationClientTokens.put(tokenKey, applicationArn);
+        }
+        return application;
+    }
 
     public synchronized RegionMetadata addRegion(JsonNode request) {
         requireInstance(required(request, "InstanceArn"));
@@ -342,6 +416,87 @@ public class SsoAdminService implements Resettable {
         }
     }
 
+    private static boolean applicationMatches(SsoApplication application, String providerArn, String description,
+                                              String name, ApplicationPortalOptions portalOptions, String status,
+                                              Map<String, String> tags) {
+        return java.util.Objects.equals(application.applicationProviderArn(), providerArn)
+                && java.util.Objects.equals(application.description(), description)
+                && java.util.Objects.equals(application.name(), name)
+                && java.util.Objects.equals(application.portalOptions(), portalOptions)
+                && java.util.Objects.equals(application.status(), status)
+                && java.util.Objects.equals(application.tags(), tags);
+    }
+
+    private static ApplicationPortalOptions parsePortalOptions(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw validation("PortalOptions must be an object.");
+        }
+        String visibility = text(node, "Visibility");
+        if (visibility != null && !Set.of("ENABLED", "DISABLED").contains(visibility)) {
+            throw validation("PortalOptions.Visibility must be ENABLED or DISABLED.");
+        }
+        JsonNode signIn = node.get("SignInOptions");
+        ApplicationSignInOptions signInOptions = null;
+        if (signIn != null && !signIn.isNull()) {
+            if (!signIn.isObject()) {
+                throw validation("PortalOptions.SignInOptions must be an object.");
+            }
+            String origin = required(signIn, "Origin");
+            if (!Set.of("IDENTITY_CENTER", "APPLICATION").contains(origin)) {
+                throw validation("SignInOptions.Origin must be IDENTITY_CENTER or APPLICATION.");
+            }
+            String applicationUrl = text(signIn, "ApplicationUrl");
+            if ("APPLICATION".equals(origin) && applicationUrl == null) {
+                throw validation("SignInOptions.ApplicationUrl is required when Origin is APPLICATION.");
+            }
+            if (applicationUrl != null && (applicationUrl.length() > 512 || !APPLICATION_URL.matcher(applicationUrl).matches())) {
+                throw validation("SignInOptions.ApplicationUrl is invalid.");
+            }
+            signInOptions = new ApplicationSignInOptions(origin, applicationUrl);
+        }
+        return new ApplicationPortalOptions(visibility, signInOptions);
+    }
+
+    private static String optionalString(JsonNode request, String field, int min, int max) {
+        if (request == null || !request.has(field) || request.get(field).isNull()) {
+            return null;
+        }
+        String value = text(request, field);
+        if (value == null || value.length() < min || value.length() > max) {
+            throw validation(field + " length is invalid.");
+        }
+        return value;
+    }
+
+    private static Map<String, String> parseTags(JsonNode node) {
+        Map<String, String> tags = new LinkedHashMap<>();
+        if (node == null || node.isNull()) {
+            return tags;
+        }
+        if (!node.isArray() || node.size() > 75) {
+            throw validation("Tags must contain at most 75 entries.");
+        }
+        for (JsonNode tag : node) {
+            if (!tag.isObject()) {
+                throw validation("Each tag must be an object.");
+            }
+            String key = required(tag, "Key");
+            JsonNode valueNode = tag.get("Value");
+            String value = valueNode != null && valueNode.isTextual() ? valueNode.textValue() : null;
+            if (key.length() > 128 || !TAG_VALUE.matcher(key).matches()
+                    || value == null || value.length() > 256 || !TAG_VALUE.matcher(value).matches()) {
+                throw validation("Tag key or value is invalid.");
+            }
+            if (tags.putIfAbsent(key, value) != null) {
+                throw validation("Duplicate tag key: " + key);
+            }
+        }
+        return tags;
+    }
+
     private static int managedPolicyCount(PermissionSet permissionSet) {
         return permissionSet.managedPolicies().size() + permissionSet.customerManagedPolicies().size();
     }
@@ -392,6 +547,8 @@ public class SsoAdminService implements Resettable {
         assignments.clear();
         assignmentOperations.clear();
         regions.clear();
+        applications.clear();
+        applicationClientTokens.clear();
     }
 
 }

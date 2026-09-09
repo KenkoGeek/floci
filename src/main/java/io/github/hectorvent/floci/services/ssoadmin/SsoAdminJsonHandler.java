@@ -8,6 +8,7 @@ import io.github.hectorvent.floci.core.common.AwsException;
 import io.github.hectorvent.floci.services.ssoadmin.model.Assignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
+import io.github.hectorvent.floci.services.ssoadmin.model.SsoApplication;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
@@ -23,10 +24,11 @@ public class SsoAdminJsonHandler {
         this.mapper = mapper;
     }
 
-    public Response handle(String action, JsonNode request, String callerAccountId) {
+    public Response handle(String action, JsonNode request, String callerAccountId, String region) {
         return switch (action) {
             case "ListInstances" -> listInstances(callerAccountId);
             case "AddRegion" -> addRegion(request);
+            case "CreateApplication" -> createApplication(request, callerAccountId, region);
             case "ListPermissionSets" -> listPermissionSets(request);
             case "CreatePermissionSet" -> createPermissionSet(request);
             case "DescribePermissionSet" -> describePermissionSet(request);
@@ -58,6 +60,15 @@ public class SsoAdminJsonHandler {
     private Response addRegion(JsonNode request) {
         var region = service.addRegion(request);
         return Response.ok(mapper.createObjectNode().put("Status", region.status())).build();
+    }
+
+    private Response createApplication(JsonNode request, String callerAccountId, String region) {
+        SsoApplication application = service.createApplication(request, callerAccountId, region);
+        ObjectNode response = mapper.createObjectNode();
+        response.put("ApplicationArn", application.applicationArn());
+        response.put("IdentityStoreArn", application.identityStoreArn());
+        response.put("InstanceArn", application.instanceArn());
+        return Response.ok(response).build();
     }
 
     private Response listPermissionSets(JsonNode request) {
