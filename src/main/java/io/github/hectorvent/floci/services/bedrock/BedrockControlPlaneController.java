@@ -53,6 +53,12 @@ public class BedrockControlPlaneController {
         return execute("PutUseCaseForModelAccess", body, Map.of(), headers);
     }
 
+    @GET
+    @Path("/foundation-model-availability/{modelId:.+}")
+    public Response getFoundationModelAvailability(@PathParam("modelId") String modelId, @Context HttpHeaders headers) {
+        return execute("GetFoundationModelAvailability", null, Map.of("modelId", modelId), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
