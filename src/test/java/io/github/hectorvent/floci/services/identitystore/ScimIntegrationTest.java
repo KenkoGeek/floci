@@ -134,6 +134,43 @@ class ScimIntegrationTest {
     }
 
     @Test
+    void getUserUsesAwsScimRepresentation() {
+        String userId = given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"externalId\":\"get-user-ext\",\"userName\":\"get@example.com\","
+                        + "\"displayName\":\"Get User\",\"name\":{\"givenName\":\"Get\",\"familyName\":\"User\"}}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(201)
+                .extract().path("id");
+
+        given()
+                .header("Authorization", BEARER)
+            .when()
+                .get("/" + TENANT + "/scim/v2/Users/" + userId)
+            .then()
+                .statusCode(200)
+                .body("schemas[0]", equalTo("urn:ietf:params:scim:schemas:core:2.0:User"))
+                .body("id", equalTo(userId))
+                .body("externalId", equalTo("get-user-ext"))
+                .body("userName", equalTo("get@example.com"))
+                .body("displayName", equalTo("Get User"))
+                .body("name.givenName", equalTo("Get"))
+                .body("name.familyName", equalTo("User"))
+                .body("meta.resourceType", equalTo("User"));
+
+        given()
+                .header("Authorization", BEARER)
+            .when()
+                .get("/" + TENANT + "/scim/v2/Users/9067f2a3c1-00000000-0000-0000-0000-000000000098")
+            .then()
+                .statusCode(404)
+                .body("status", equalTo("404"));
+    }
+
+    @Test
     void getGroupUsesAwsScimRepresentation() {
         String groupId = given()
                 .contentType("application/json")
