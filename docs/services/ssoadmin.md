@@ -11,6 +11,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | Action | Description |
 | --- | --- |
 | `ListInstances` | Lists the local IAM Identity Center instance. |
+| `AddRegion` | Adds a Region to the local IAM Identity Center instance and reports the initial `ADDING` status. |
 | `ListPermissionSets` | Lists permission sets with AWS-compatible pagination. |
 | `CreatePermissionSet` | Creates a permission set. |
 | `DescribePermissionSet` | Describes a permission set. |

@@ -7,6 +7,7 @@ import io.github.hectorvent.floci.core.storage.InMemoryStorage;
 import io.github.hectorvent.floci.services.ssoadmin.model.Assignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
+import io.github.hectorvent.floci.services.ssoadmin.model.RegionMetadata;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -28,7 +29,46 @@ class SsoAdminServiceTest {
         service = new SsoAdminService(
                 new InMemoryStorage<String, PermissionSet>(),
                 new InMemoryStorage<String, Assignment>(),
-                new InMemoryStorage<String, AssignmentOperation>());
+                new InMemoryStorage<String, AssignmentOperation>(),
+                new InMemoryStorage<String, RegionMetadata>());
+    }
+
+    @Test
+    void addRegionValidatesAndRejectsDuplicates() {
+        ObjectNode request = mapper.createObjectNode();
+        request.put("InstanceArn", service.getInstanceArn());
+        request.put("RegionName", "us-west-2");
+
+        RegionMetadata created = service.addRegion(request);
+        assertEquals("us-west-2", created.regionName());
+        assertEquals("ADDING", created.status());
+        assertFalse(created.primaryRegion());
+        assertNotNull(created.addedDate());
+
+        assertError("ConflictException", () -> service.addRegion(request));
+
+        ObjectNode primaryRegion = request.deepCopy();
+        primaryRegion.put("RegionName", "us-east-1");
+        assertError("ConflictException", () -> service.addRegion(primaryRegion));
+
+        ObjectNode invalidRegion = request.deepCopy();
+        invalidRegion.put("RegionName", "invalid");
+        assertError("ValidationException", () -> service.addRegion(invalidRegion));
+    }
+
+    @Test
+    void addRegionEnforcesTheDocumentedSixRegionQuotaIncludingPrimary() {
+        for (String region : java.util.List.of("us-west-1", "us-west-2", "eu-west-1", "eu-central-1", "ap-south-1")) {
+            ObjectNode request = mapper.createObjectNode();
+            request.put("InstanceArn", service.getInstanceArn());
+            request.put("RegionName", region);
+            service.addRegion(request);
+        }
+
+        ObjectNode overQuota = mapper.createObjectNode();
+        overQuota.put("InstanceArn", service.getInstanceArn());
+        overQuota.put("RegionName", "ap-northeast-1");
+        assertError("ServiceQuotaExceededException", () -> service.addRegion(overQuota));
     }
 
     @Test

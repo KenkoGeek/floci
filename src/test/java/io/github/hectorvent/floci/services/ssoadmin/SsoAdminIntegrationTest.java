@@ -51,6 +51,32 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void addRegionReturnsAddingAndRejectsDuplicate() {
+        String request = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\",\"RegionName\":\"eu-west-2\"}";
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.AddRegion")
+            .body(request)
+        .when()
+            .post("/")
+        .then()
+            .statusCode(200)
+            .body("Status", equalTo("ADDING"));
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.AddRegion")
+            .body(request)
+        .when()
+            .post("/")
+        .then()
+            .statusCode(400)
+            .body("__type", org.hamcrest.Matchers.containsString("ConflictException"));
+    }
+
+    @Test
     void unknownAction_returnsUnknownOperationException() {
         given()
             .contentType("application/x-amz-json-1.1")

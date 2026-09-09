@@ -11,6 +11,7 @@ import io.github.hectorvent.floci.core.storage.StorageFactory;
 import io.github.hectorvent.floci.services.ssoadmin.model.Assignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
+import io.github.hectorvent.floci.services.ssoadmin.model.RegionMetadata;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -27,11 +28,14 @@ import java.util.regex.Pattern;
 public class SsoAdminService implements Resettable {
     private static final String INSTANCE_ARN = "arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e";
     private static final String IDENTITY_STORE_ID = "d-9067f2a3c1";
+    private static final String PRIMARY_REGION = "us-east-1";
     private static final Pattern PERMISSION_SET_NAME = Pattern.compile("[\\w+=,.@-]+");
     private static final Pattern PERMISSION_SET_ARN = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:sso:::permissionSet/(?:sso)?ins-[a-zA-Z0-9-.]{16}/ps-[a-zA-Z0-9-./]{16}");
     private static final Pattern PRINCIPAL_ID = Pattern.compile("([0-9a-f]{10}-|)[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}");
     private static final Pattern MANAGED_POLICY_ARN = Pattern.compile("arn:aws:iam::aws:policy/.+");
+    private static final Pattern REGION_NAME = Pattern.compile("([a-z]+-){2,3}\\d");
     private static final int PERMISSION_SET_QUOTA = 3500;
+    private static final int REGION_QUOTA = 6;
     private static final int MANAGED_POLICY_QUOTA = 25;
     private static final int MAX_INLINE_POLICY_BYTES = 32_768;
     private static final int MAX_INLINE_NON_WHITESPACE = 10_240;
@@ -40,25 +44,44 @@ public class SsoAdminService implements Resettable {
     private final StorageBackend<String, PermissionSet> permissionSets;
     private final StorageBackend<String, Assignment> assignments;
     private final StorageBackend<String, AssignmentOperation> assignmentOperations;
+    private final StorageBackend<String, RegionMetadata> regions;
 
     @Inject
     public SsoAdminService(StorageFactory storageFactory) {
         this(
                 storageFactory.create("ssoadmin", "ssoadmin-permission-sets.json", new TypeReference<Map<String, PermissionSet>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-assignments.json", new TypeReference<Map<String, Assignment>>() {}),
-                storageFactory.create("ssoadmin", "ssoadmin-assignment-operations.json", new TypeReference<Map<String, AssignmentOperation>>() {}));
+                storageFactory.create("ssoadmin", "ssoadmin-assignment-operations.json", new TypeReference<Map<String, AssignmentOperation>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-regions.json", new TypeReference<Map<String, RegionMetadata>>() {}));
     }
 
     SsoAdminService(StorageBackend<String, PermissionSet> permissionSets,
                     StorageBackend<String, Assignment> assignments,
-                    StorageBackend<String, AssignmentOperation> assignmentOperations) {
+                    StorageBackend<String, AssignmentOperation> assignmentOperations,
+                    StorageBackend<String, RegionMetadata> regions) {
         this.permissionSets = permissionSets;
         this.assignments = assignments;
         this.assignmentOperations = assignmentOperations;
+        this.regions = regions;
     }
 
     public String getInstanceArn() { return INSTANCE_ARN; }
     public String getIdentityStoreId() { return IDENTITY_STORE_ID; }
+
+    public synchronized RegionMetadata addRegion(JsonNode request) {
+        requireInstance(required(request, "InstanceArn"));
+        String regionName = validateRegionName(required(request, "RegionName"));
+        if (PRIMARY_REGION.equals(regionName) || regions.get(regionName).isPresent()) {
+            throw conflict("Region is already enabled for this IAM Identity Center instance: " + regionName);
+        }
+        if (regions.scan(key -> true).size() >= REGION_QUOTA - 1) {
+            throw quota("The IAM Identity Center Region quota has been exceeded.");
+        }
+        String addedDate = java.time.Instant.now().toString();
+        RegionMetadata response = new RegionMetadata(regionName, "ADDING", addedDate, false);
+        regions.put(regionName, new RegionMetadata(regionName, "ACTIVE", addedDate, false));
+        return response;
+    }
 
     public PaginatedResult<PermissionSet> listPermissionSets(JsonNode request) {
         requireInstance(required(request, "InstanceArn"));
@@ -286,6 +309,13 @@ public class SsoAdminService implements Resettable {
         }
     }
 
+    private static String validateRegionName(String value) {
+        if (value == null || value.length() > 32 || !REGION_NAME.matcher(value).matches()) {
+            throw validation("RegionName must be 1-32 characters and use an AWS Region name format.");
+        }
+        return value;
+    }
+
     private static String validateAccountId(String value) {
         if (value == null || !value.matches("\\d{12}")) {
             throw validation("AWS account identifiers must contain 12 digits.");
@@ -320,6 +350,7 @@ public class SsoAdminService implements Resettable {
         permissionSets.clear();
         assignments.clear();
         assignmentOperations.clear();
+        regions.clear();
     }
 
 }
