@@ -164,6 +164,7 @@ public class BedrockControlPlaneService implements Resettable {
             case "RegisterMarketplaceModelEndpoint" -> registerMarketplaceEndpoint(path.get("endpointIdentifier"), region);
             case "DeregisterMarketplaceModelEndpoint" -> deregisterMarketplaceEndpoint(path.get("endpointArn"), region);
             case "CreatePromptRouter" -> createPromptRouter(request, region);
+            case "DeletePromptRouter" -> deleteGeneric("prompt-router", path.get("promptRouterArn"), region);
             default -> throw new AwsException("UnknownOperationException", "Unsupported Bedrock operation: " + operation, 404);
         };
         return new Result(successStatus(operation), result.body());
@@ -584,6 +585,179 @@ public class BedrockControlPlaneService implements Resettable {
         resource.put("createdAt", Instant.now().toString());
         storeGeneric("prompt-router", id, resource, region);
         return ok(objectMapper.createObjectNode().put("promptRouterArn", resource.path("promptRouterArn").asText()));
+    }
+
+    private Result createCustomModelDeployment(ObjectNode request, String region) {
+        String name = requiredText(request, "modelDeploymentName");
+        String id = compactId();
+        ObjectNode resource = request.deepCopy();
+        resource.put("modelDeploymentName", name);
+        resource.put("customModelDeploymentArn", regionResolver.buildArn("bedrock", region, "custom-model-deployment/" + id));
+        resource.put("status", "ACTIVE");
+        resource.put("createdAt", Instant.now().toString());
+        resource.put("lastUpdatedAt", resource.path("createdAt").asText());
+        storeGeneric("custom-model-deployment", id, resource, region);
+        return ok(objectMapper.createObjectNode().put("customModelDeploymentArn", resource.path("customModelDeploymentArn").asText()));
+    }
+
+    private Result updateCustomModelDeployment(String identifier, ObjectNode request, String region) {
+        ObjectNode resource = findGeneric("custom-model-deployment", identifier, region).deepCopy();
+        String modelArn = requiredText(request, "modelArn");
+        resource.put("modelArn", modelArn);
+        resource.put("lastUpdatedAt", Instant.now().toString());
+        resource.put("status", "ACTIVE");
+        storeGeneric("custom-model-deployment", genericId("custom-model-deployment", resource, identifier), resource, region);
+        return ok(objectMapper.createObjectNode().put("customModelDeploymentArn", resource.path("customModelDeploymentArn").asText()));
+    }
+
+    private Result createEvaluationJob(ObjectNode request, String region) {
+        requiredText(request, "roleArn");
+        String id = compactId();
+        ObjectNode job = request.deepCopy();
+        job.put("jobArn", regionResolver.buildArn("bedrock", region, "evaluation-job/" + id));
+        if (!job.hasNonNull("jobName")) {
+            job.put("jobName", "floci-evaluation-" + id);
+        }
+        job.put("status", "InProgress");
+        job.put("creationTime", Instant.now().toString());
+        job.put("lastModifiedTime", job.path("creationTime").asText());
+        storeGeneric("evaluation-job", id, job, region);
+        return ok(objectMapper.createObjectNode().put("jobArn", job.path("jobArn").asText()));
+    }
+
+    private Result createAdvancedPromptOptimizationJob(ObjectNode request, String region) {
+        String id = compactId();
+        ObjectNode job = request.deepCopy();
+        job.put("jobArn", regionResolver.buildArn("bedrock", region, "advanced-prompt-optimization-job/" + id));
+        if (!job.hasNonNull("jobName")) {
+            job.put("jobName", "floci-prompt-optimization-" + id);
+        }
+        job.put("jobStatus", "InProgress");
+        job.put("creationTime", Instant.now().toString());
+        job.put("lastModifiedTime", job.path("creationTime").asText());
+        storeGeneric("advanced-prompt-optimization-job", id, job, region);
+        return ok(objectMapper.createObjectNode().put("jobArn", job.path("jobArn").asText()));
+    }
+
+    private Result batchDeleteJobs(String family, ObjectNode request, String region, String responseField) {
+        JsonNode ids = request.get("jobIdentifiers");
+        if (ids == null || !ids.isArray() || ids.isEmpty()) {
+            throw validation("jobIdentifiers is required and must be a non-empty array.");
+        }
+        ObjectNode response = objectMapper.createObjectNode();
+        ArrayNode deleted = response.putArray(responseField);
+        ArrayNode errors = response.putArray("errors");
+        ids.forEach(idNode -> {
+            String identifier = idNode.asText();
+            try {
+                ObjectNode resource = findGeneric(family, identifier, region);
+                state.delete(genericKey(region, family, genericId(family, resource, identifier)));
+                deleted.addObject().put("jobIdentifier", identifier).put("jobStatus", "Deleted");
+            } catch (AwsException e) {
+                errors.addObject().put("jobIdentifier", identifier).put("code", e.getErrorCode()).put("message", e.getMessage());
+            }
+        });
+        return ok(response);
+    }
+
+    private Result createAutomatedReasoningPolicy(ObjectNode request, String region) {
+        String id = compactId();
+        ObjectNode policy = request.deepCopy();
+        String name = policy.hasNonNull("name") ? policy.path("name").asText() : "floci-policy-" + id;
+        policy.put("policyId", id);
+        policy.put("name", name);
+        policy.put("policyArn", regionResolver.buildArn("bedrock", region, "automated-reasoning-policy/" + id));
+        policy.put("version", "DRAFT");
+        policy.put("definitionHash", Integer.toHexString(policy.path("policyDefinition").toString().hashCode()));
+        policy.put("createdAt", Instant.now().toString());
+        policy.put("updatedAt", policy.path("createdAt").asText());
+        storeGeneric("automated-reasoning-policy", id, policy, region);
+        return ok(select(policy, "createdAt", "definitionHash", "description", "name", "policyArn", "updatedAt", "version"));
+    }
+
+    private Result updateAutomatedReasoningPolicy(String identifier, ObjectNode request, String region) {
+        ObjectNode policy = findGeneric("automated-reasoning-policy", identifier, region).deepCopy();
+        merge(policy, request);
+        policy.put("definitionHash", Integer.toHexString(policy.path("policyDefinition").toString().hashCode()));
+        policy.put("updatedAt", Instant.now().toString());
+        storeGeneric("automated-reasoning-policy", genericId("automated-reasoning-policy", policy, identifier), policy, region);
+        return ok(select(policy, "definitionHash", "name", "policyArn", "updatedAt"));
+    }
+
+    private Result createAutomatedReasoningPolicyTestCase(String policyArn, ObjectNode request, String region) {
+        findGeneric("automated-reasoning-policy", policyArn, region);
+        String id = compactId();
+        ObjectNode testCase = request.deepCopy();
+        testCase.put("testCaseId", id);
+        testCase.put("createdAt", Instant.now().toString());
+        testCase.put("updatedAt", testCase.path("createdAt").asText());
+        state.put(testCaseKey(region, policyArn, id), testCase);
+        return ok(objectMapper.createObjectNode().put("policyArn", policyArn).put("testCaseId", id));
+    }
+
+    private Result getAutomatedReasoningPolicyTestCase(String policyArn, String testCaseId, String region) {
+        ObjectNode testCase = state.get(testCaseKey(region, policyArn, testCaseId))
+                .orElseThrow(() -> notFound("automated reasoning policy test case", testCaseId));
+        return ok(objectMapper.createObjectNode().put("policyArn", policyArn).set("testCase", testCase.deepCopy()));
+    }
+
+    private Result listAutomatedReasoningPolicyTestCases(String policyArn, String region) {
+        String prefix = testCasePrefix(region, policyArn);
+        ArrayNode array = objectMapper.createArrayNode();
+        state.scan(key -> key.startsWith(prefix)).forEach(value -> array.add(value.deepCopy()));
+        return ok(objectMapper.createObjectNode().set("testCases", array));
+    }
+
+    private Result updateAutomatedReasoningPolicyTestCase(String policyArn, String testCaseId, ObjectNode request, String region) {
+        ObjectNode testCase = state.get(testCaseKey(region, policyArn, testCaseId))
+                .orElseThrow(() -> notFound("automated reasoning policy test case", testCaseId)).deepCopy();
+        merge(testCase, request);
+        testCase.put("updatedAt", Instant.now().toString());
+        state.put(testCaseKey(region, policyArn, testCaseId), testCase);
+        return ok(objectMapper.createObjectNode().put("policyArn", policyArn).put("testCaseId", testCaseId));
+    }
+
+    private Result deleteAutomatedReasoningPolicyTestCase(String policyArn, String testCaseId, String region) {
+        if (state.get(testCaseKey(region, policyArn, testCaseId)).isEmpty()) {
+            throw notFound("automated reasoning policy test case", testCaseId);
+        }
+        state.delete(testCaseKey(region, policyArn, testCaseId));
+        return ok(objectMapper.createObjectNode());
+    }
+
+    private Result createAutomatedReasoningPolicyVersion(String policyArn, ObjectNode request, String region) {
+        ObjectNode policy = findGeneric("automated-reasoning-policy", policyArn, region).deepCopy();
+        int nextVersion = state.keys().stream()
+                .filter(key -> key.startsWith(regionalKey(region, "automated-reasoning-policy-version/" + policy.path("policyId").asText() + "/")))
+                .map(key -> key.substring(key.lastIndexOf('/') + 1))
+                .mapToInt(value -> { try { return Integer.parseInt(value); } catch (NumberFormatException e) { return 0; } })
+                .max().orElse(0) + 1;
+        policy.put("version", Integer.toString(nextVersion));
+        policy.put("createdAt", Instant.now().toString());
+        state.put(regionalKey(region, "automated-reasoning-policy-version/" + policy.path("policyId").asText() + "/" + nextVersion), policy.deepCopy());
+        return ok(select(policy, "createdAt", "definitionHash", "description", "name", "policyArn", "version"));
+    }
+
+    private Result exportAutomatedReasoningPolicyVersion(String policyArn, String region) {
+        ObjectNode policy = findGeneric("automated-reasoning-policy", policyArn, region);
+        JsonNode definition = policy.get("policyDefinition");
+        if (definition != null && definition.isObject()) {
+            return ok(((ObjectNode) definition).deepCopy());
+        }
+        ObjectNode empty = objectMapper.createObjectNode();
+        empty.putArray("rules");
+        empty.putArray("types");
+        empty.putArray("variables");
+        empty.put("version", policy.path("version").asText("DRAFT"));
+        return ok(empty);
+    }
+
+    private static String testCasePrefix(String region, String policyArn) {
+        return regionalKey(region, "automated-reasoning-policy-test-case/" + Integer.toUnsignedString(policyArn.hashCode(), 36) + "/");
+    }
+
+    private static String testCaseKey(String region, String policyArn, String testCaseId) {
+        return testCasePrefix(region, policyArn) + testCaseId;
     }
 
     private Result getGeneric(String family, String identifier, String region) {

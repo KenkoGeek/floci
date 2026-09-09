@@ -437,6 +437,12 @@ public class BedrockControlPlaneController {
         return execute("CreatePromptRouter", body, Map.of(), headers);
     }
 
+    @DELETE
+    @Path("/prompt-routers/{promptRouterArn:.+}")
+    public Response deletePromptRouter(@PathParam("promptRouterArn") String promptRouterArn, @Context HttpHeaders headers) {
+        return execute("DeletePromptRouter", null, Map.of("promptRouterArn", promptRouterArn), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
