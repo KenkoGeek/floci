@@ -674,6 +674,46 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void listPermissionSetsProvisionedToAccountFiltersCurrentAndStaleProvisioning() {
+        PermissionSet first = createPermissionSet("ProvisionedListOne");
+        PermissionSet second = createPermissionSet("ProvisionedListTwo");
+        for (PermissionSet permissionSet : java.util.List.of(first, second)) {
+            ObjectNode provision = mapper.createObjectNode();
+            provision.put("InstanceArn", service.getInstanceArn());
+            provision.put("PermissionSetArn", permissionSet.arn());
+            provision.put("TargetType", "AWS_ACCOUNT");
+            provision.put("TargetId", ACCOUNT_ID);
+            service.provisionPermissionSet(provision);
+        }
+
+        ObjectNode request = mapper.createObjectNode();
+        request.put("InstanceArn", service.getInstanceArn());
+        request.put("AccountId", ACCOUNT_ID);
+        request.put("MaxResults", 1);
+        var firstPage = service.listPermissionSetsProvisionedToAccount(request);
+        assertEquals(1, firstPage.items().size());
+        assertNotNull(firstPage.nextToken());
+
+        request.remove("MaxResults");
+        request.remove("NextToken");
+        request.put("ProvisioningStatus", "LATEST_PERMISSION_SET_PROVISIONED");
+        assertEquals(2, service.listPermissionSetsProvisionedToAccount(request).items().size());
+
+        ObjectNode update = mapper.createObjectNode();
+        update.put("InstanceArn", service.getInstanceArn());
+        update.put("PermissionSetArn", first.arn());
+        update.put("Description", "Changed after provisioning");
+        service.updatePermissionSet(update);
+        assertEquals(1, service.listPermissionSetsProvisionedToAccount(request).items().size());
+
+        request.put("ProvisioningStatus", "LATEST_PERMISSION_SET_NOT_PROVISIONED");
+        assertEquals(java.util.List.of(first.arn()), service.listPermissionSetsProvisionedToAccount(request).items());
+
+        request.put("ProvisioningStatus", "FAILED");
+        assertError("ValidationException", () -> service.listPermissionSetsProvisionedToAccount(request));
+    }
+
+    @Test
     void assignmentValidationAndDuplicateDetectionAreModeled() {
         PermissionSet permissionSet = createPermissionSet("AssignmentAdmins");
         ObjectNode request = assignmentRequest(permissionSet.arn());

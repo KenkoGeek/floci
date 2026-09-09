@@ -472,6 +472,32 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void listPermissionSetsProvisionedToAccountReturnsProvisionedArns() {
+        String instanceArn = listInstancesArn();
+        String permissionSetArn = given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.CreatePermissionSet")
+                .body("{\"InstanceArn\":\"" + instanceArn + "\",\"Name\":\"ProvisionedListIntegration\"}")
+            .when().post("/")
+            .then().statusCode(200)
+            .extract().path("PermissionSet.PermissionSetArn");
+        given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.ProvisionPermissionSet")
+                .body("{\"InstanceArn\":\"" + instanceArn + "\",\"PermissionSetArn\":\"" + permissionSetArn
+                        + "\",\"TargetType\":\"AWS_ACCOUNT\",\"TargetId\":\"210987654321\"}")
+            .when().post("/").then().statusCode(200);
+
+        given().contentType("application/x-amz-json-1.1").header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.ListPermissionSetsProvisionedToAccount")
+                .body("{\"InstanceArn\":\"" + instanceArn + "\",\"AccountId\":\"210987654321\","
+                        + "\"ProvisioningStatus\":\"LATEST_PERMISSION_SET_PROVISIONED\"}")
+            .when().post("/")
+            .then().statusCode(200)
+                .body("PermissionSets", org.hamcrest.Matchers.hasItem(permissionSetArn));
+    }
+
+    @Test
     void deleteAccountAssignmentReturnsDeletionOperationAndRemovesAssignment() {
         String instanceArn = listInstancesArn();
         String permissionSetArn = given()
