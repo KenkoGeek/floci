@@ -802,6 +802,12 @@ public class SsoAdminService implements Resettable {
                 .orElseThrow(() -> notFound("Region is not enabled for this IAM Identity Center instance: " + regionName));
     }
 
+    public PaginatedResult<RegionMetadata> listRegions(JsonNode request) {
+        SsoInstance instance = requireInstance(required(request, "InstanceArn"));
+        return Pagination.paginate(listRegionsForInstance(instance), RegionMetadata::regionName,
+                optionalMaxResults(request), text(request, "NextToken"), 100, 100, "ValidationException");
+    }
+
     public synchronized RegionMetadata addRegion(JsonNode request) {
         requireInstance(required(request, "InstanceArn"));
         String regionName = validateRegionName(required(request, "RegionName"));
