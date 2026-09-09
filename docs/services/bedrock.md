@@ -12,6 +12,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | Operation | Endpoint | Notes |
 |-----------|----------|-------|
 | `GetUseCaseForModelAccess` | `GET /use-case-for-model-access` | Returns the account model-access use-case form data or `ResourceNotFoundException` when it has not been configured. |
+| `PutUseCaseForModelAccess` | `POST /use-case-for-model-access` | Validates base64 form data and AWS 10-16384 byte limits; returns HTTP 201. |
 
 ## Configuration
 

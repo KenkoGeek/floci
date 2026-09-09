@@ -47,6 +47,12 @@ public class BedrockControlPlaneController {
         return execute("GetUseCaseForModelAccess", null, Map.of(), headers);
     }
 
+    @POST
+    @Path("/use-case-for-model-access")
+    public Response putUseCaseForModelAccess(String body, @Context HttpHeaders headers) {
+        return execute("PutUseCaseForModelAccess", body, Map.of(), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
