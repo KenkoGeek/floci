@@ -323,6 +323,22 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void describeApplicationReturnsPersistedApplicationAndValidatesArn() {
+        SsoApplication application = createApplication("Describe App", "describe-app-token");
+        ObjectNode request = mapper.createObjectNode();
+        request.put("ApplicationArn", application.applicationArn());
+        assertEquals(application, service.describeApplication(request));
+
+        ObjectNode missing = mapper.createObjectNode();
+        missing.put("ApplicationArn", "arn:aws:sso::123456789012:application/ssoins-7223b02a5d9f7c8e/apl-1111111111111111");
+        assertError("ResourceNotFoundException", () -> service.describeApplication(missing));
+
+        ObjectNode malformed = mapper.createObjectNode();
+        malformed.put("ApplicationArn", "not-an-arn");
+        assertError("ValidationException", () -> service.describeApplication(malformed));
+    }
+
+    @Test
     void deleteApplicationRemovesApplicationAssignmentsAndIdempotencyReferences() {
         ObjectNode createRequest = mapper.createObjectNode();
         createRequest.put("InstanceArn", service.getInstanceArn());

@@ -124,6 +124,16 @@ class SsoAdminAccountAssignmentTest {
                                     .applicationUrl("https://example.com/login")))
                     .tags(tag -> tag.key("Environment").value("test")));
             assertThat(replay.applicationArn()).isEqualTo(created.applicationArn());
+
+            var described = sso.describeApplication(request -> request.applicationArn(created.applicationArn()));
+            assertThat(described.applicationArn()).isEqualTo(created.applicationArn());
+            assertThat(described.instanceArn()).isEqualTo(instanceArn);
+            assertThat(described.applicationAccount()).isEqualTo("000000000000");
+            assertThat(described.applicationProviderArn()).isEqualTo("arn:aws:sso::aws:applicationProvider/custom");
+            assertThat(described.name()).isEqualTo("Floci OAuth SDK");
+            assertThat(described.statusAsString()).isEqualTo("DISABLED");
+            assertThat(described.portalOptions().visibilityAsString()).isEqualTo("ENABLED");
+            assertThat(described.portalOptions().signInOptions().originAsString()).isEqualTo("APPLICATION");
         }
     }
 
