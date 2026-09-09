@@ -12,6 +12,7 @@ import io.github.hectorvent.floci.core.storage.StorageFactory;
 import io.github.hectorvent.floci.services.ssoadmin.model.Assignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentDeletionOperation;
+import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAccessScope;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAssignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationPortalOptions;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationSignInOptions;
@@ -53,6 +54,7 @@ public class SsoAdminService implements Resettable {
     private static final Pattern REGION_NAME = Pattern.compile("([a-z]+-){2,3}\\d");
     private static final Pattern APPLICATION_PROVIDER_ARN = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:sso::aws:applicationProvider/[a-zA-Z0-9-/]+");
     private static final Pattern APPLICATION_ARN = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:sso::\\d{12}:application/(?:sso)?ins-[a-zA-Z0-9-.]{16}/apl-[a-zA-Z0-9]{16}");
+    private static final Pattern APPLICATION_ACCESS_SCOPE = Pattern.compile("([A-Za-z0-9_]{1,50})(:[A-Za-z0-9_]{1,50}){0,1}(:[A-Za-z0-9_]{1,50}){0,1}");
     private static final Pattern CLIENT_TOKEN = Pattern.compile("[!-~]+");
     private static final Pattern APPLICATION_URL = Pattern.compile("http(s)?://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#/%?=~_|]");
     private static final Pattern TAG_VALUE = Pattern.compile("[\\p{L}\\p{Z}\\p{N}_.:/=+\\-@]*");
@@ -81,6 +83,7 @@ public class SsoAdminService implements Resettable {
     private final StorageBackend<String, SsoApplication> applications;
     private final StorageBackend<String, String> applicationClientTokens;
     private final StorageBackend<String, ApplicationAssignment> applicationAssignments;
+    private final StorageBackend<String, ApplicationAccessScope> applicationAccessScopes;
     private final StorageBackend<String, SsoInstance> instances;
     private final StorageBackend<String, String> instanceClientTokens;
     private final StorageBackend<String, InstanceAccessControlAttributeConfiguration> accessControlAttributeConfigurations;
@@ -102,6 +105,7 @@ public class SsoAdminService implements Resettable {
                 storageFactory.create("ssoadmin", "ssoadmin-applications.json", new TypeReference<Map<String, SsoApplication>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-application-client-tokens.json", new TypeReference<Map<String, String>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-application-assignments.json", new TypeReference<Map<String, ApplicationAssignment>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-application-access-scopes.json", new TypeReference<Map<String, ApplicationAccessScope>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instances.json", new TypeReference<Map<String, SsoInstance>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instance-client-tokens.json", new TypeReference<Map<String, String>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-access-control-attribute-configurations.json", new TypeReference<Map<String, InstanceAccessControlAttributeConfiguration>>() {}),
@@ -120,6 +124,7 @@ public class SsoAdminService implements Resettable {
                     StorageBackend<String, SsoApplication> applications,
                     StorageBackend<String, String> applicationClientTokens,
                     StorageBackend<String, ApplicationAssignment> applicationAssignments,
+                    StorageBackend<String, ApplicationAccessScope> applicationAccessScopes,
                     StorageBackend<String, SsoInstance> instances,
                     StorageBackend<String, String> instanceClientTokens,
                     StorageBackend<String, InstanceAccessControlAttributeConfiguration> accessControlAttributeConfigurations,
@@ -136,6 +141,7 @@ public class SsoAdminService implements Resettable {
         this.applications = applications;
         this.applicationClientTokens = applicationClientTokens;
         this.applicationAssignments = applicationAssignments;
+        this.applicationAccessScopes = applicationAccessScopes;
         this.instances = instances;
         this.instanceClientTokens = instanceClientTokens;
         this.accessControlAttributeConfigurations = accessControlAttributeConfigurations;
@@ -389,6 +395,26 @@ public class SsoAdminService implements Resettable {
                 applicationClientTokens.delete(key);
             }
         }
+        for (String key : new java.util.ArrayList<>(applicationAccessScopes.keys())) {
+            ApplicationAccessScope scope = applicationAccessScopes.get(key).orElse(null);
+            if (scope != null && applicationArn.equals(scope.applicationArn())) {
+                applicationAccessScopes.delete(key);
+            }
+        }
+    }
+
+    public synchronized void deleteApplicationAccessScope(JsonNode request) {
+        String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
+        getApplication(applicationArn);
+        String scope = required(request, "Scope");
+        if (!APPLICATION_ACCESS_SCOPE.matcher(scope).matches()) {
+            throw validation("Scope is invalid.");
+        }
+        String key = applicationAccessScopeKey(applicationArn, scope);
+        if (applicationAccessScopes.get(key).isEmpty()) {
+            throw notFound("Application access scope not found: " + scope);
+        }
+        applicationAccessScopes.delete(key);
     }
 
     public synchronized ApplicationAssignment createApplicationAssignment(JsonNode request) {
@@ -896,6 +922,10 @@ public class SsoAdminService implements Resettable {
         return name.toLowerCase(java.util.Locale.ROOT) + "\n" + path;
     }
 
+    static String applicationAccessScopeKey(String applicationArn, String scope) {
+        return applicationArn + "\n" + scope;
+    }
+
     private static String validateRegionName(String value) {
         if (value == null || value.length() > 32 || !REGION_NAME.matcher(value).matches()) {
             throw validation("RegionName must be 1-32 characters and use an AWS Region name format.");
@@ -958,6 +988,7 @@ public class SsoAdminService implements Resettable {
         applications.clear();
         applicationClientTokens.clear();
         applicationAssignments.clear();
+        applicationAccessScopes.clear();
         instances.clear();
         instanceClientTokens.clear();
         accessControlAttributeConfigurations.clear();
