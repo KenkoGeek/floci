@@ -445,10 +445,14 @@ public class BedrockAgentCoreCredentialProviderService {
         }
         tags.fields().forEachRemaining(entry -> {
             String key = entry.getKey();
-            String value = entry.getValue().asText();
+            JsonNode rawValue = entry.getValue();
             if (key.length() < 1 || key.length() > 128 || !key.matches("[a-zA-Z0-9\\s._:/=+@-]*")) {
                 throw new AwsException("ValidationException", "tag key does not satisfy AgentCore constraints", 400);
             }
+            if (!rawValue.isTextual()) {
+                throw new AwsException("ValidationException", "tag value must be a string", 400);
+            }
+            String value = rawValue.asText();
             if (value.length() > 256 || !value.matches("[a-zA-Z0-9\\s._:/=+@-]*")) {
                 throw new AwsException("ValidationException", "tag value does not satisfy AgentCore constraints", 400);
             }

@@ -56,6 +56,7 @@ public class BedrockAgentCoreGatewayRuleService {
         if (actions == null || !actions.isArray() || actions.isEmpty() || actions.size() > 2) {
             throw new AwsException("ValidationException", "actions must contain between 1 and 2 items", 400);
         }
+        validateActions(actions);
         if (!request.hasNonNull("priority") || !request.get("priority").canConvertToInt()) {
             throw new AwsException("ValidationException", "priority is required", 400);
         }
@@ -66,6 +67,9 @@ public class BedrockAgentCoreGatewayRuleService {
         JsonNode conditions = request.get("conditions");
         if (conditions != null && (!conditions.isArray() || conditions.size() > 2)) {
             throw new AwsException("ValidationException", "conditions must contain at most 2 items", 400);
+        }
+        if (conditions != null) {
+            validateConditions(conditions);
         }
         String ruleId = UUID.randomUUID().toString();
         Instant now = Instant.now();
@@ -107,6 +111,7 @@ public class BedrockAgentCoreGatewayRuleService {
             if (actions == null || !actions.isArray() || actions.isEmpty() || actions.size() > 2) {
                 throw new AwsException("ValidationException", "actions must contain between 1 and 2 items", 400);
             }
+            validateActions(actions);
             rule.set("actions", actions.deepCopy());
         }
         if (request.has("conditions")) {
@@ -114,6 +119,7 @@ public class BedrockAgentCoreGatewayRuleService {
             if (conditions == null || !conditions.isArray() || conditions.size() > 2) {
                 throw new AwsException("ValidationException", "conditions must contain at most 2 items", 400);
             }
+            validateConditions(conditions);
             rule.set("conditions", conditions.deepCopy());
         }
         if (request.hasNonNull("description")) {
@@ -146,6 +152,170 @@ public class BedrockAgentCoreGatewayRuleService {
         response.put("ruleId", ruleId);
         response.put("status", "DELETING");
         return response;
+    }
+
+    private static void validateActions(JsonNode actions) {
+        for (JsonNode action : actions) {
+            if (!action.isObject() || action.size() != 1) {
+                throw new AwsException("ValidationException", "each action must contain exactly one union member", 400);
+            }
+            if (action.has("routeToTarget")) {
+                validateRouteToTarget(action.get("routeToTarget"));
+            } else if (action.has("configurationBundle")) {
+                validateConfigurationBundleAction(action.get("configurationBundle"));
+            } else {
+                throw new AwsException("ValidationException", "action union member is invalid", 400);
+            }
+        }
+    }
+
+    private static void validateRouteToTarget(JsonNode route) {
+        if (route == null || !route.isObject() || route.size() != 1) {
+            throw new AwsException("ValidationException", "routeToTarget must contain exactly one union member", 400);
+        }
+        if (route.has("staticRoute")) {
+            String targetName = requiredText(route.get("staticRoute"), "targetName", "staticRoute.targetName");
+            if (!targetName.matches("([0-9a-zA-Z][-]?){1,100}")) {
+                throw new AwsException("ValidationException", "staticRoute.targetName is invalid", 400);
+            }
+            return;
+        }
+        if (route.has("weightedRoute")) {
+            validateTargetTrafficSplit(route.path("weightedRoute").get("trafficSplit"));
+            return;
+        }
+        throw new AwsException("ValidationException", "routeToTarget union member is invalid", 400);
+    }
+
+    private static void validateTargetTrafficSplit(JsonNode split) {
+        if (split == null || !split.isArray() || split.size() != 2) {
+            throw new AwsException("ValidationException", "weightedRoute.trafficSplit must contain exactly 2 items", 400);
+        }
+        for (JsonNode entry : split) {
+            String name = requiredText(entry, "name", "trafficSplit.name");
+            String targetName = requiredText(entry, "targetName", "trafficSplit.targetName");
+            if (!name.matches("[a-zA-Z0-9]([a-zA-Z0-9-]{0,62}[a-zA-Z0-9])?")) {
+                throw new AwsException("ValidationException", "trafficSplit.name is invalid", 400);
+            }
+            if (!targetName.matches("([0-9a-zA-Z][-]?){1,100}")) {
+                throw new AwsException("ValidationException", "trafficSplit.targetName is invalid", 400);
+            }
+            int weight = requiredInt(entry, "weight", "trafficSplit.weight");
+            if (weight < 1 || weight > 99) {
+                throw new AwsException("ValidationException", "trafficSplit.weight must be between 1 and 99", 400);
+            }
+        }
+    }
+
+    private static void validateConfigurationBundleAction(JsonNode action) {
+        if (action == null || !action.isObject() || action.size() != 1) {
+            throw new AwsException("ValidationException", "configurationBundle must contain exactly one union member", 400);
+        }
+        if (action.has("staticOverride")) {
+            validateBundleReference(action.get("staticOverride"), "staticOverride");
+            return;
+        }
+        if (action.has("weightedOverride")) {
+            JsonNode split = action.path("weightedOverride").get("trafficSplit");
+            if (split == null || !split.isArray() || split.size() != 2) {
+                throw new AwsException("ValidationException", "weightedOverride.trafficSplit must contain exactly 2 items", 400);
+            }
+            int total = 0;
+            for (JsonNode entry : split) {
+                String name = requiredText(entry, "name", "trafficSplit.name");
+                if (!name.matches("[a-zA-Z0-9]([a-zA-Z0-9-]{0,62}[a-zA-Z0-9])?")) {
+                    throw new AwsException("ValidationException", "trafficSplit.name is invalid", 400);
+                }
+                int weight = requiredInt(entry, "weight", "trafficSplit.weight");
+                if (weight < 1 || weight > 99) {
+                    throw new AwsException("ValidationException", "trafficSplit.weight must be between 1 and 99", 400);
+                }
+                validateBundleReference(entry.get("configurationBundle"), "trafficSplit.configurationBundle");
+                total += weight;
+            }
+            if (total != 100) {
+                throw new AwsException("ValidationException", "trafficSplit weights must sum to 100", 400);
+            }
+            return;
+        }
+        throw new AwsException("ValidationException", "configurationBundle union member is invalid", 400);
+    }
+
+    private static void validateBundleReference(JsonNode reference, String field) {
+        if (reference == null || !reference.isObject()) {
+            throw new AwsException("ValidationException", field + " is required", 400);
+        }
+        String arn = requiredText(reference, "bundleArn", field + ".bundleArn");
+        String version = requiredText(reference, "bundleVersion", field + ".bundleVersion");
+        if (!arn.matches("arn:aws[a-zA-Z-]*:bedrock-agentcore:[a-z0-9-]+:[0-9]{12}:configuration-bundle/[a-zA-Z][a-zA-Z0-9-_]{0,99}-[a-zA-Z0-9]{10}")) {
+            throw new AwsException("ValidationException", field + ".bundleArn is invalid", 400);
+        }
+        if (!version.matches("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")) {
+            throw new AwsException("ValidationException", field + ".bundleVersion is invalid", 400);
+        }
+    }
+
+    private static void validateConditions(JsonNode conditions) {
+        for (JsonNode condition : conditions) {
+            if (!condition.isObject() || condition.size() != 1) {
+                throw new AwsException("ValidationException", "each condition must contain exactly one union member", 400);
+            }
+            if (condition.has("matchPaths")) {
+                JsonNode anyOf = condition.path("matchPaths").get("anyOf");
+                if (anyOf == null || !anyOf.isArray() || anyOf.isEmpty() || anyOf.size() > 10) {
+                    throw new AwsException("ValidationException", "matchPaths.anyOf must contain between 1 and 10 items", 400);
+                }
+                for (JsonNode path : anyOf) {
+                    if (!path.isTextual() || path.asText().length() > 512
+                            || !path.asText().matches("/[\\w\\-.]+/\\*")) {
+                        throw new AwsException("ValidationException", "matchPaths.anyOf contains an invalid path", 400);
+                    }
+                }
+            } else if (condition.has("matchPrincipals")) {
+                validatePrincipals(condition.get("matchPrincipals"));
+            } else {
+                throw new AwsException("ValidationException", "condition union member is invalid", 400);
+            }
+        }
+    }
+
+    private static void validatePrincipals(JsonNode matchPrincipals) {
+        JsonNode anyOf = matchPrincipals == null ? null : matchPrincipals.get("anyOf");
+        if (anyOf == null || !anyOf.isArray() || anyOf.isEmpty() || anyOf.size() > 100) {
+            throw new AwsException("ValidationException", "matchPrincipals.anyOf must contain between 1 and 100 items", 400);
+        }
+        for (JsonNode entry : anyOf) {
+            if (!entry.isObject() || entry.size() != 1 || !entry.has("iamPrincipal")) {
+                throw new AwsException("ValidationException", "principal entry must contain iamPrincipal", 400);
+            }
+            JsonNode principal = entry.get("iamPrincipal");
+            String arn = requiredText(principal, "arn", "iamPrincipal.arn");
+            if (arn.length() > 2048 || !arn.matches("(arn:aws[a-zA-Z-]*:iam::(\\d{12}|\\*):(user|role)/[\\w+=,.@*?/-]+|arn:aws[a-zA-Z-]*:sts::(\\d{12}|\\*):assumed-role/[\\w+=,.@*?/-]+)")) {
+                throw new AwsException("ValidationException", "iamPrincipal.arn is invalid", 400);
+            }
+            if (principal.hasNonNull("operator")) {
+                String operator = principal.get("operator").asText();
+                if (!"StringEquals".equals(operator) && !"StringLike".equals(operator)) {
+                    throw new AwsException("ValidationException", "iamPrincipal.operator is invalid", 400);
+                }
+            }
+        }
+    }
+
+    private static String requiredText(JsonNode node, String field, String displayName) {
+        JsonNode value = node == null ? null : node.get(field);
+        if (value == null || !value.isTextual() || value.asText().isEmpty()) {
+            throw new AwsException("ValidationException", displayName + " is required", 400);
+        }
+        return value.asText();
+    }
+
+    private static int requiredInt(JsonNode node, String field, String displayName) {
+        JsonNode value = node == null ? null : node.get(field);
+        if (value == null || !value.isIntegralNumber() || !value.canConvertToInt()) {
+            throw new AwsException("ValidationException", displayName + " is required", 400);
+        }
+        return value.asInt();
     }
 
     private static String key(String region, String gatewayId, String ruleId) {

@@ -87,13 +87,19 @@ class BedrockAgentCoreToolsTest {
     @Test
     @Order(4)
     void deleteBrowser() {
-        DeleteBrowserResponse response = client.deleteBrowser(DeleteBrowserRequest.builder()
+        String clientToken = UUID.randomUUID().toString();
+        DeleteBrowserRequest request = DeleteBrowserRequest.builder()
                 .browserId(browserId)
-                .build());
+                .clientToken(clientToken)
+                .build();
+        DeleteBrowserResponse response = client.deleteBrowser(request);
+        DeleteBrowserResponse replay = client.deleteBrowser(request);
 
         assertThat(response.browserId()).isEqualTo(browserId);
         assertThat(response.statusAsString()).isEqualTo("DELETING");
         assertThat(response.lastUpdatedAt()).isNotNull();
+        assertThat(replay.browserId()).isEqualTo(browserId);
+        assertThat(replay.statusAsString()).isEqualTo("DELETING");
     }
 
     @Test
@@ -139,13 +145,19 @@ class BedrockAgentCoreToolsTest {
     @Test
     @Order(8)
     void deleteBrowserProfile() {
-        DeleteBrowserProfileResponse response = client.deleteBrowserProfile(DeleteBrowserProfileRequest.builder()
+        String clientToken = UUID.randomUUID().toString();
+        DeleteBrowserProfileRequest request = DeleteBrowserProfileRequest.builder()
                 .profileId(profileId)
-                .build());
+                .clientToken(clientToken)
+                .build();
+        DeleteBrowserProfileResponse response = client.deleteBrowserProfile(request);
+        DeleteBrowserProfileResponse replay = client.deleteBrowserProfile(request);
 
         assertThat(response.profileId()).isEqualTo(profileId);
         assertThat(response.statusAsString()).isEqualTo("DELETING");
         assertThat(response.lastUpdatedAt()).isNotNull();
+        assertThat(replay.profileId()).isEqualTo(profileId);
+        assertThat(replay.statusAsString()).isEqualTo("DELETING");
     }
 
     @Test
@@ -193,12 +205,18 @@ class BedrockAgentCoreToolsTest {
     @Test
     @Order(12)
     void deleteCodeInterpreter() {
-        DeleteCodeInterpreterResponse response = client.deleteCodeInterpreter(DeleteCodeInterpreterRequest.builder()
+        String clientToken = UUID.randomUUID().toString();
+        DeleteCodeInterpreterRequest request = DeleteCodeInterpreterRequest.builder()
                 .codeInterpreterId(codeInterpreterId)
-                .build());
+                .clientToken(clientToken)
+                .build();
+        DeleteCodeInterpreterResponse response = client.deleteCodeInterpreter(request);
+        DeleteCodeInterpreterResponse replay = client.deleteCodeInterpreter(request);
 
         assertThat(response.codeInterpreterId()).isEqualTo(codeInterpreterId);
         assertThat(response.statusAsString()).isEqualTo("DELETING");
         assertThat(response.lastUpdatedAt()).isNotNull();
+        assertThat(replay.codeInterpreterId()).isEqualTo(codeInterpreterId);
+        assertThat(replay.statusAsString()).isEqualTo("DELETING");
     }
 }

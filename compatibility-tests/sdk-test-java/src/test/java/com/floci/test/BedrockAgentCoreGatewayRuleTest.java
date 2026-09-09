@@ -13,6 +13,7 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.*;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("Bedrock AgentCore gateway rules")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -116,6 +117,20 @@ class BedrockAgentCoreGatewayRuleTest {
 
     @Test
     @Order(5)
+    void createGatewayRuleRejectsInvalidNestedAction() {
+        Action invalidAction = Action.fromRouteToTarget(RouteToTargetAction.fromStaticRoute(
+                StaticRoute.builder().build()));
+
+        assertThatThrownBy(() -> client.createGatewayRule(CreateGatewayRuleRequest.builder()
+                .gatewayIdentifier(gatewayId)
+                .priority(3)
+                .actions(invalidAction)
+                .build()))
+                .isInstanceOf(ValidationException.class);
+    }
+
+    @Test
+    @Order(6)
     void deleteGatewayRule() {
         DeleteGatewayRuleResponse response = client.deleteGatewayRule(DeleteGatewayRuleRequest.builder()
                 .gatewayIdentifier(gatewayId)

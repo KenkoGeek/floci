@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Pattern;
 
@@ -27,6 +28,9 @@ public class BedrockAgentCoreToolsService {
 
     private final StorageBackend<String, ObjectNode> storage;
     private final RegionResolver regionResolver;
+    private final Map<String, ObjectNode> deletedBrowserReplays = new ConcurrentHashMap<>();
+    private final Map<String, ObjectNode> deletedProfileReplays = new ConcurrentHashMap<>();
+    private final Map<String, ObjectNode> deletedInterpreterReplays = new ConcurrentHashMap<>();
 
     @Inject
     public BedrockAgentCoreToolsService(StorageFactory storageFactory, RegionResolver regionResolver) {
@@ -49,6 +53,8 @@ public class BedrockAgentCoreToolsService {
         if (networkConfiguration == null || !networkConfiguration.isObject()) {
             throw new AwsException("ValidationException", "networkConfiguration is required", 400);
         }
+        validateNetworkConfiguration(networkConfiguration, false);
+        validateCommonCreateFields(request, true);
         String clientToken = optionalText(request, "clientToken");
         if (clientToken != null) {
             if (clientToken.length() < 33 || clientToken.length() > 256
@@ -103,6 +109,8 @@ public class BedrockAgentCoreToolsService {
             throw new AwsException("ValidationException",
                     "name must match [a-zA-Z][a-zA-Z0-9_]{0,47}", 400);
         }
+        validateDescription(request.get("description"));
+        validateTags(request.get("tags"));
         String clientToken = optionalText(request, "clientToken");
         if (clientToken != null) {
             if (clientToken.length() < 33 || clientToken.length() > 256
@@ -139,6 +147,8 @@ public class BedrockAgentCoreToolsService {
         if (networkConfiguration == null || !networkConfiguration.isObject()) {
             throw new AwsException("ValidationException", "networkConfiguration is required", 400);
         }
+        validateNetworkConfiguration(networkConfiguration, true);
+        validateCommonCreateFields(request, false);
         String clientToken = optionalText(request, "clientToken");
         if (clientToken != null) {
             if (clientToken.length() < 33 || clientToken.length() > 256
@@ -218,10 +228,18 @@ public class BedrockAgentCoreToolsService {
                 || !clientToken.matches("[a-zA-Z0-9](-*[a-zA-Z0-9]){0,256}"))) {
             throw new AwsException("ValidationException", "clientToken does not satisfy length or pattern constraints", 400);
         }
+        String replayKey = deleteReplayKey("code-interpreter", region, codeInterpreterId, clientToken);
+        ObjectNode replay = replayKey == null ? null : deletedInterpreterReplays.get(replayKey);
+        if (replay != null) {
+            return replay.deepCopy();
+        }
         ObjectNode interpreter = getCodeInterpreter(codeInterpreterId, region);
         storage.delete(key("code-interpreter", region, codeInterpreterId));
         interpreter.put("status", "DELETING");
         interpreter.put("lastUpdatedAt", Instant.now().toString());
+        if (replayKey != null) {
+            deletedInterpreterReplays.put(replayKey, interpreter.deepCopy());
+        }
         return interpreter;
     }
 
@@ -256,10 +274,18 @@ public class BedrockAgentCoreToolsService {
                 || !clientToken.matches("[a-zA-Z0-9](-*[a-zA-Z0-9]){0,256}"))) {
             throw new AwsException("ValidationException", "clientToken does not satisfy length or pattern constraints", 400);
         }
+        String replayKey = deleteReplayKey("browser-profile", region, profileId, clientToken);
+        ObjectNode replay = replayKey == null ? null : deletedProfileReplays.get(replayKey);
+        if (replay != null) {
+            return replay.deepCopy();
+        }
         ObjectNode profile = getBrowserProfile(profileId, region);
         storage.delete(key("browser-profile", region, profileId));
         profile.put("status", "DELETING");
         profile.put("lastUpdatedAt", Instant.now().toString());
+        if (replayKey != null) {
+            deletedProfileReplays.put(replayKey, profile.deepCopy());
+        }
         return profile;
     }
 
@@ -272,10 +298,18 @@ public class BedrockAgentCoreToolsService {
                 || !clientToken.matches("[a-zA-Z0-9](-*[a-zA-Z0-9]){0,256}"))) {
             throw new AwsException("ValidationException", "clientToken does not satisfy length or pattern constraints", 400);
         }
+        String replayKey = deleteReplayKey("browser", region, browserId, clientToken);
+        ObjectNode replay = replayKey == null ? null : deletedBrowserReplays.get(replayKey);
+        if (replay != null) {
+            return replay.deepCopy();
+        }
         ObjectNode browser = getBrowser(browserId, region);
         storage.delete(key("browser", region, browserId));
         browser.put("status", "DELETING");
         browser.put("lastUpdatedAt", Instant.now().toString());
+        if (replayKey != null) {
+            deletedBrowserReplays.put(replayKey, browser.deepCopy());
+        }
         return browser;
     }
 
@@ -311,6 +345,116 @@ public class BedrockAgentCoreToolsService {
                 .findFirst()
                 .map(ObjectNode::deepCopy)
                 .orElse(null);
+    }
+
+    private static void validateCommonCreateFields(ObjectNode request, boolean browser) {
+        validateDescription(request.get("description"));
+        validateTags(request.get("tags"));
+        JsonNode executionRoleArn = request.get("executionRoleArn");
+        if (executionRoleArn != null && !executionRoleArn.isNull()) {
+            if (!executionRoleArn.isTextual()) {
+                throw new AwsException("ValidationException", "executionRoleArn must be a string", 400);
+            }
+            String arn = executionRoleArn.asText();
+            if (arn.length() < 1 || arn.length() > 2048
+                    || !arn.matches("arn:aws(-[^:]+)?:iam::([0-9]{12})?:role/.+")) {
+                throw new AwsException("ValidationException", "executionRoleArn is invalid", 400);
+            }
+        }
+        validateArray(request.get("certificates"), "certificates", 1, 200);
+        validateArray(request.get("filesystemConfigurations"), "filesystemConfigurations", 0, 10);
+        if (browser) {
+            validateArray(request.get("enterprisePolicies"), "enterprisePolicies", 0, 100);
+        }
+    }
+
+    private static void validateDescription(JsonNode description) {
+        if (description == null || description.isNull()) {
+            return;
+        }
+        if (!description.isTextual() || description.asText().length() < 1
+                || description.asText().length() > 4096) {
+            throw new AwsException("ValidationException", "description must be between 1 and 4096 characters", 400);
+        }
+    }
+
+    private static void validateArray(JsonNode value, String field, int min, int max) {
+        if (value == null || value.isNull()) {
+            return;
+        }
+        if (!value.isArray() || value.size() < min || value.size() > max) {
+            throw new AwsException("ValidationException",
+                    field + " must contain between " + min + " and " + max + " items", 400);
+        }
+    }
+
+    private static void validateTags(JsonNode tags) {
+        if (tags == null || tags.isNull()) {
+            return;
+        }
+        if (!tags.isObject() || tags.size() > 50) {
+            throw new AwsException("ValidationException", "tags must be an object with at most 50 entries", 400);
+        }
+        tags.fields().forEachRemaining(entry -> {
+            String key = entry.getKey();
+            JsonNode rawValue = entry.getValue();
+            if (key.length() < 1 || key.length() > 128 || !key.matches("[a-zA-Z0-9\\s._:/=+@-]*")) {
+                throw new AwsException("ValidationException", "tag key does not satisfy AgentCore constraints", 400);
+            }
+            if (!rawValue.isTextual()) {
+                throw new AwsException("ValidationException", "tag value must be a string", 400);
+            }
+            String value = rawValue.asText();
+            if (value.length() > 256 || !value.matches("[a-zA-Z0-9\\s._:/=+@-]*")) {
+                throw new AwsException("ValidationException", "tag value does not satisfy AgentCore constraints", 400);
+            }
+        });
+    }
+
+    private static void validateNetworkConfiguration(JsonNode networkConfiguration, boolean codeInterpreter) {
+        JsonNode modeNode = networkConfiguration.get("networkMode");
+        if (modeNode == null || !modeNode.isTextual() || modeNode.asText().isBlank()) {
+            throw new AwsException("ValidationException", "networkConfiguration.networkMode is required", 400);
+        }
+        String mode = modeNode.asText();
+        boolean valid = codeInterpreter
+                ? "PUBLIC".equals(mode) || "SANDBOX".equals(mode) || "VPC".equals(mode)
+                : "PUBLIC".equals(mode) || "VPC".equals(mode);
+        if (!valid) {
+            throw new AwsException("ValidationException", codeInterpreter
+                    ? "networkMode must be PUBLIC, SANDBOX, or VPC"
+                    : "networkMode must be PUBLIC or VPC", 400);
+        }
+        JsonNode vpcConfig = networkConfiguration.get("vpcConfig");
+        if ("VPC".equals(mode) && (vpcConfig == null || !vpcConfig.isObject())) {
+            throw new AwsException("ValidationException", "vpcConfig is required when networkMode is VPC", 400);
+        }
+        if (vpcConfig == null || vpcConfig.isNull()) {
+            return;
+        }
+        if (!vpcConfig.isObject()) {
+            throw new AwsException("ValidationException", "vpcConfig must be an object", 400);
+        }
+        validateVpcIds(vpcConfig.get("securityGroups"), "securityGroups", "sg-[0-9a-zA-Z]{8,17}");
+        validateVpcIds(vpcConfig.get("subnets"), "subnets", "subnet-[0-9a-zA-Z]{8,17}");
+    }
+
+    private static void validateVpcIds(JsonNode value, String field, String pattern) {
+        if (value == null || !value.isArray() || value.isEmpty() || value.size() > 16) {
+            throw new AwsException("ValidationException", field + " must contain between 1 and 16 items", 400);
+        }
+        for (JsonNode item : value) {
+            if (!item.isTextual() || !item.asText().matches(pattern)) {
+                throw new AwsException("ValidationException", field + " contains an invalid identifier", 400);
+            }
+        }
+    }
+
+    private String deleteReplayKey(String family, String region, String id, String clientToken) {
+        if (clientToken == null || clientToken.isBlank()) {
+            return null;
+        }
+        return family + ":" + regionResolver.getAccountId() + ":" + region + ":" + id + ":" + clientToken;
     }
 
     private static String requiredText(ObjectNode request, String field) {
