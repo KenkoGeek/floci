@@ -190,6 +190,21 @@ class SsoAdminAccountAssignmentTest {
                     .principalId("11111111-2222-3333-4444-555555555555")
                     .principalType("USER")))
                     .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ConflictException.class);
+
+            String groupId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+            sso.createApplicationAssignment(request -> request
+                    .applicationArn(applicationArn)
+                    .principalId(groupId)
+                    .principalType("GROUP"));
+            var principalAssignments = sso.listApplicationAssignmentsForPrincipal(request -> request
+                    .instanceArn(instanceArn)
+                    .principalId(groupId)
+                    .principalType("GROUP"));
+            assertThat(principalAssignments.applicationAssignments()).singleElement().satisfies(assignment -> {
+                assertThat(assignment.applicationArn()).isEqualTo(applicationArn);
+                assertThat(assignment.principalId()).isEqualTo(groupId);
+                assertThat(assignment.principalTypeAsString()).isEqualTo("GROUP");
+            });
         }
     }
 

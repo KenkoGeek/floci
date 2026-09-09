@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.hectorvent.floci.core.common.AwsException;
+import io.github.hectorvent.floci.core.common.PaginatedResult;
 import io.github.hectorvent.floci.services.ssoadmin.model.Assignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAssignment;
@@ -46,6 +47,7 @@ public class SsoAdminJsonHandler {
             case "DescribeApplicationAssignment" -> describeApplicationAssignment(request);
             case "DescribeApplicationProvider" -> describeApplicationProvider(request);
             case "ListApplicationAssignments" -> listApplicationAssignments(request);
+            case "ListApplicationAssignmentsForPrincipal" -> listApplicationAssignmentsForPrincipal(request, callerAccountId);
             case "DeleteApplication" -> deleteApplication(request);
             case "DeleteApplicationAccessScope" -> deleteApplicationAccessScope(request);
             case "DeleteApplicationAssignment" -> deleteApplicationAssignment(request);
@@ -245,6 +247,15 @@ public class SsoAdminJsonHandler {
 
     private Response listApplicationAssignments(JsonNode request) {
         var page = service.listApplicationAssignments(request);
+        return applicationAssignmentsResponse(page);
+    }
+
+    private Response listApplicationAssignmentsForPrincipal(JsonNode request, String callerAccountId) {
+        var page = service.listApplicationAssignmentsForPrincipal(request, callerAccountId);
+        return applicationAssignmentsResponse(page);
+    }
+
+    private Response applicationAssignmentsResponse(PaginatedResult<ApplicationAssignment> page) {
         ObjectNode response = mapper.createObjectNode();
         ArrayNode assignments = response.putArray("ApplicationAssignments");
         page.items().forEach(assignment -> {
