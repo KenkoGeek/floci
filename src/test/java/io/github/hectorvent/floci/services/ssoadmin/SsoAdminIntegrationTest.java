@@ -345,6 +345,58 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void listApplicationAccessScopesReturnsAwsScopeDetailsWithPagination() {
+        String applicationArn = given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.CreateApplication")
+            .body("{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
+                    + "\"ApplicationProviderArn\":\"arn:aws:sso::aws:applicationProvider/custom\","
+                    + "\"Name\":\"List Scope Integration\"}")
+        .when().post("/")
+        .then().statusCode(200)
+            .extract().path("ApplicationArn");
+
+        for (String scope : java.util.List.of("api:read", "api:write")) {
+            given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.PutApplicationAccessScope")
+                .body("{\"ApplicationArn\":\"" + applicationArn + "\",\"Scope\":\"" + scope + "\","
+                        + "\"AuthorizedTargets\":[\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\"]}")
+            .when().post("/")
+            .then().statusCode(200);
+        }
+
+        String nextToken = given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.ListApplicationAccessScopes")
+            .body("{\"ApplicationArn\":\"" + applicationArn + "\",\"MaxResults\":1}")
+        .when().post("/")
+        .then()
+            .statusCode(200)
+            .body("Scopes.size()", equalTo(1))
+            .body("Scopes[0].Scope", equalTo("api:read"))
+            .body("Scopes[0].AuthorizedTargets[0]",
+                    equalTo("arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e"))
+            .extract().path("NextToken");
+        org.junit.jupiter.api.Assertions.assertNotNull(nextToken);
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.ListApplicationAccessScopes")
+            .body("{\"ApplicationArn\":\"" + applicationArn + "\",\"MaxResults\":1,\"NextToken\":\""
+                    + nextToken + "\"}")
+        .when().post("/")
+        .then()
+            .statusCode(200)
+            .body("Scopes.size()", equalTo(1))
+            .body("Scopes[0].Scope", equalTo("api:write"));
+    }
+
+    @Test
     void listApplicationProvidersReturnsCustomOauthProvider() {
         given()
             .contentType("application/x-amz-json-1.1")

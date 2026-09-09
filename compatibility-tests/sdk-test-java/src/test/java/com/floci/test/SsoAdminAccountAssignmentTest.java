@@ -180,6 +180,31 @@ class SsoAdminAccountAssignmentTest {
                     .scope("api:read"));
             assertThat(accessScope.scope()).isEqualTo("api:read");
             assertThat(accessScope.authorizedTargets()).containsExactly(instanceArn);
+
+            sso.putApplicationAccessScope(request -> request
+                    .applicationArn(created.applicationArn())
+                    .scope("api:write")
+                    .authorizedTargets(instanceArn));
+            var firstScopePage = sso.listApplicationAccessScopes(request -> request
+                    .applicationArn(created.applicationArn())
+                    .maxResults(1));
+            assertThat(firstScopePage.scopes()).singleElement().satisfies(scope -> {
+                assertThat(scope.scope()).isEqualTo("api:read");
+                assertThat(scope.authorizedTargets()).containsExactly(instanceArn);
+            });
+            assertThat(firstScopePage.nextToken()).isNotBlank();
+
+            var secondScopePage = sso.listApplicationAccessScopes(request -> request
+                    .applicationArn(created.applicationArn())
+                    .maxResults(1)
+                    .nextToken(firstScopePage.nextToken()));
+            assertThat(secondScopePage.scopes()).singleElement().satisfies(scope ->
+                    assertThat(scope.scope()).isEqualTo("api:write"));
+            assertThat(secondScopePage.nextToken()).isNull();
+            assertThatThrownBy(() -> sso.listApplicationAccessScopes(request -> request
+                    .applicationArn(created.applicationArn())
+                    .maxResults(11)))
+                    .isInstanceOf(ValidationException.class);
         }
     }
 
