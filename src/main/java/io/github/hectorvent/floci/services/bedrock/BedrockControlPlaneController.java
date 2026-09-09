@@ -215,6 +215,12 @@ public class BedrockControlPlaneController {
         return execute("CreateInferenceProfile", body, Map.of(), headers);
     }
 
+    @GET
+    @Path("/inference-profiles/{inferenceProfileIdentifier:.+}")
+    public Response getInferenceProfile(@PathParam("inferenceProfileIdentifier") String inferenceProfileIdentifier, @Context HttpHeaders headers) {
+        return execute("GetInferenceProfile", null, Map.of("inferenceProfileIdentifier", inferenceProfileIdentifier), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(
