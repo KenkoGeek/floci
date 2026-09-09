@@ -60,3 +60,4 @@ Each task is checked against the Amazon Bedrock API Reference and the AWS SDK fo
 | BR-054 | `ListModelCopyJobs` | `GET /model-copy-jobs` | SDK marshaller binding verified; diff-check |
 | BR-055 | `CreateModelInvocationJob` | `POST /model-invocation-job` | SDK marshaller binding verified; diff-check |
 | BR-056 | `GetModelInvocationJob` | `GET /model-invocation-job/{jobIdentifier}` | SDK marshaller binding verified; diff-check |
+| BR-057 | `ListModelInvocationJobs` | `GET /model-invocation-jobs` | SDK marshaller binding verified; diff-check |
