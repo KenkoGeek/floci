@@ -320,6 +320,23 @@ class ScimIntegrationTest {
     }
 
     @Test
+    void listSchemasReturnsAwsScimCatalog() {
+        given()
+                .header("Authorization", BEARER)
+            .when()
+                .get("/" + TENANT + "/scim/v2/Schemas")
+            .then()
+                .statusCode(200)
+                .body("schemas[0]", equalTo("urn:ietf:params:scim:api:messages:2.0:ListResponse"))
+                .body("totalResults", equalTo(3))
+                .body("itemsPerPage", equalTo(3))
+                .body("startIndex", equalTo(1))
+                .body("Resources.id", hasItem("urn:ietf:params:scim:schemas:core:2.0:User"))
+                .body("Resources.id", hasItem("urn:ietf:params:scim:schemas:core:2.0:Group"))
+                .body("Resources.id", hasItem("urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"));
+    }
+
+    @Test
     void getSchemaReturnsAwsScimSchema() {
         given()
                 .header("Authorization", BEARER)
