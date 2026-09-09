@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.hectorvent.floci.core.common.AwsException;
 import io.github.hectorvent.floci.services.ssoadmin.model.Assignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.AssignmentOperation;
+import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAssignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSetProvisioningOperation;
 import io.github.hectorvent.floci.services.ssoadmin.model.SsoApplication;
@@ -38,6 +39,7 @@ public class SsoAdminJsonHandler {
             case "CreateApplication" -> createApplication(request, callerAccountId, region);
             case "DescribeApplication" -> describeApplication(request);
             case "CreateApplicationAssignment" -> createApplicationAssignment(request);
+            case "DescribeApplicationAssignment" -> describeApplicationAssignment(request);
             case "DeleteApplication" -> deleteApplication(request);
             case "DeleteApplicationAccessScope" -> deleteApplicationAccessScope(request);
             case "DeleteApplicationAssignment" -> deleteApplicationAssignment(request);
@@ -155,6 +157,15 @@ public class SsoAdminJsonHandler {
     private Response createApplicationAssignment(JsonNode request) {
         service.createApplicationAssignment(request);
         return Response.ok().build();
+    }
+
+    private Response describeApplicationAssignment(JsonNode request) {
+        ApplicationAssignment assignment = service.describeApplicationAssignment(request);
+        ObjectNode response = mapper.createObjectNode();
+        response.put("ApplicationArn", assignment.applicationArn());
+        response.put("PrincipalId", assignment.principalId());
+        response.put("PrincipalType", assignment.principalType());
+        return Response.ok(response).build();
     }
 
     private Response deleteApplicationAssignment(JsonNode request) {

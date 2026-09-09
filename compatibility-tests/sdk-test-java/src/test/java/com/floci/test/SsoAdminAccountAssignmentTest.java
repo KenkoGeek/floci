@@ -155,6 +155,15 @@ class SsoAdminAccountAssignmentTest {
                     .principalId("11111111-2222-3333-4444-555555555555")
                     .principalType("USER"));
             assertThat(response.sdkHttpResponse().isSuccessful()).isTrue();
+
+            var described = sso.describeApplicationAssignment(request -> request
+                    .applicationArn(applicationArn)
+                    .principalId("11111111-2222-3333-4444-555555555555")
+                    .principalType("USER"));
+            assertThat(described.applicationArn()).isEqualTo(applicationArn);
+            assertThat(described.principalId()).isEqualTo("11111111-2222-3333-4444-555555555555");
+            assertThat(described.principalTypeAsString()).isEqualTo("USER");
+
             assertThatThrownBy(() -> sso.createApplicationAssignment(request -> request
                     .applicationArn(applicationArn)
                     .principalId("11111111-2222-3333-4444-555555555555")
