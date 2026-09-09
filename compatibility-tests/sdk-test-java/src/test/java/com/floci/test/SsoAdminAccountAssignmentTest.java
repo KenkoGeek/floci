@@ -186,6 +186,30 @@ class SsoAdminAccountAssignmentTest {
     }
 
     @Test
+    @DisplayName("deletes application grants through the AWS SDK")
+    void deleteApplicationGrantUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses the emulator IAM Identity Center instance");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient()) {
+            String instanceArn = sso.listInstances(request -> {}).instances().get(0).instanceArn();
+            String applicationArn = sso.createApplication(request -> request
+                    .instanceArn(instanceArn)
+                    .applicationProviderArn("arn:aws:sso::aws:applicationProvider/custom")
+                    .name("SDK Delete Grant"))
+                    .applicationArn();
+
+            assertThatThrownBy(() -> sso.deleteApplicationGrant(request -> request
+                    .applicationArn(applicationArn)
+                    .grantType("authorization_code")))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ResourceNotFoundException.class);
+            assertThatThrownBy(() -> sso.deleteApplicationGrant(request -> request
+                    .applicationArn(applicationArn)
+                    .grantType("client_credentials")))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ValidationException.class);
+        }
+    }
+
+    @Test
     @DisplayName("creates trusted token issuers through the AWS SDK")
     void createTrustedTokenIssuerUsesAwsSdk() {
         assumeFalse(TestFixtures.isRealAws(), "Uses the emulator IAM Identity Center fixture");
