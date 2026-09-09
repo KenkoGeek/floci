@@ -129,6 +129,16 @@ public class BedrockAgentCoreToolsService {
         return profile.deepCopy();
     }
 
+    public ObjectNode getBrowserProfile(String profileId, String region) {
+        if (profileId == null || !profileId.matches("[a-zA-Z][a-zA-Z0-9_]{0,47}-[a-zA-Z0-9]{10}")) {
+            throw new AwsException("ValidationException", "profileId does not satisfy the required pattern", 400);
+        }
+        return storage.get(key("browser-profile", region, profileId))
+                .map(ObjectNode::deepCopy)
+                .orElseThrow(() -> new AwsException("ResourceNotFoundException",
+                        "Browser profile not found: " + profileId, 404));
+    }
+
     public ObjectNode deleteBrowser(String browserId, String clientToken, String region) {
         if ("aws.browser.v1".equals(browserId)) {
             throw new AwsException("ValidationException", "System browser cannot be deleted", 400);

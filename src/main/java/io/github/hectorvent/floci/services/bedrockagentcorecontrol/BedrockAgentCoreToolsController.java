@@ -79,6 +79,20 @@ public class BedrockAgentCoreToolsController {
     }
 
     @GET
+    @Path("/browser-profiles/{profileId}")
+    public Response getBrowserProfile(@Context HttpHeaders headers, @PathParam("profileId") String profileId) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            ObjectNode profile = service.getBrowserProfile(profileId, region).deepCopy();
+            profile.remove("clientToken");
+            profile.remove("tags");
+            return Response.ok(profile).build();
+        } catch (Exception e) {
+            return error(e, "getting browser profile");
+        }
+    }
+
+    @GET
     @Path("/browsers/{browserId}")
     public Response getBrowser(@Context HttpHeaders headers, @PathParam("browserId") String browserId) {
         String region = regionResolver.resolveRegion(headers);

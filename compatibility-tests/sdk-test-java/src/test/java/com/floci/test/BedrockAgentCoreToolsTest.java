@@ -107,4 +107,17 @@ class BedrockAgentCoreToolsTest {
         assertThat(response.statusAsString()).isEqualTo("READY");
         assertThat(response.createdAt()).isNotNull();
     }
+
+    @Test
+    @Order(6)
+    void getBrowserProfile() {
+        GetBrowserProfileResponse response = client.getBrowserProfile(GetBrowserProfileRequest.builder()
+                .profileId(profileId)
+                .build());
+
+        assertThat(response.profileId()).isEqualTo(profileId);
+        assertThat(response.name()).isEqualTo(profileName);
+        assertThat(response.description()).isEqualTo("profile");
+        assertThat(response.statusAsString()).isEqualTo("READY");
+    }
 }
