@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.hectorvent.floci.core.common.AwsArnUtils;
 import io.github.hectorvent.floci.core.common.AwsException;
 import io.github.hectorvent.floci.core.common.RegionResolver;
 import io.github.hectorvent.floci.core.common.Resettable;
@@ -15,7 +16,6 @@ import jakarta.inject.Inject;
 
 import java.time.Instant;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -27,6 +27,59 @@ public class BedrockControlPlaneService implements Resettable {
     private static final String LOGGING_KEY = "config/logging";
     private static final String RETENTION_KEY = "config/data-retention";
     private static final String ENFORCED_GUARDRAIL_KEY = "config/enforced-guardrail";
+
+    private static final Map<String, List<String>> REQUIRED_BODY_FIELDS = Map.ofEntries(
+            Map.entry("PutUseCaseForModelAccess", List.of("formData")),
+            Map.entry("CreateFoundationModelAgreement", List.of("modelId", "offerToken")),
+            Map.entry("DeleteFoundationModelAgreement", List.of("modelId")),
+            Map.entry("PutModelInvocationLoggingConfiguration", List.of("loggingConfig")),
+            Map.entry("ListTagsForResource", List.of("resourceARN")),
+            Map.entry("TagResource", List.of("resourceARN", "tags")),
+            Map.entry("UntagResource", List.of("resourceARN", "tagKeys")),
+            Map.entry("PutResourcePolicy", List.of("resourceArn", "resourcePolicy")),
+            Map.entry("PutAccountDataRetention", List.of("mode")),
+            Map.entry("CreateGuardrail", List.of("blockedInputMessaging", "blockedOutputsMessaging", "name")),
+            Map.entry("UpdateGuardrail", List.of("blockedInputMessaging", "blockedOutputsMessaging", "name")),
+            Map.entry("PutEnforcedGuardrailConfiguration", List.of("guardrailInferenceConfig")),
+            Map.entry("CreateInferenceProfile", List.of("inferenceProfileName", "modelSource")),
+            Map.entry("CreateProvisionedModelThroughput", List.of("modelId", "modelUnits", "provisionedModelName")),
+            Map.entry("CreateModelImportJob", List.of("importedModelName", "jobName", "modelDataSource", "roleArn")),
+            Map.entry("CreateCustomModel", List.of("modelName")),
+            Map.entry("CreateModelCustomizationJob", List.of("baseModelIdentifier", "customModelName", "jobName", "outputDataConfig", "roleArn", "trainingDataConfig")),
+            Map.entry("CreateModelCopyJob", List.of("sourceModelArn", "targetModelName")),
+            Map.entry("CreateModelInvocationJob", List.of("inputDataConfig", "jobName", "modelId", "outputDataConfig", "roleArn")),
+            Map.entry("CreateMarketplaceModelEndpoint", List.of("endpointConfig", "endpointName", "modelSourceIdentifier")),
+            Map.entry("UpdateMarketplaceModelEndpoint", List.of("endpointConfig")),
+            Map.entry("RegisterMarketplaceModelEndpoint", List.of("modelSourceIdentifier")),
+            Map.entry("CreatePromptRouter", List.of("fallbackModel", "models", "promptRouterName", "routingCriteria")));
+
+    private static final Map<String, Integer> SUCCESS_STATUSES = Map.ofEntries(
+            Map.entry("PutUseCaseForModelAccess", 201),
+            Map.entry("CreateFoundationModelAgreement", 202),
+            Map.entry("DeleteFoundationModelAgreement", 202),
+            Map.entry("PutResourcePolicy", 201),
+            Map.entry("CreateGuardrail", 202),
+            Map.entry("CreateGuardrailVersion", 202),
+            Map.entry("DeleteGuardrail", 202),
+            Map.entry("UpdateGuardrail", 202),
+            Map.entry("CreateInferenceProfile", 201),
+            Map.entry("CreateProvisionedModelThroughput", 201),
+            Map.entry("CreateModelImportJob", 201),
+            Map.entry("CreateCustomModel", 202),
+            Map.entry("CreateModelCustomizationJob", 201),
+            Map.entry("CreateModelCopyJob", 201));
+
+    private static void validateRequiredFields(String operation, ObjectNode request) {
+        for (String field : REQUIRED_BODY_FIELDS.getOrDefault(operation, List.of())) {
+            if (request == null || !request.hasNonNull(field)) {
+                throw validation(field + " is required.");
+            }
+        }
+    }
+
+    private static int successStatus(String operation) {
+        return SUCCESS_STATUSES.getOrDefault(operation, 200);
+    }
 
     private final AccountAwareStorageBackend<ObjectNode> state;
     private final ObjectMapper objectMapper;
@@ -43,7 +96,8 @@ public class BedrockControlPlaneService implements Resettable {
 
     public synchronized Result execute(String operation, ObjectNode request,
                                        Map<String, String> path, String region) {
-        return switch (operation) {
+        validateRequiredFields(operation, request);
+        Result result = switch (operation) {
             case "GetUseCaseForModelAccess" -> getUseCase();
             case "PutUseCaseForModelAccess" -> putUseCase(request);
             case "GetFoundationModelAvailability" -> foundationModelAvailability(path.get("modelId"));
@@ -52,9 +106,9 @@ public class BedrockControlPlaneService implements Resettable {
             case "DeleteFoundationModelAgreement" -> deleteAgreement(request);
             case "GetFoundationModel" -> getFoundationModel(path.get("modelIdentifier"), region);
             case "ListFoundationModels" -> listFoundationModels(region);
-            case "GetModelInvocationLoggingConfiguration" -> getLogging();
-            case "PutModelInvocationLoggingConfiguration" -> putLogging(request);
-            case "DeleteModelInvocationLoggingConfiguration" -> deleteLogging();
+            case "GetModelInvocationLoggingConfiguration" -> getLogging(region);
+            case "PutModelInvocationLoggingConfiguration" -> putLogging(request, region);
+            case "DeleteModelInvocationLoggingConfiguration" -> deleteLogging(region);
             case "ListTagsForResource" -> listTags(request);
             case "TagResource" -> tagResource(request);
             case "UntagResource" -> untagResource(request);
@@ -64,54 +118,55 @@ public class BedrockControlPlaneService implements Resettable {
             case "GetAccountDataRetention" -> getDataRetention();
             case "PutAccountDataRetention" -> putDataRetention(request);
             case "CreateGuardrail" -> createGuardrail(request, region);
-            case "CreateGuardrailVersion" -> createGuardrailVersion(path.get("guardrailIdentifier"));
-            case "DeleteGuardrail" -> deleteGuardrail(path.get("guardrailIdentifier"));
-            case "GetGuardrail" -> getGuardrail(path.get("guardrailIdentifier"));
-            case "ListGuardrails" -> listGuardrails();
-            case "UpdateGuardrail" -> updateGuardrail(path.get("guardrailIdentifier"), request);
-            case "ListEnforcedGuardrailsConfiguration" -> listEnforcedGuardrailsConfiguration();
-            case "PutEnforcedGuardrailConfiguration" -> putEnforcedGuardrailsConfiguration(request);
-            case "DeleteEnforcedGuardrailConfiguration" -> deleteEnforcedGuardrailsConfiguration(path.get("configId"));
+            case "CreateGuardrailVersion" -> createGuardrailVersion(path.get("guardrailIdentifier"), region);
+            case "DeleteGuardrail" -> deleteGuardrail(path.get("guardrailIdentifier"), region);
+            case "GetGuardrail" -> getGuardrail(path.get("guardrailIdentifier"), region);
+            case "ListGuardrails" -> listGuardrails(region);
+            case "UpdateGuardrail" -> updateGuardrail(path.get("guardrailIdentifier"), request, region);
+            case "ListEnforcedGuardrailsConfiguration" -> listEnforcedGuardrailsConfiguration(region);
+            case "PutEnforcedGuardrailConfiguration" -> putEnforcedGuardrailsConfiguration(request, region);
+            case "DeleteEnforcedGuardrailConfiguration" -> deleteEnforcedGuardrailsConfiguration(path.get("configId"), region);
             case "CreateInferenceProfile" -> createInferenceProfile(request, region);
-            case "GetInferenceProfile" -> getGeneric("inference-profile", path.get("inferenceProfileIdentifier"));
-            case "ListInferenceProfiles" -> listGeneric("inference-profile", "inferenceProfileSummaries");
-            case "DeleteInferenceProfile" -> deleteGeneric("inference-profile", path.get("inferenceProfileIdentifier"));
+            case "GetInferenceProfile" -> getGeneric("inference-profile", path.get("inferenceProfileIdentifier"), region);
+            case "ListInferenceProfiles" -> listGeneric("inference-profile", "inferenceProfileSummaries", region);
+            case "DeleteInferenceProfile" -> deleteGeneric("inference-profile", path.get("inferenceProfileIdentifier"), region);
             case "CreateProvisionedModelThroughput" -> createProvisionedThroughput(request, region);
-            case "GetProvisionedModelThroughput" -> getGeneric("provisioned-throughput", path.get("provisionedModelId"));
-            case "ListProvisionedModelThroughputs" -> listGeneric("provisioned-throughput", "provisionedModelSummaries");
-            case "UpdateProvisionedModelThroughput" -> updateGeneric("provisioned-throughput", path.get("provisionedModelId"), request);
-            case "DeleteProvisionedModelThroughput" -> deleteGeneric("provisioned-throughput", path.get("provisionedModelId"));
+            case "GetProvisionedModelThroughput" -> getGeneric("provisioned-throughput", path.get("provisionedModelId"), region);
+            case "ListProvisionedModelThroughputs" -> listGeneric("provisioned-throughput", "provisionedModelSummaries", region);
+            case "UpdateProvisionedModelThroughput" -> updateGeneric("provisioned-throughput", path.get("provisionedModelId"), request, region);
+            case "DeleteProvisionedModelThroughput" -> deleteGeneric("provisioned-throughput", path.get("provisionedModelId"), region);
             case "CreateModelImportJob" -> createModelImportJob(request, region);
-            case "GetModelImportJob" -> getGeneric("model-import-job", path.get("jobIdentifier"));
-            case "ListModelImportJobs" -> listGeneric("model-import-job", "modelImportJobSummaries");
-            case "GetImportedModel" -> getGeneric("imported-model", path.get("modelIdentifier"));
-            case "ListImportedModels" -> listGeneric("imported-model", "modelSummaries");
-            case "DeleteImportedModel" -> deleteGeneric("imported-model", path.get("modelIdentifier"));
+            case "GetModelImportJob" -> getGeneric("model-import-job", path.get("jobIdentifier"), region);
+            case "ListModelImportJobs" -> listGeneric("model-import-job", "modelImportJobSummaries", region);
+            case "GetImportedModel" -> getGeneric("imported-model", path.get("modelIdentifier"), region);
+            case "ListImportedModels" -> listGeneric("imported-model", "modelSummaries", region);
+            case "DeleteImportedModel" -> deleteGeneric("imported-model", path.get("modelIdentifier"), region);
             case "CreateCustomModel" -> createCustomModel(request, region);
-            case "GetCustomModel" -> getGeneric("custom-model", path.get("modelIdentifier"));
-            case "ListCustomModels" -> listGeneric("custom-model", "modelSummaries");
-            case "DeleteCustomModel" -> deleteGeneric("custom-model", path.get("modelIdentifier"));
+            case "GetCustomModel" -> getGeneric("custom-model", path.get("modelIdentifier"), region);
+            case "ListCustomModels" -> listGeneric("custom-model", "modelSummaries", region);
+            case "DeleteCustomModel" -> deleteGeneric("custom-model", path.get("modelIdentifier"), region);
             case "CreateModelCustomizationJob" -> createModelCustomizationJob(request, region);
-            case "GetModelCustomizationJob" -> getGeneric("customization-job", path.get("jobIdentifier"));
-            case "ListModelCustomizationJobs" -> listGeneric("customization-job", "modelCustomizationJobSummaries");
-            case "StopModelCustomizationJob" -> stopGeneric("customization-job", path.get("jobIdentifier"));
+            case "GetModelCustomizationJob" -> getGeneric("customization-job", path.get("jobIdentifier"), region);
+            case "ListModelCustomizationJobs" -> listGeneric("customization-job", "modelCustomizationJobSummaries", region);
+            case "StopModelCustomizationJob" -> stopGeneric("customization-job", path.get("jobIdentifier"), region);
             case "CreateModelCopyJob" -> createModelCopyJob(request, region);
-            case "GetModelCopyJob" -> getGeneric("model-copy-job", path.get("jobArn"));
-            case "ListModelCopyJobs" -> listGeneric("model-copy-job", "modelCopyJobSummaries");
+            case "GetModelCopyJob" -> getGeneric("model-copy-job", path.get("jobArn"), region);
+            case "ListModelCopyJobs" -> listGeneric("model-copy-job", "modelCopyJobSummaries", region);
             case "CreateModelInvocationJob" -> createModelInvocationJob(request, region);
-            case "GetModelInvocationJob" -> getGeneric("model-invocation-job", path.get("jobIdentifier"));
-            case "ListModelInvocationJobs" -> listGeneric("model-invocation-job", "invocationJobSummaries");
-            case "StopModelInvocationJob" -> stopGeneric("model-invocation-job", path.get("jobIdentifier"));
+            case "GetModelInvocationJob" -> getGeneric("model-invocation-job", path.get("jobIdentifier"), region);
+            case "ListModelInvocationJobs" -> listGeneric("model-invocation-job", "invocationJobSummaries", region);
+            case "StopModelInvocationJob" -> stopGeneric("model-invocation-job", path.get("jobIdentifier"), region);
             case "CreateMarketplaceModelEndpoint" -> createMarketplaceEndpoint(request, region);
-            case "GetMarketplaceModelEndpoint" -> wrapGeneric("marketplace-endpoint", path.get("endpointArn"), "marketplaceModelEndpoint");
-            case "ListMarketplaceModelEndpoints" -> listGeneric("marketplace-endpoint", "marketplaceModelEndpoints");
-            case "UpdateMarketplaceModelEndpoint" -> wrapUpdateGeneric("marketplace-endpoint", path.get("endpointArn"), request, "marketplaceModelEndpoint");
-            case "DeleteMarketplaceModelEndpoint" -> deleteGeneric("marketplace-endpoint", path.get("endpointArn"));
-            case "RegisterMarketplaceModelEndpoint" -> registerMarketplaceEndpoint(path.get("endpointIdentifier"));
-            case "DeregisterMarketplaceModelEndpoint" -> deregisterMarketplaceEndpoint(path.get("endpointArn"));
+            case "GetMarketplaceModelEndpoint" -> wrapGeneric("marketplace-endpoint", path.get("endpointArn"), "marketplaceModelEndpoint", region);
+            case "ListMarketplaceModelEndpoints" -> listGeneric("marketplace-endpoint", "marketplaceModelEndpoints", region);
+            case "UpdateMarketplaceModelEndpoint" -> wrapUpdateGeneric("marketplace-endpoint", path.get("endpointArn"), request, "marketplaceModelEndpoint", region);
+            case "DeleteMarketplaceModelEndpoint" -> deleteGeneric("marketplace-endpoint", path.get("endpointArn"), region);
+            case "RegisterMarketplaceModelEndpoint" -> registerMarketplaceEndpoint(path.get("endpointIdentifier"), region);
+            case "DeregisterMarketplaceModelEndpoint" -> deregisterMarketplaceEndpoint(path.get("endpointArn"), region);
             case "CreatePromptRouter" -> createPromptRouter(request, region);
             default -> throw new AwsException("UnknownOperationException", "Unsupported Bedrock operation: " + operation, 404);
         };
+        return new Result(successStatus(operation), result.body());
     }
 
     private Result getUseCase() {
@@ -198,7 +253,7 @@ public class BedrockControlPlaneService implements Resettable {
         String provider = modelId.startsWith("anthropic.") ? "Anthropic" : modelId.startsWith("amazon.") ? "Amazon" : "Floci";
         String name = modelId.substring(modelId.indexOf('.') + 1);
         ObjectNode node = objectMapper.createObjectNode();
-        node.put("modelArn", regionResolver.buildArn("bedrock", region, "foundation-model/" + modelId));
+        node.put("modelArn", AwsArnUtils.Arn.of("bedrock", region, "", "foundation-model/" + modelId).toString());
         node.put("modelId", modelId);
         node.put("modelName", name);
         node.put("providerName", provider);
@@ -211,23 +266,23 @@ public class BedrockControlPlaneService implements Resettable {
         return node;
     }
 
-    private Result getLogging() {
+    private Result getLogging(String region) {
         ObjectNode response = objectMapper.createObjectNode();
-        state.get(LOGGING_KEY).ifPresent(config -> response.set("loggingConfig", config.deepCopy()));
+        state.get(regionalKey(region, LOGGING_KEY)).ifPresent(config -> response.set("loggingConfig", config.deepCopy()));
         return ok(response);
     }
 
-    private Result putLogging(ObjectNode request) {
+    private Result putLogging(ObjectNode request, String region) {
         JsonNode loggingConfig = request.get("loggingConfig");
         if (loggingConfig == null || !loggingConfig.isObject()) {
             throw validation("loggingConfig is required and must be an object.");
         }
-        state.put(LOGGING_KEY, ((ObjectNode) loggingConfig).deepCopy());
+        state.put(regionalKey(region, LOGGING_KEY), ((ObjectNode) loggingConfig).deepCopy());
         return ok(objectMapper.createObjectNode());
     }
 
-    private Result deleteLogging() {
-        state.delete(LOGGING_KEY);
+    private Result deleteLogging(String region) {
+        state.delete(regionalKey(region, LOGGING_KEY));
         return ok(objectMapper.createObjectNode());
     }
 
@@ -291,13 +346,16 @@ public class BedrockControlPlaneService implements Resettable {
 
     private Result getDataRetention() {
         ObjectNode stored = state.get(RETENTION_KEY).orElseGet(() -> objectMapper.createObjectNode()
-                .put("mode", "DO_NOT_RETAIN")
+                .put("mode", "default")
                 .put("updatedAt", Instant.EPOCH.toString()));
         return ok(stored.deepCopy());
     }
 
     private Result putDataRetention(ObjectNode request) {
         String mode = requiredText(request, "mode");
+        if (!List.of("default", "none", "aws_review", "provider_data_share", "inherit").contains(mode)) {
+            throw validation("mode must be default, none, aws_review, provider_data_share, or inherit.");
+        }
         ObjectNode stored = objectMapper.createObjectNode()
                 .put("mode", mode)
                 .put("updatedAt", Instant.now().toString());
@@ -316,37 +374,37 @@ public class BedrockControlPlaneService implements Resettable {
         resource.put("status", "READY");
         resource.put("createdAt", Instant.now().toString());
         resource.put("updatedAt", resource.path("createdAt").asText());
-        storeGeneric("guardrail", id, resource);
+        storeGeneric("guardrail", id, resource, region);
         return ok(select(resource, "guardrailId", "guardrailArn", "version", "createdAt"));
     }
 
-    private Result createGuardrailVersion(String identifier) {
-        ObjectNode guardrail = findGeneric("guardrail", identifier);
+    private Result createGuardrailVersion(String identifier, String region) {
+        ObjectNode guardrail = findGeneric("guardrail", identifier, region);
         int next = state.keys().stream()
-                .filter(k -> k.startsWith("resource/guardrail-version/" + guardrail.path("guardrailId").asText() + "/"))
+                .filter(k -> k.startsWith("region/" + region + "/resource/guardrail-version/" + guardrail.path("guardrailId").asText() + "/"))
                 .map(k -> k.substring(k.lastIndexOf('/') + 1))
                 .mapToInt(v -> { try { return Integer.parseInt(v); } catch (NumberFormatException e) { return 0; } })
                 .max().orElse(0) + 1;
         ObjectNode versioned = guardrail.deepCopy().put("version", Integer.toString(next));
-        state.put("resource/guardrail-version/" + guardrail.path("guardrailId").asText() + "/" + next, versioned);
+        state.put("region/" + region + "/resource/guardrail-version/" + guardrail.path("guardrailId").asText() + "/" + next, versioned);
         return ok(objectMapper.createObjectNode()
                 .put("guardrailId", guardrail.path("guardrailId").asText())
                 .put("version", Integer.toString(next)));
     }
 
-    private Result deleteGuardrail(String identifier) {
-        ObjectNode guardrail = findGeneric("guardrail", identifier);
-        state.delete(genericKey("guardrail", guardrail.path("guardrailId").asText()));
+    private Result deleteGuardrail(String identifier, String region) {
+        ObjectNode guardrail = findGeneric("guardrail", identifier, region);
+        state.delete(genericKey(region, "guardrail", guardrail.path("guardrailId").asText()));
         return ok(objectMapper.createObjectNode());
     }
 
-    private Result getGuardrail(String identifier) {
-        return ok(findGeneric("guardrail", identifier).deepCopy());
+    private Result getGuardrail(String identifier, String region) {
+        return ok(findGeneric("guardrail", identifier, region).deepCopy());
     }
 
-    private Result listGuardrails() {
+    private Result listGuardrails(String region) {
         ArrayNode items = objectMapper.createArrayNode();
-        genericResources("guardrail").forEach(resource -> {
+        genericResources("guardrail", region).forEach(resource -> {
             ObjectNode summary = select(resource, "id", "arn", "status", "name", "description", "version", "createdAt", "updatedAt");
             summary.put("id", resource.path("guardrailId").asText());
             summary.put("arn", resource.path("guardrailArn").asText());
@@ -355,33 +413,33 @@ public class BedrockControlPlaneService implements Resettable {
         return ok(objectMapper.createObjectNode().set("guardrails", items));
     }
 
-    private Result updateGuardrail(String identifier, ObjectNode request) {
-        ObjectNode resource = findGeneric("guardrail", identifier).deepCopy();
+    private Result updateGuardrail(String identifier, ObjectNode request, String region) {
+        ObjectNode resource = findGeneric("guardrail", identifier, region).deepCopy();
         merge(resource, request);
         resource.put("updatedAt", Instant.now().toString());
-        storeGeneric("guardrail", resource.path("guardrailId").asText(), resource);
+        storeGeneric("guardrail", resource.path("guardrailId").asText(), resource, region);
         return ok(select(resource, "guardrailId", "guardrailArn", "version", "updatedAt"));
     }
 
-    private Result listEnforcedGuardrailsConfiguration() {
+    private Result listEnforcedGuardrailsConfiguration(String region) {
         ArrayNode configs = objectMapper.createArrayNode();
-        state.get(ENFORCED_GUARDRAIL_KEY).ifPresent(configs::add);
+        state.get(regionalKey(region, ENFORCED_GUARDRAIL_KEY)).ifPresent(configs::add);
         return ok(objectMapper.createObjectNode().set("guardrailsConfig", configs));
     }
 
-    private Result putEnforcedGuardrailsConfiguration(ObjectNode request) {
+    private Result putEnforcedGuardrailsConfiguration(ObjectNode request, String region) {
         ObjectNode stored = request.deepCopy();
         String id = stored.hasNonNull("configId") ? stored.path("configId").asText() : UUID.randomUUID().toString();
         stored.put("configId", id);
         stored.put("updatedAt", Instant.now().toString());
         stored.put("updatedBy", "floci");
-        state.put(ENFORCED_GUARDRAIL_KEY, stored);
+        state.put(regionalKey(region, ENFORCED_GUARDRAIL_KEY), stored);
         return ok(select(stored, "configId", "updatedAt", "updatedBy"));
     }
 
-    private Result deleteEnforcedGuardrailsConfiguration(String configId) {
+    private Result deleteEnforcedGuardrailsConfiguration(String configId, String region) {
         requirePath(configId, "configId");
-        state.delete(ENFORCED_GUARDRAIL_KEY);
+        state.delete(regionalKey(region, ENFORCED_GUARDRAIL_KEY));
         return ok(objectMapper.createObjectNode());
     }
 
@@ -396,7 +454,7 @@ public class BedrockControlPlaneService implements Resettable {
         resource.put("type", "APPLICATION");
         resource.put("createdAt", Instant.now().toString());
         resource.put("updatedAt", resource.path("createdAt").asText());
-        storeGeneric("inference-profile", id, resource);
+        storeGeneric("inference-profile", id, resource, region);
         return ok(select(resource, "inferenceProfileArn", "status"));
     }
 
@@ -413,10 +471,10 @@ public class BedrockControlPlaneService implements Resettable {
         if (!resource.has("modelUnits")) resource.put("modelUnits", 1);
         resource.set("desiredModelUnits", resource.get("modelUnits"));
         if (resource.hasNonNull("modelId")) {
-            resource.put("modelArn", regionResolver.buildArn("bedrock", region, "foundation-model/" + resource.path("modelId").asText()));
+            resource.put("modelArn", AwsArnUtils.Arn.of("bedrock", region, "", "foundation-model/" + resource.path("modelId").asText()).toString());
             resource.put("desiredModelArn", resource.path("modelArn").asText());
         }
-        storeGeneric("provisioned-throughput", id, resource);
+        storeGeneric("provisioned-throughput", id, resource, region);
         return ok(objectMapper.createObjectNode().put("provisionedModelArn", resource.path("provisionedModelArn").asText()));
     }
 
@@ -432,14 +490,14 @@ public class BedrockControlPlaneService implements Resettable {
         job.put("creationTime", Instant.now().toString());
         job.put("lastModifiedTime", job.path("creationTime").asText());
         job.put("endTime", job.path("creationTime").asText());
-        storeGeneric("model-import-job", id, job);
+        storeGeneric("model-import-job", id, job, region);
         storeGeneric("imported-model", id, objectMapper.createObjectNode()
                 .put("modelArn", job.path("importedModelArn").asText())
                 .put("modelName", modelName)
                 .put("jobName", jobName)
                 .put("jobArn", job.path("jobArn").asText())
                 .put("creationTime", job.path("creationTime").asText())
-                .put("instructSupported", false));
+                .put("instructSupported", false), region);
         return ok(objectMapper.createObjectNode().put("jobArn", job.path("jobArn").asText()));
     }
 
@@ -451,13 +509,14 @@ public class BedrockControlPlaneService implements Resettable {
         model.put("modelArn", regionResolver.buildArn("bedrock", region, "custom-model/" + id));
         model.put("creationTime", Instant.now().toString());
         model.put("modelStatus", "Active");
-        storeGeneric("custom-model", id, model);
+        storeGeneric("custom-model", id, model, region);
         return ok(objectMapper.createObjectNode().put("modelArn", model.path("modelArn").asText()));
     }
 
     private Result createModelCustomizationJob(ObjectNode request, String region) {
-        return createJob("customization-job", request, region, "model-customization-job/", "jobArn",
+        Result result = createJob("customization-job", request, region, "model-customization-job/", "jobArn",
                 "jobName", "InProgress");
+        return ok(objectMapper.createObjectNode().put("jobArn", result.body().path("jobArn").asText()));
     }
 
     private Result createModelCopyJob(ObjectNode request, String region) {
@@ -468,8 +527,9 @@ public class BedrockControlPlaneService implements Resettable {
     }
 
     private Result createModelInvocationJob(ObjectNode request, String region) {
-        return createJob("model-invocation-job", request, region, "model-invocation-job/", "jobArn",
+        Result result = createJob("model-invocation-job", request, region, "model-invocation-job/", "jobArn",
                 "jobName", "Submitted");
+        return ok(objectMapper.createObjectNode().put("jobArn", result.body().path("jobArn").asText()));
     }
 
     private Result createJob(String family, ObjectNode request, String region, String arnPrefix,
@@ -482,7 +542,7 @@ public class BedrockControlPlaneService implements Resettable {
         job.put("status", status);
         job.put("creationTime", Instant.now().toString());
         job.put("lastModifiedTime", job.path("creationTime").asText());
-        storeGeneric(family, id, job);
+        storeGeneric(family, id, job, region);
         return ok(job);
     }
 
@@ -495,23 +555,23 @@ public class BedrockControlPlaneService implements Resettable {
         endpoint.put("status", "REGISTERED");
         endpoint.put("createdAt", Instant.now().toString());
         endpoint.put("updatedAt", endpoint.path("createdAt").asText());
-        storeGeneric("marketplace-endpoint", id, endpoint);
+        storeGeneric("marketplace-endpoint", id, endpoint, region);
         return ok(objectMapper.createObjectNode().set("marketplaceModelEndpoint", endpoint));
     }
 
-    private Result registerMarketplaceEndpoint(String identifier) {
-        ObjectNode endpoint = findGeneric("marketplace-endpoint", identifier).deepCopy();
+    private Result registerMarketplaceEndpoint(String identifier, String region) {
+        ObjectNode endpoint = findGeneric("marketplace-endpoint", identifier, region).deepCopy();
         endpoint.put("status", "REGISTERED");
         endpoint.put("updatedAt", Instant.now().toString());
-        storeGeneric("marketplace-endpoint", endpointKey(endpoint), endpoint);
+        storeGeneric("marketplace-endpoint", endpointKey(endpoint), endpoint, region);
         return ok(objectMapper.createObjectNode().set("marketplaceModelEndpoint", endpoint));
     }
 
-    private Result deregisterMarketplaceEndpoint(String identifier) {
-        ObjectNode endpoint = findGeneric("marketplace-endpoint", identifier).deepCopy();
+    private Result deregisterMarketplaceEndpoint(String identifier, String region) {
+        ObjectNode endpoint = findGeneric("marketplace-endpoint", identifier, region).deepCopy();
         endpoint.put("status", "DEREGISTERED");
         endpoint.put("updatedAt", Instant.now().toString());
-        storeGeneric("marketplace-endpoint", endpointKey(endpoint), endpoint);
+        storeGeneric("marketplace-endpoint", endpointKey(endpoint), endpoint, region);
         return ok(objectMapper.createObjectNode());
     }
 
@@ -522,59 +582,59 @@ public class BedrockControlPlaneService implements Resettable {
         resource.put("promptRouterName", name);
         resource.put("promptRouterArn", regionResolver.buildArn("bedrock", region, "default-prompt-router/" + id));
         resource.put("createdAt", Instant.now().toString());
-        storeGeneric("prompt-router", id, resource);
+        storeGeneric("prompt-router", id, resource, region);
         return ok(objectMapper.createObjectNode().put("promptRouterArn", resource.path("promptRouterArn").asText()));
     }
 
-    private Result getGeneric(String family, String identifier) {
-        return ok(findGeneric(family, identifier).deepCopy());
+    private Result getGeneric(String family, String identifier, String region) {
+        return ok(findGeneric(family, identifier, region).deepCopy());
     }
 
-    private Result wrapGeneric(String family, String identifier, String field) {
-        return ok(objectMapper.createObjectNode().set(field, findGeneric(family, identifier).deepCopy()));
+    private Result wrapGeneric(String family, String identifier, String field, String region) {
+        return ok(objectMapper.createObjectNode().set(field, findGeneric(family, identifier, region).deepCopy()));
     }
 
-    private Result listGeneric(String family, String field) {
+    private Result listGeneric(String family, String field, String region) {
         ArrayNode array = objectMapper.createArrayNode();
-        genericResources(family).forEach(value -> array.add(value.deepCopy()));
+        genericResources(family, region).forEach(value -> array.add(value.deepCopy()));
         return ok(objectMapper.createObjectNode().set(field, array));
     }
 
-    private Result updateGeneric(String family, String identifier, ObjectNode request) {
-        ObjectNode resource = findGeneric(family, identifier).deepCopy();
+    private Result updateGeneric(String family, String identifier, ObjectNode request, String region) {
+        ObjectNode resource = findGeneric(family, identifier, region).deepCopy();
         merge(resource, request);
         resource.put("lastModifiedTime", Instant.now().toString());
-        storeGeneric(family, genericId(family, resource, identifier), resource);
+        storeGeneric(family, genericId(family, resource, identifier), resource, region);
         return ok(objectMapper.createObjectNode());
     }
 
-    private Result wrapUpdateGeneric(String family, String identifier, ObjectNode request, String field) {
-        ObjectNode resource = findGeneric(family, identifier).deepCopy();
+    private Result wrapUpdateGeneric(String family, String identifier, ObjectNode request, String field, String region) {
+        ObjectNode resource = findGeneric(family, identifier, region).deepCopy();
         merge(resource, request);
         resource.put("updatedAt", Instant.now().toString());
-        storeGeneric(family, genericId(family, resource, identifier), resource);
+        storeGeneric(family, genericId(family, resource, identifier), resource, region);
         return ok(objectMapper.createObjectNode().set(field, resource));
     }
 
-    private Result stopGeneric(String family, String identifier) {
-        ObjectNode resource = findGeneric(family, identifier).deepCopy();
+    private Result stopGeneric(String family, String identifier, String region) {
+        ObjectNode resource = findGeneric(family, identifier, region).deepCopy();
         resource.put("status", "Stopped");
         resource.put("lastModifiedTime", Instant.now().toString());
-        storeGeneric(family, genericId(family, resource, identifier), resource);
+        storeGeneric(family, genericId(family, resource, identifier), resource, region);
         return ok(objectMapper.createObjectNode());
     }
 
-    private Result deleteGeneric(String family, String identifier) {
-        ObjectNode resource = findGeneric(family, identifier);
-        state.delete(genericKey(family, genericId(family, resource, identifier)));
+    private Result deleteGeneric(String family, String identifier, String region) {
+        ObjectNode resource = findGeneric(family, identifier, region);
+        state.delete(genericKey(region, family, genericId(family, resource, identifier)));
         return ok(objectMapper.createObjectNode());
     }
 
-    private ObjectNode findGeneric(String family, String identifier) {
+    private ObjectNode findGeneric(String family, String identifier, String region) {
         requirePath(identifier, "identifier");
-        ObjectNode direct = state.get(genericKey(family, identifier)).orElse(null);
+        ObjectNode direct = state.get(genericKey(region, family, identifier)).orElse(null);
         if (direct != null) return direct;
-        return genericResources(family).stream()
+        return genericResources(family, region).stream()
                 .filter(value -> value.fields().hasNext())
                 .filter(value -> containsIdentifier(value, identifier))
                 .findFirst()
@@ -590,8 +650,8 @@ public class BedrockControlPlaneService implements Resettable {
         return false;
     }
 
-    private List<ObjectNode> genericResources(String family) {
-        String prefix = "resource/" + family + "/";
+    private List<ObjectNode> genericResources(String family, String region) {
+        String prefix = "region/" + region + "/resource/" + family + "/";
         return state.scan(key -> key.startsWith(prefix)).stream()
                 .sorted(Comparator.comparing(this::stableResourceKey))
                 .toList();
@@ -605,8 +665,8 @@ public class BedrockControlPlaneService implements Resettable {
         return node.toString();
     }
 
-    private void storeGeneric(String family, String id, ObjectNode value) {
-        state.put(genericKey(family, id), value.deepCopy());
+    private void storeGeneric(String family, String id, ObjectNode value, String region) {
+        state.put(genericKey(region, family, id), value.deepCopy());
     }
 
     private String genericId(String family, ObjectNode resource, String fallback) {
@@ -624,8 +684,12 @@ public class BedrockControlPlaneService implements Resettable {
         return slash >= 0 ? arn.substring(slash + 1) : arn;
     }
 
-    private static String genericKey(String family, String id) {
-        return "resource/" + family + "/" + id;
+    private static String genericKey(String region, String family, String id) {
+        return "region/" + region + "/resource/" + family + "/" + id;
+    }
+
+    private static String regionalKey(String region, String key) {
+        return "region/" + region + "/" + key;
     }
 
     private static String agreementKey(String modelId) { return "agreement/" + modelId; }
