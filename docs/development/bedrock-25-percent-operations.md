@@ -10,3 +10,4 @@ Each task is checked against the Amazon Bedrock API Reference and the AWS SDK fo
 | BR-004 | `ListFoundationModelAgreementOffers` | `GET /list-foundation-model-agreement-offers/{modelId}` | SDK marshaller binding verified; diff-check |
 | BR-005 | `CreateFoundationModelAgreement` | `POST /create-foundation-model-agreement` | SDK marshaller binding verified; diff-check |
 | BR-006 | `GetFoundationModel` | `GET /foundation-models/{modelIdentifier}` | SDK marshaller binding verified; diff-check |
+| BR-007 | `ListFoundationModels` | `GET /foundation-models` | SDK marshaller binding verified; diff-check |
