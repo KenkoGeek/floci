@@ -429,3 +429,5 @@ floci:
       enabled: true
     codegurureviewer:
       enabled: true
+    marketplace:
+      enabled: true
