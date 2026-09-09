@@ -27,6 +27,7 @@ The implementation follows the Amazon Bedrock API Reference and the AWS SDK for 
 | `UntagResource` | `POST /untagResource` | AWS-compatible control-plane emulation. |
 | `GetResourcePolicy` | `GET /resource-policy/{resourceArn}` | AWS-compatible control-plane emulation. |
 | `PutResourcePolicy` | `POST /resource-policy` | AWS-compatible control-plane emulation. |
+| `DeleteResourcePolicy` | `DELETE /resource-policy/{resourceArn}` | AWS-compatible control-plane emulation. |
 
 ## Configuration
 

@@ -137,6 +137,12 @@ public class BedrockControlPlaneController {
         return execute("PutResourcePolicy", body, Map.of(), headers);
     }
 
+    @DELETE
+    @Path("/resource-policy/{resourceArn:.+}")
+    public Response deleteResourcePolicy(@PathParam("resourceArn") String resourceArn, @Context HttpHeaders headers) {
+        return execute("DeleteResourcePolicy", null, Map.of("resourceArn", resourceArn), headers);
+    }
+
     private Response execute(String operation, String body, Map<String, String> path, HttpHeaders headers) {
         ObjectNode request = readRequest(body);
         BedrockControlPlaneService.Result result = service.execute(

@@ -20,3 +20,4 @@ Each task is checked against the Amazon Bedrock API Reference and the AWS SDK fo
 | BR-014 | `UntagResource` | `POST /untagResource` | SDK marshaller binding verified; diff-check |
 | BR-015 | `GetResourcePolicy` | `GET /resource-policy/{resourceArn}` | SDK marshaller binding verified; diff-check |
 | BR-016 | `PutResourcePolicy` | `POST /resource-policy` | SDK marshaller binding verified; diff-check |
+| BR-017 | `DeleteResourcePolicy` | `DELETE /resource-policy/{resourceArn}` | SDK marshaller binding verified; diff-check |
