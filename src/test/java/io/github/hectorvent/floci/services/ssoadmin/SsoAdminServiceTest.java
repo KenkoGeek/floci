@@ -424,6 +424,49 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void listApplicationAccessScopesPaginatesScopesForTheRequestedApplication() {
+        SsoApplication application = createApplication("List Scope App", "list-scope-app-token");
+        SsoApplication otherApplication = createApplication("Other Scope App", "other-scope-app-token");
+        for (String scope : java.util.List.of("api:read", "api:write")) {
+            ObjectNode put = mapper.createObjectNode();
+            put.put("ApplicationArn", application.applicationArn());
+            put.put("Scope", scope);
+            put.putArray("AuthorizedTargets").add(service.getInstanceArn());
+            service.putApplicationAccessScope(put);
+        }
+        ObjectNode other = mapper.createObjectNode();
+        other.put("ApplicationArn", otherApplication.applicationArn());
+        other.put("Scope", "other:read");
+        other.putArray("AuthorizedTargets").add(service.getInstanceArn());
+        service.putApplicationAccessScope(other);
+
+        ObjectNode request = mapper.createObjectNode();
+        request.put("ApplicationArn", application.applicationArn());
+        request.put("MaxResults", 1);
+        var first = service.listApplicationAccessScopes(request);
+        assertEquals(1, first.items().size());
+        assertEquals("api:read", first.items().get(0).scope());
+        assertEquals(java.util.List.of(service.getInstanceArn()), first.items().get(0).authorizedTargets());
+        assertNotNull(first.nextToken());
+
+        request.put("NextToken", first.nextToken());
+        var second = service.listApplicationAccessScopes(request);
+        assertEquals(1, second.items().size());
+        assertEquals("api:write", second.items().get(0).scope());
+        assertNull(second.nextToken());
+
+        ObjectNode invalidMaxResults = mapper.createObjectNode();
+        invalidMaxResults.put("ApplicationArn", application.applicationArn());
+        invalidMaxResults.put("MaxResults", 11);
+        assertError("ValidationException", () -> service.listApplicationAccessScopes(invalidMaxResults));
+
+        ObjectNode missing = mapper.createObjectNode();
+        missing.put("ApplicationArn",
+                "arn:aws:sso::123456789012:application/ssoins-7223b02a5d9f7c8e/apl-1111111111111111");
+        assertError("ResourceNotFoundException", () -> service.listApplicationAccessScopes(missing));
+    }
+
+    @Test
     void deleteApplicationAccessScopeDeletesStoredScopeAndValidatesRequest() {
         SsoApplication application = createApplication("Scope App", "scope-app-token");
         String scope = "api:read";

@@ -55,6 +55,7 @@ public class SsoAdminJsonHandler {
             case "DeleteApplication" -> deleteApplication(request);
             case "PutApplicationAccessScope" -> putApplicationAccessScope(request);
             case "GetApplicationAccessScope" -> getApplicationAccessScope(request);
+            case "ListApplicationAccessScopes" -> listApplicationAccessScopes(request);
             case "DeleteApplicationAccessScope" -> deleteApplicationAccessScope(request);
             case "DeleteApplicationAssignment" -> deleteApplicationAssignment(request);
             case "DeleteApplicationAuthenticationMethod" -> deleteApplicationAuthenticationMethod(request);
@@ -265,6 +266,22 @@ public class SsoAdminJsonHandler {
         response.put("Scope", accessScope.scope());
         ArrayNode targets = response.putArray("AuthorizedTargets");
         accessScope.authorizedTargets().forEach(targets::add);
+        return Response.ok(response).build();
+    }
+
+    private Response listApplicationAccessScopes(JsonNode request) {
+        var page = service.listApplicationAccessScopes(request);
+        ObjectNode response = mapper.createObjectNode();
+        ArrayNode scopes = response.putArray("Scopes");
+        page.items().forEach(accessScope -> {
+            ObjectNode scope = scopes.addObject();
+            scope.put("Scope", accessScope.scope());
+            ArrayNode targets = scope.putArray("AuthorizedTargets");
+            accessScope.authorizedTargets().forEach(targets::add);
+        });
+        if (page.nextToken() != null) {
+            response.put("NextToken", page.nextToken());
+        }
         return Response.ok(response).build();
     }
 

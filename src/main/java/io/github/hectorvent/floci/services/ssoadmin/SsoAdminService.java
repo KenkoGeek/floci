@@ -600,6 +600,17 @@ public class SsoAdminService implements Resettable {
                 .orElseThrow(() -> notFound("Application access scope not found: " + scope));
     }
 
+    public PaginatedResult<ApplicationAccessScope> listApplicationAccessScopes(JsonNode request) {
+        String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
+        getApplication(applicationArn);
+        List<ApplicationAccessScope> matching = applicationAccessScopes.scan(key -> true).stream()
+                .filter(accessScope -> applicationArn.equals(accessScope.applicationArn()))
+                .sorted(Comparator.comparing(ApplicationAccessScope::scope))
+                .toList();
+        return Pagination.paginate(matching, ApplicationAccessScope::scope,
+                optionalMaxResults(request), text(request, "NextToken"), 10, 10, "ValidationException");
+    }
+
     public synchronized void deleteApplicationAccessScope(JsonNode request) {
         String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
         getApplication(applicationArn);
