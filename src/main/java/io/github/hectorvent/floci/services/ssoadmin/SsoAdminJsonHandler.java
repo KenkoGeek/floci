@@ -42,6 +42,7 @@ public class SsoAdminJsonHandler {
             case "DeleteApplicationGrant" -> deleteApplicationGrant(request);
             case "ListPermissionSets" -> listPermissionSets(request);
             case "CreatePermissionSet" -> createPermissionSet(request);
+            case "DeletePermissionSet" -> deletePermissionSet(request);
             case "DescribePermissionSet" -> describePermissionSet(request);
             case "UpdatePermissionSet" -> updatePermissionSet(request);
             case "ListManagedPoliciesInPermissionSet" -> listManagedPolicies(request);
@@ -177,6 +178,13 @@ public class SsoAdminJsonHandler {
         ObjectNode response = mapper.createObjectNode();
         response.set("PermissionSet", permissionSetNode(p));
         return Response.ok(response).build();
+    }
+
+    private Response deletePermissionSet(JsonNode request) {
+        service.deletePermissionSet(
+                SsoAdminService.required(request, "InstanceArn"),
+                SsoAdminService.required(request, "PermissionSetArn"));
+        return Response.ok().build();
     }
 
     private Response describePermissionSet(JsonNode request) {
