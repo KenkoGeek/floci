@@ -48,6 +48,7 @@ Floci emulates AWS Marketplace APIs under the shared `aws-marketplace` SigV4 sig
 | `SendAgreementPaymentRequest` | Sends an agreement payment request |
 | `UpdatePurchaseOrders` | Updates purchase orders for an agreement |
 | `GetEntitlements` | - |
+| `PutDeploymentParameter` | Creates or updates an AWS Marketplace deployment parameter |
 <!-- floci:actions:end -->
 
 ## Marketplace Catalog
@@ -66,6 +67,12 @@ Agreement request acceptance persists the resulting agreement and exposes it thr
 ## Marketplace Entitlement
 
 AWS exposes this service as read-only: `GetEntitlements` is the only public operation. Floci therefore does not add a non-AWS mutation endpoint. Entitlement records are loaded from the shared `StorageFactory` backend (`marketplace-entitlements.json` in persistent mode), so tests and local environments can pre-seed AWS-shaped entitlement state while preserving account isolation.
+
+
+## Marketplace Deployment
+
+Deployment parameters and idempotency records are persisted through `StorageFactory` and isolated by AWS account.
+
 
 
 ## Configuration
