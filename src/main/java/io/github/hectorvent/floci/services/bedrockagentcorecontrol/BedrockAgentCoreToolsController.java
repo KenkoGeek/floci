@@ -78,6 +78,42 @@ public class BedrockAgentCoreToolsController {
         }
     }
 
+    @POST
+    @Path("/browser-profiles")
+    public Response listBrowserProfiles(@Context HttpHeaders headers,
+                                        @QueryParam("maxResults") String maxResultsParam,
+                                        @QueryParam("nextToken") String nextToken,
+                                        String body) {
+        String region = regionResolver.resolveRegion(headers);
+        try {
+            Integer maxResults = Pagination.parseMaxResults(maxResultsParam, "ValidationException");
+            ObjectNode request = object(body);
+            String name = request.hasNonNull("name") ? request.get("name").asText() : null;
+            var result = service.listBrowserProfiles(maxResults, nextToken, name, region);
+            ObjectNode response = objectMapper.createObjectNode();
+            var summaries = response.putArray("profileSummaries");
+            for (ObjectNode profile : result.items()) {
+                ObjectNode summary = summaries.addObject();
+                copyText(profile, summary, "createdAt");
+                copyText(profile, summary, "description");
+                copyText(profile, summary, "lastSavedAt");
+                copyText(profile, summary, "lastSavedBrowserId");
+                copyText(profile, summary, "lastSavedBrowserSessionId");
+                copyText(profile, summary, "lastUpdatedAt");
+                copyText(profile, summary, "name");
+                copyText(profile, summary, "profileArn");
+                copyText(profile, summary, "profileId");
+                copyText(profile, summary, "status");
+            }
+            if (result.nextToken() != null) {
+                response.put("nextToken", result.nextToken());
+            }
+            return Response.ok(response).build();
+        } catch (Exception e) {
+            return error(e, "listing browser profiles");
+        }
+    }
+
     @GET
     @Path("/browser-profiles/{profileId}")
     public Response getBrowserProfile(@Context HttpHeaders headers, @PathParam("profileId") String profileId) {

@@ -139,6 +139,21 @@ public class BedrockAgentCoreToolsService {
                         "Browser profile not found: " + profileId, 404));
     }
 
+    public PaginatedResult<ObjectNode> listBrowserProfiles(Integer maxResults, String nextToken,
+                                                            String name, String region) {
+        if (name != null && !name.isBlank() && !TOOL_NAME.matcher(name).matches()) {
+            throw new AwsException("ValidationException",
+                    "name must match [a-zA-Z][a-zA-Z0-9_]{0,47}", 400);
+        }
+        List<ObjectNode> profiles = storage.scan(k -> k.startsWith(prefix("browser-profile", region))).stream()
+                .map(ObjectNode::deepCopy)
+                .filter(node -> name == null || name.isBlank() || name.equals(optionalText(node, "name")))
+                .toList();
+        return Pagination.paginate(profiles,
+                node -> node.path("profileId").asText(), maxResults, nextToken,
+                100, 100, "ValidationException");
+    }
+
     public ObjectNode deleteBrowser(String browserId, String clientToken, String region) {
         if ("aws.browser.v1".equals(browserId)) {
             throw new AwsException("ValidationException", "System browser cannot be deleted", 400);
