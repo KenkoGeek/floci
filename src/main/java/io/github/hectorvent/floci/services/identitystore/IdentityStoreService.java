@@ -98,6 +98,16 @@ public class IdentityStoreService implements Resettable {
                 optionalMaxResults(request), text(request, "NextToken"), 50, 100, "ValidationException");
     }
 
+    List<Group> listGroupsForScim(String storeId) {
+        return listGroupsAll(requireStore(storeId), null);
+    }
+
+    List<Membership> listMembershipsForScim(String storeId) {
+        return listMembershipsAll(requireStore(storeId)).stream()
+                .sorted(Comparator.comparing(Membership::membershipId))
+                .toList();
+    }
+
     public Group describeGroup(JsonNode request) {
         String storeId = requireStore(required(request, "IdentityStoreId"));
         return requireGroup(storeId, requireResourceId(required(request, "GroupId"), "GroupId"));

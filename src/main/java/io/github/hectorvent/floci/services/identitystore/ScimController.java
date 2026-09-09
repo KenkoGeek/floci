@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.hectorvent.floci.core.common.AwsException;
 import io.github.hectorvent.floci.services.identitystore.model.Group;
+import io.github.hectorvent.floci.services.identitystore.model.Membership;
 import io.github.hectorvent.floci.services.identitystore.model.User;
 import io.github.hectorvent.floci.services.ssoadmin.SsoAdminService;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -19,9 +20,15 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriInfo;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -36,6 +43,12 @@ public class ScimController {
     private static final String ENTERPRISE_USER_SCHEMA = "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User";
     private static final String IDENTITYSTORE_ENTERPRISE_EXTENSION = "aws:identitystore:enterprise";
     private static final String ERROR_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:Error";
+    private static final String LIST_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:ListResponse";
+    private static final Pattern CURSOR_PATTERN = Pattern.compile("[-a-zA-Z0-9+=/:_]*");
+    private static final Pattern SINGLE_GROUP_FILTER = Pattern.compile(
+            "^(displayName|externalId|members\\.value|id) eq \\\"([^\\\"]*)\\\"$");
+    private static final Pattern DOUBLE_GROUP_FILTER = Pattern.compile(
+            "^(id|member) eq \\\"([^\\\"]*)\\\" and (id|member) eq \\\"([^\\\"]*)\\\"$");
     private static final Pattern PREFIXED_TENANT = Pattern.compile(
             "([0-9a-f]{10})-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
             Pattern.CASE_INSENSITIVE);
@@ -66,6 +79,48 @@ public class ScimController {
             request.put("IdentityStoreId", identityStoreId);
             request.put("UserId", userId);
             return Response.ok(userResponse(identityStoreService.describeUser(request))).build();
+        } catch (AwsException exception) {
+            return scimError(scimStatus(exception), exception.getMessage());
+        }
+    }
+
+    @GET
+    @Path("/Groups")
+    public Response listGroups(@PathParam("tenantId") String tenantId,
+                               @HeaderParam("Authorization") String authorization,
+                               @QueryParam("filter") String filter,
+                               @QueryParam("count") String countValue,
+                               @QueryParam("cursor") String cursor,
+                               @Context UriInfo uriInfo) {
+        try {
+            requireBearer(authorization);
+            String identityStoreId = resolveIdentityStore(tenantId);
+            validateListQueryParameters(uriInfo, List.of("filter", "count", "cursor"));
+            int count = scimCount(countValue);
+            boolean cursorPresent = uriInfo.getQueryParameters().containsKey("cursor");
+            List<Group> matching = filterScimGroups(identityStoreId, filter);
+            int offset = cursorPresent ? decodeCursor(cursor, filter) : 0;
+            if (offset > matching.size()) {
+                throw validation("cursor is invalid.");
+            }
+            int end = Math.min(offset + count, matching.size());
+
+            ObjectNode response = mapper.createObjectNode();
+            response.putArray("schemas").add(LIST_SCHEMA);
+            ArrayNode resources = response.putArray("Resources");
+            for (Group group : matching.subList(offset, end)) {
+                resources.add(groupResponse(group));
+            }
+            response.put("itemsPerPage", end - offset);
+            if (cursorPresent) {
+                if (end < matching.size()) {
+                    response.put("nextCursor", encodeCursor(end, filter));
+                }
+            } else {
+                response.put("totalResults", matching.size());
+                response.put("startIndex", 1);
+            }
+            return Response.ok(response).build();
         } catch (AwsException exception) {
             return scimError(scimStatus(exception), exception.getMessage());
         }
@@ -392,6 +447,7 @@ public class ScimController {
         response.putArray("schemas").add(GROUP_SCHEMA);
         response.put("id", group.groupId());
         response.put("displayName", group.displayName());
+        response.putArray("members");
         String externalId = scimExternalId(group.attributes().get("ExternalIds"), GROUP_SCHEMA);
         if (externalId != null) {
             response.put("externalId", externalId);
@@ -486,6 +542,115 @@ public class ScimController {
                 if (value != null && !value.isNull()) {
                     targetItem.set(field.getValue(), value.deepCopy());
                 }
+            }
+        }
+    }
+
+    private List<Group> filterScimGroups(String identityStoreId, String filter) {
+        List<Group> groups = identityStoreService.listGroupsForScim(identityStoreId);
+        if (filter == null || filter.isBlank()) {
+            if (filter != null && !filter.isEmpty()) {
+                throw validation("filter is invalid.");
+            }
+            return groups;
+        }
+
+        Matcher single = SINGLE_GROUP_FILTER.matcher(filter);
+        if (single.matches()) {
+            String attribute = single.group(1);
+            String value = single.group(2);
+            return switch (attribute) {
+                case "displayName" -> groups.stream()
+                        .filter(group -> value.equals(group.displayName()))
+                        .toList();
+                case "externalId" -> groups.stream()
+                        .filter(group -> value.equals(scimExternalId(group.attributes().get("ExternalIds"), GROUP_SCHEMA)))
+                        .toList();
+                case "id" -> groups.stream()
+                        .filter(group -> value.equals(group.groupId()))
+                        .toList();
+                case "members.value" -> groupsForMember(identityStoreId, groups, value);
+                default -> throw validation("filter is invalid.");
+            };
+        }
+
+        Matcher combined = DOUBLE_GROUP_FILTER.matcher(filter);
+        if (!combined.matches() || combined.group(1).equals(combined.group(3))) {
+            throw validation("filter is invalid.");
+        }
+        String groupId = "id".equals(combined.group(1)) ? combined.group(2) : combined.group(4);
+        String memberId = "member".equals(combined.group(1)) ? combined.group(2) : combined.group(4);
+        requireScimUser(identityStoreId, memberId);
+        boolean member = identityStoreService.listMembershipsForScim(identityStoreId).stream()
+                .anyMatch(membership -> groupId.equals(membership.groupId()) && memberId.equals(membership.userId()));
+        return member ? groups.stream().filter(group -> groupId.equals(group.groupId())).toList() : List.of();
+    }
+
+    private List<Group> groupsForMember(String identityStoreId, List<Group> groups, String memberId) {
+        requireScimUser(identityStoreId, memberId);
+        java.util.Set<String> groupIds = identityStoreService.listMembershipsForScim(identityStoreId).stream()
+                .filter(membership -> memberId.equals(membership.userId()))
+                .map(Membership::groupId)
+                .collect(java.util.stream.Collectors.toSet());
+        return groups.stream().filter(group -> groupIds.contains(group.groupId())).toList();
+    }
+
+    private void requireScimUser(String identityStoreId, String userId) {
+        ObjectNode request = mapper.createObjectNode();
+        request.put("IdentityStoreId", identityStoreId);
+        request.put("UserId", userId);
+        identityStoreService.describeUser(request);
+    }
+
+    private static int scimCount(String countValue) {
+        if (countValue == null) {
+            return 100;
+        }
+        try {
+            int count = Integer.parseInt(countValue);
+            if (count < 1 || count > 100) {
+                throw validation("count must be between 1 and 100.");
+            }
+            return count;
+        } catch (NumberFormatException exception) {
+            throw validation("count must be between 1 and 100.");
+        }
+    }
+
+    private static String encodeCursor(int offset, String filter) {
+        String fingerprint = filter == null ? "" : filter;
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(
+                (offset + "\n" + fingerprint).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static int decodeCursor(String cursor, String filter) {
+        if (cursor == null || cursor.isEmpty()) {
+            return 0;
+        }
+        if (!CURSOR_PATTERN.matcher(cursor).matches()) {
+            throw validation("cursor is invalid.");
+        }
+        try {
+            String decoded = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+            int separator = decoded.indexOf('\n');
+            if (separator <= 0) {
+                throw validation("cursor is invalid.");
+            }
+            int offset = Integer.parseInt(decoded.substring(0, separator));
+            String expectedFilter = filter == null ? "" : filter;
+            if (offset < 0 || !expectedFilter.equals(decoded.substring(separator + 1))) {
+                throw validation("cursor is invalid or filter parameters changed between pagination requests.");
+            }
+            return offset;
+        } catch (IllegalArgumentException exception) {
+            throw validation("cursor is invalid.");
+        }
+    }
+
+    private static void validateListQueryParameters(UriInfo uriInfo, List<String> allowed) {
+        for (String parameter : uriInfo.getQueryParameters().keySet()) {
+            if (!allowed.contains(parameter)) {
+                throw validation("Unsupported query parameter: " + parameter);
             }
         }
     }
