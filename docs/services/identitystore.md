@@ -60,6 +60,8 @@ Floci also accepts IAM Identity Center SCIM v2 requests under `/{tenant_id}/scim
 
 `ListGroups` is supported through `GET /{tenant_id}/scim/v2/Groups`. It implements IAM Identity Center's `displayName`, `externalId`, `members.value`, `id`, and combined `id`/`member` equality filters, `count` from 1 through 100, and the AWS cursor pagination contract. The first cursor request uses an empty `cursor`; subsequent cursors preserve the original filter and reject filter changes. Non-paginated responses contain `totalResults`, `startIndex`, and `itemsPerPage`, while cursor responses use `itemsPerPage` and `nextCursor`. Group resources expose an empty `members` list, matching the IAM Identity Center SCIM limitation.
 
+`ListUsers` is supported through `GET /{tenant_id}/scim/v2/Users`. It implements the AWS-supported `userName`, `externalId`, `groups.value`, `id`, and combined `id`/`manager` equality filters, the same 1-100 `count` limit, and IAM Identity Center cursor pagination semantics including filter immutability between pages. The unsupported SCIM query parameters `startIndex`, `attributes`, and `excludedAttributes` are rejected.
+
 SCIM validation failures use the standard `urn:ietf:params:scim:api:messages:2.0:Error` response shape. See the [IAM Identity Center SCIM implementation](https://docs.aws.amazon.com/singlesignon/latest/developerguide/what-is-scim.html) and [CreateGroup](https://docs.aws.amazon.com/singlesignon/latest/developerguide/creategroup.html) documentation.
 
 ## AWS-compatible failures

@@ -320,6 +320,98 @@ class ScimIntegrationTest {
     }
 
     @Test
+    void listUsersSupportsAwsFiltersAndCursorPagination() {
+        String managerId = given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"userName\":\"manager-list@example.com\",\"displayName\":\"List Manager\","
+                        + "\"name\":{\"givenName\":\"List\",\"familyName\":\"Manager\"}}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(201)
+                .extract().path("id");
+
+        String userId = given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"externalId\":\"list-users-ext\",\"userName\":\"list-users@example.com\","
+                        + "\"displayName\":\"SCIM List Users Target\","
+                        + "\"name\":{\"givenName\":\"List\",\"familyName\":\"Users\"},"
+                        + "\"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User\":{"
+                        + "\"manager\":{\"value\":\"" + managerId + "\"}}}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(201)
+                .extract().path("id");
+
+        String groupId = given()
+                .contentType("application/json")
+                .header("Authorization", BEARER)
+                .body("{\"displayName\":\"SCIM List Users Group\",\"members\":[{\"value\":\""
+                        + userId + "\",\"type\":\"User\"}]}")
+            .when()
+                .post("/" + TENANT + "/scim/v2/Groups")
+            .then()
+                .statusCode(201)
+                .extract().path("id");
+
+        given()
+                .header("Authorization", BEARER)
+                .queryParam("filter", "userName eq \"list-users@example.com\"")
+            .when()
+                .get("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(200)
+                .body("totalResults", equalTo(1))
+                .body("Resources[0].id", equalTo(userId));
+
+        given()
+                .header("Authorization", BEARER)
+                .queryParam("filter", "groups.value eq \"" + groupId + "\"")
+            .when()
+                .get("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(200)
+                .body("Resources.id", hasItem(userId));
+
+        given()
+                .header("Authorization", BEARER)
+                .queryParam("filter", "id eq \"" + userId + "\" and manager eq \"" + managerId + "\"")
+            .when()
+                .get("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(200)
+                .body("totalResults", equalTo(1))
+                .body("Resources[0].id", equalTo(userId));
+
+        String nextCursor = given()
+                .header("Authorization", BEARER)
+                .queryParam("cursor", "")
+                .queryParam("count", 1)
+            .when()
+                .get("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(200)
+                .body("itemsPerPage", equalTo(1))
+                .body("totalResults", org.hamcrest.Matchers.nullValue())
+                .body("startIndex", org.hamcrest.Matchers.nullValue())
+                .body("nextCursor", notNullValue())
+                .extract().path("nextCursor");
+
+        given()
+                .header("Authorization", BEARER)
+                .queryParam("cursor", nextCursor)
+                .queryParam("filter", "userName eq \"changed@example.com\"")
+            .when()
+                .get("/" + TENANT + "/scim/v2/Users")
+            .then()
+                .statusCode(400)
+                .body("status", equalTo("400"));
+    }
+
+    @Test
     void listGroupsSupportsAwsFiltersAndCursorPagination() {
         String userId = given()
                 .contentType("application/json")
