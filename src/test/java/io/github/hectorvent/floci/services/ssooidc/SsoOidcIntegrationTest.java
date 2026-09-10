@@ -93,8 +93,9 @@ class SsoOidcIntegrationTest {
             .then().statusCode(200)
             .extract().response();
 
+        String userCode = authorization.path("userCode");
         given()
-                .queryParam("user_code", authorization.path("userCode"))
+                .queryParam("user_code", userCode)
                 .queryParam("principal_id", "11111111-2222-3333-4444-555555555555")
             .when().get("/device")
             .then().statusCode(403)
