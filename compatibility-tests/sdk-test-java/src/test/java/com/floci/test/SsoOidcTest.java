@@ -43,7 +43,7 @@ class SsoOidcTest {
             var client = oidc.registerClient(request -> request
                     .clientName("Floci Device SDK")
                     .clientType("public")
-                    .grantTypes("urn:ietf:params:oauth:grant-type:device_code"));
+                    .grantTypes("urn:ietf:params:oauth:grant-type:device_code", "refresh_token"));
             var response = oidc.startDeviceAuthorization(request -> request
                     .clientId(client.clientId())
                     .clientSecret(client.clientSecret())
