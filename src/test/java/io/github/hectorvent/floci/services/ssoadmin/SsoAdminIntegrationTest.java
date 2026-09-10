@@ -503,6 +503,41 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void putAndGetApplicationAuthenticationMethodRoundTripsActorPolicy() {
+        String applicationArn = given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.CreateApplication")
+            .body("{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
+                    + "\"ApplicationProviderArn\":\"arn:aws:sso::aws:applicationProvider/custom\","
+                    + "\"Name\":\"Put Authentication Integration\"}")
+        .when().post("/")
+        .then().statusCode(200)
+            .extract().path("ApplicationArn");
+
+        String body = "{\"ApplicationArn\":\"" + applicationArn + "\","
+                + "\"AuthenticationMethodType\":\"IAM\","
+                + "\"AuthenticationMethod\":{\"Iam\":{\"ActorPolicy\":{\"Version\":\"2012-10-17\","
+                + "\"Statement\":[]}}}}";
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.PutApplicationAuthenticationMethod")
+            .body(body)
+        .when().post("/")
+        .then().statusCode(200).body(org.hamcrest.Matchers.emptyOrNullString());
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.GetApplicationAuthenticationMethod")
+            .body("{\"ApplicationArn\":\"" + applicationArn + "\",\"AuthenticationMethodType\":\"IAM\"}")
+        .when().post("/")
+        .then().statusCode(200)
+            .body("AuthenticationMethod.Iam.ActorPolicy.Version", equalTo("2012-10-17"));
+    }
+
+    @Test
     void getApplicationAuthenticationMethodReturnsNotFoundWhenIamMethodIsAbsent() {
         String applicationArn = given()
             .contentType("application/x-amz-json-1.1")

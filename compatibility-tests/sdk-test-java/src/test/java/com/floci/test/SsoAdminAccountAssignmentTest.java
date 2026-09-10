@@ -319,6 +319,25 @@ class SsoAdminAccountAssignmentTest {
                     .name("SDK Delete Authentication Method"))
                     .applicationArn();
 
+            var putMethod = sso.putApplicationAuthenticationMethod(request -> request
+                    .applicationArn(applicationArn)
+                    .authenticationMethodType("IAM")
+                    .authenticationMethod(method -> method.iam(iam -> iam.actorPolicy(
+                            software.amazon.awssdk.core.document.Document.mapBuilder()
+                                    .putString("Version", "2012-10-17")
+                                    .putDocument("Statement", software.amazon.awssdk.core.document.Document.fromList(
+                                            java.util.List.of()))
+                                    .build()))));
+            assertThat(putMethod.sdkHttpResponse().isSuccessful()).isTrue();
+            var fetchedMethod = sso.getApplicationAuthenticationMethod(request -> request
+                    .applicationArn(applicationArn)
+                    .authenticationMethodType("IAM"));
+            assertThat(fetchedMethod.authenticationMethod().iam().actorPolicy().asMap().get("Version").asString())
+                    .isEqualTo("2012-10-17");
+
+            sso.deleteApplicationAuthenticationMethod(request -> request
+                    .applicationArn(applicationArn)
+                    .authenticationMethodType("IAM"));
             assertThatThrownBy(() -> sso.getApplicationAuthenticationMethod(request -> request
                     .applicationArn(applicationArn)
                     .authenticationMethodType("IAM")))
