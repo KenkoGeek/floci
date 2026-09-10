@@ -319,6 +319,15 @@ class SsoAdminAccountAssignmentTest {
                     .name("SDK Delete Authentication Method"))
                     .applicationArn();
 
+            assertThatThrownBy(() -> sso.getApplicationAuthenticationMethod(request -> request
+                    .applicationArn(applicationArn)
+                    .authenticationMethodType("IAM")))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ResourceNotFoundException.class);
+            assertThatThrownBy(() -> sso.getApplicationAuthenticationMethod(request -> request
+                    .applicationArn(applicationArn)
+                    .authenticationMethodType("SAML")))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ValidationException.class);
+
             assertThatThrownBy(() -> sso.deleteApplicationAuthenticationMethod(request -> request
                     .applicationArn(applicationArn)
                     .authenticationMethodType("IAM")))
