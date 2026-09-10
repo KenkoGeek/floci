@@ -3,6 +3,7 @@ package io.github.hectorvent.floci.services.ssoportal;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.hectorvent.floci.services.ssoportal.model.PortalAccountInfo;
 import io.github.hectorvent.floci.services.ssoportal.model.PortalRoleInfo;
+import io.github.hectorvent.floci.services.ssoportal.model.PortalRoleCredentials;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
@@ -24,6 +25,22 @@ public class SsoPortalController {
     public SsoPortalController(SsoPortalService service, ObjectMapper objectMapper) {
         this.service = service;
         this.objectMapper = objectMapper;
+    }
+
+    @GET
+    @Path("/federation/credentials")
+    public Response getRoleCredentials(
+            @HeaderParam("x-amz-sso_bearer_token") String accessToken,
+            @QueryParam("account_id") String accountId,
+            @QueryParam("role_name") String roleName) {
+        PortalRoleCredentials credentials = service.getRoleCredentials(accessToken, accountId, roleName);
+        var response = objectMapper.createObjectNode();
+        var roleCredentials = response.putObject("roleCredentials");
+        roleCredentials.put("accessKeyId", credentials.accessKeyId());
+        roleCredentials.put("expiration", credentials.expiration());
+        roleCredentials.put("secretAccessKey", credentials.secretAccessKey());
+        roleCredentials.put("sessionToken", credentials.sessionToken());
+        return Response.ok(response).build();
     }
 
     @GET

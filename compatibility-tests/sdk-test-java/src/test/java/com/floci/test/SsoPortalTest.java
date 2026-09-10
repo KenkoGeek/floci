@@ -2,6 +2,9 @@ package com.floci.test;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.identitystore.IdentitystoreClient;
 import software.amazon.awssdk.services.identitystore.model.CreateUserRequest;
 import software.amazon.awssdk.services.sso.SsoClient;
@@ -9,6 +12,7 @@ import software.amazon.awssdk.services.ssoadmin.SsoAdminClient;
 import software.amazon.awssdk.services.ssoadmin.model.PrincipalType;
 import software.amazon.awssdk.services.ssoadmin.model.TargetType;
 import software.amazon.awssdk.services.ssooidc.SsoOidcClient;
+import software.amazon.awssdk.services.sts.StsClient;
 
 import java.net.URI;
 import java.net.URLEncoder;
@@ -85,6 +89,31 @@ class SsoPortalTest {
             assertThat(roles.roleList())
                     .extracting(software.amazon.awssdk.services.sso.model.RoleInfo::roleName)
                     .contains("PortalSdk" + suffix);
+
+            var credentials = portal.getRoleCredentials(request -> request
+                    .accessToken(accessToken)
+                    .accountId(accountId)
+                    .roleName("PortalSdk" + suffix))
+                    .roleCredentials();
+            assertThat(credentials.accessKeyId()).startsWith("ASIA").hasSize(20);
+            assertThat(credentials.secretAccessKey()).hasSize(40);
+            assertThat(credentials.sessionToken()).isNotBlank();
+            assertThat(credentials.expiration()).isGreaterThan(System.currentTimeMillis());
+
+            try (StsClient sts = StsClient.builder()
+                    .endpointOverride(TestFixtures.endpoint())
+                    .region(Region.US_EAST_1)
+                    .credentialsProvider(StaticCredentialsProvider.create(AwsSessionCredentials.create(
+                            credentials.accessKeyId(), credentials.secretAccessKey(), credentials.sessionToken())))
+                    .build()) {
+                assertThat(sts.getCallerIdentity().account()).isEqualTo(accountId);
+            }
+
+            assertThatThrownBy(() -> portal.getRoleCredentials(request -> request
+                    .accessToken(accessToken)
+                    .accountId(accountId)
+                    .roleName("NotAssigned")))
+                    .isInstanceOf(software.amazon.awssdk.services.sso.model.ResourceNotFoundException.class);
 
             assertThatThrownBy(() -> portal.listAccounts(request -> request.accessToken("invalid")))
                     .isInstanceOf(software.amazon.awssdk.services.sso.model.UnauthorizedException.class);
