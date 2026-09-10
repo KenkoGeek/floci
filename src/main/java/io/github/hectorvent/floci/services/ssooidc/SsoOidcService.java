@@ -285,9 +285,10 @@ public class SsoOidcService implements Resettable {
             throw new SsoOidcException("invalid_grant", "Refresh token belongs to another client", 400);
         }
         if (prior.refreshTokenExpiresAtEpochSeconds() <= System.currentTimeMillis() / 1000L) {
-            tokenSessions.delete("refresh:" + refreshToken);
+            revokeTokenPair(prior);
             throw new SsoOidcException("expired_token", "Refresh token has expired", 400);
         }
+        revokeTokenPair(prior);
         return issueToken(client, prior.principalId());
     }
 
@@ -337,6 +338,7 @@ public class SsoOidcService implements Resettable {
         if (!prior.scopes().containsAll(grantedScopes)) {
             throw new SsoOidcException("invalid_scope", "Requested scopes exceed the refresh token scopes", 400);
         }
+        revokeTokenPair(prior);
         return issueToken(applicationArn, grantedScopes, true, prior.principalId());
     }
 
@@ -378,10 +380,22 @@ public class SsoOidcService implements Resettable {
         TokenSession session = tokenSessions.get("access:" + accessToken)
                 .orElseThrow(() -> new SsoOidcException("invalid_grant", "Access token is invalid", 400));
         if (session.accessTokenExpiresAtEpochSeconds() <= System.currentTimeMillis() / 1000L) {
-            tokenSessions.delete("access:" + accessToken);
+            revokeTokenPair(session);
             throw new SsoOidcException("expired_token", "Access token has expired", 400);
         }
         return session;
+    }
+
+    public synchronized void revokeAccessTokenSession(String accessToken) {
+        TokenSession session = requireAccessToken(accessToken);
+        revokeTokenPair(session);
+    }
+
+    private void revokeTokenPair(TokenSession session) {
+        tokenSessions.delete("access:" + session.accessToken());
+        if (session.refreshToken() != null) {
+            tokenSessions.delete("refresh:" + session.refreshToken());
+        }
     }
 
     public TokenSession issueIamToken(String applicationArn, List<String> scopes, boolean issueRefreshToken) {

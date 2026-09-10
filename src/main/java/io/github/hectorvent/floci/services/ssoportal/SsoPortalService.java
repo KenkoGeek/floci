@@ -111,6 +111,11 @@ public class SsoPortalService {
         return new PortalRoleCredentials(accessKeyId, expiration.toEpochMilli(), secretAccessKey, sessionToken);
     }
 
+    public void logout(String accessToken) {
+        requirePortalSession(accessToken);
+        oidcService.revokeAccessTokenSession(accessToken);
+    }
+
     public TokenSession requirePortalSession(String accessToken) {
         if (accessToken == null || accessToken.isBlank()) {
             throw unauthorized("The access token is missing or invalid.");
