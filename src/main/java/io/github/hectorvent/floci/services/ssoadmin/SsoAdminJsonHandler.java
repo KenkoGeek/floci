@@ -65,6 +65,7 @@ public class SsoAdminJsonHandler {
             case "PutApplicationAuthenticationMethod" -> putApplicationAuthenticationMethod(request);
             case "DeleteApplicationAuthenticationMethod" -> deleteApplicationAuthenticationMethod(request);
             case "GetApplicationGrant" -> getApplicationGrant(request);
+            case "PutApplicationGrant" -> putApplicationGrant(request);
             case "DeleteApplicationGrant" -> deleteApplicationGrant(request);
             case "ListPermissionSets" -> listPermissionSets(request);
             case "CreatePermissionSet" -> createPermissionSet(request);
@@ -407,6 +408,11 @@ public class SsoAdminJsonHandler {
     private Response getApplicationGrant(JsonNode request) {
         var grant = service.getApplicationGrant(request);
         return Response.ok(mapper.createObjectNode().set("Grant", grant.grant())).build();
+    }
+
+    private Response putApplicationGrant(JsonNode request) {
+        service.putApplicationGrant(request);
+        return Response.ok().build();
     }
 
     private Response deleteApplicationGrant(JsonNode request) {
