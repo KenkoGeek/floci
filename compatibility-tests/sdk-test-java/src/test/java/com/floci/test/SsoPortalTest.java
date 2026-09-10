@@ -14,7 +14,6 @@ import software.amazon.awssdk.services.sts.StsClient;
 
 import java.net.URI;
 import java.net.URLEncoder;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -132,7 +131,7 @@ class SsoPortalTest {
             URI advertisedUri = URI.create(verificationUriComplete + separator + "principal_id="
                     + URLEncoder.encode(userId, StandardCharsets.UTF_8));
             URI uri = TestFixtures.endpoint().resolve(advertisedUri.getRawPath() + "?" + advertisedUri.getRawQuery());
-            HttpResponse<String> response = HttpClient.newHttpClient().send(
+            HttpResponse<String> response = TestFixtures.emulatorHttpClient().send(
                     HttpRequest.newBuilder(uri).GET().build(), HttpResponse.BodyHandlers.ofString());
             assertThat(response.statusCode()).isEqualTo(200);
         } catch (java.io.IOException e) {

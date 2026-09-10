@@ -61,7 +61,7 @@ class SsoOidcTest {
                 var uri = TestFixtures.endpoint().resolve(
                         advertisedUri.getRawPath() + "?" + advertisedUri.getRawQuery());
                 var request = java.net.http.HttpRequest.newBuilder(uri).GET().build();
-                var browserResponse = java.net.http.HttpClient.newHttpClient().send(
+                var browserResponse = TestFixtures.emulatorHttpClient().send(
                         request, java.net.http.HttpResponse.BodyHandlers.ofString());
                 assertThat(browserResponse.statusCode()).isEqualTo(200);
             } catch (java.io.IOException e) {
