@@ -61,6 +61,7 @@ public class SsoAdminJsonHandler {
             case "DeleteApplicationAccessScope" -> deleteApplicationAccessScope(request);
             case "DeleteApplicationAssignment" -> deleteApplicationAssignment(request);
             case "GetApplicationAuthenticationMethod" -> getApplicationAuthenticationMethod(request);
+            case "ListApplicationAuthenticationMethods" -> listApplicationAuthenticationMethods(request);
             case "PutApplicationAuthenticationMethod" -> putApplicationAuthenticationMethod(request);
             case "DeleteApplicationAuthenticationMethod" -> deleteApplicationAuthenticationMethod(request);
             case "DeleteApplicationGrant" -> deleteApplicationGrant(request);
@@ -374,6 +375,21 @@ public class SsoAdminJsonHandler {
         var method = service.getApplicationAuthenticationMethod(request);
         ObjectNode response = mapper.createObjectNode();
         response.set("AuthenticationMethod", method.authenticationMethod());
+        return Response.ok(response).build();
+    }
+
+    private Response listApplicationAuthenticationMethods(JsonNode request) {
+        var page = service.listApplicationAuthenticationMethods(request);
+        ObjectNode response = mapper.createObjectNode();
+        ArrayNode methods = response.putArray("AuthenticationMethods");
+        page.items().forEach(method -> {
+            ObjectNode item = methods.addObject();
+            item.put("AuthenticationMethodType", method.authenticationMethodType());
+            item.set("AuthenticationMethod", method.authenticationMethod());
+        });
+        if (page.nextToken() != null) {
+            response.put("NextToken", page.nextToken());
+        }
         return Response.ok(response).build();
     }
 

@@ -550,6 +550,30 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void listApplicationAuthenticationMethodsReturnsOnlyMethodsForRequestedApplication() {
+        SsoApplication application = createApplication("List Authentication App", "list-authentication-app-token");
+        SsoApplication otherApplication = createApplication("Other Authentication App", "other-authentication-app-token");
+        ObjectNode method = mapper.createObjectNode();
+        method.putObject("Iam").putObject("ActorPolicy").put("Version", "2012-10-17");
+        applicationAuthenticationMethods.put(
+                SsoAdminService.applicationAuthenticationMethodKey(application.applicationArn(), "IAM"),
+                new ApplicationAuthenticationMethod(application.applicationArn(), "IAM", method));
+        applicationAuthenticationMethods.put(
+                SsoAdminService.applicationAuthenticationMethodKey(otherApplication.applicationArn(), "IAM"),
+                new ApplicationAuthenticationMethod(otherApplication.applicationArn(), "IAM", method.deepCopy()));
+
+        ObjectNode request = mapper.createObjectNode().put("ApplicationArn", application.applicationArn());
+        var result = service.listApplicationAuthenticationMethods(request);
+        assertEquals(1, result.items().size());
+        assertEquals("IAM", result.items().get(0).authenticationMethodType());
+        assertEquals(method, result.items().get(0).authenticationMethod());
+        assertNull(result.nextToken());
+
+        ObjectNode badToken = request.deepCopy().put("NextToken", "not-a-token");
+        assertError("ValidationException", () -> service.listApplicationAuthenticationMethods(badToken));
+    }
+
+    @Test
     void putApplicationAuthenticationMethodCreatesAndUpdatesIamActorPolicy() {
         SsoApplication application = createApplication("Put Authentication App", "put-authentication-app-token");
         ObjectNode request = mapper.createObjectNode();

@@ -775,6 +775,17 @@ public class SsoAdminService implements Resettable {
                         "Application authentication method not found: " + authenticationMethodType));
     }
 
+    public PaginatedResult<ApplicationAuthenticationMethod> listApplicationAuthenticationMethods(JsonNode request) {
+        String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
+        getApplication(applicationArn);
+        List<ApplicationAuthenticationMethod> matching = applicationAuthenticationMethods.scan(key -> true).stream()
+                .filter(method -> applicationArn.equals(method.applicationArn()))
+                .sorted(Comparator.comparing(ApplicationAuthenticationMethod::authenticationMethodType))
+                .toList();
+        return Pagination.paginate(matching, ApplicationAuthenticationMethod::authenticationMethodType,
+                null, text(request, "NextToken"), 100, 100, "ValidationException");
+    }
+
     public synchronized void putApplicationAuthenticationMethod(JsonNode request) {
         String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
         getApplication(applicationArn);
