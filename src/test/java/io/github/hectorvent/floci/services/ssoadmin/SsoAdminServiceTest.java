@@ -550,6 +550,33 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void putApplicationAuthenticationMethodCreatesAndUpdatesIamActorPolicy() {
+        SsoApplication application = createApplication("Put Authentication App", "put-authentication-app-token");
+        ObjectNode request = mapper.createObjectNode();
+        request.put("ApplicationArn", application.applicationArn());
+        request.put("AuthenticationMethodType", "IAM");
+        ObjectNode method = request.putObject("AuthenticationMethod");
+        method.putObject("Iam").putObject("ActorPolicy").put("Version", "2012-10-17");
+
+        service.putApplicationAuthenticationMethod(request);
+        var stored = service.getApplicationAuthenticationMethod(request);
+        assertEquals(method, stored.authenticationMethod());
+
+        method.withObject("Iam").withObject("ActorPolicy").put("Id", "updated");
+        service.putApplicationAuthenticationMethod(request);
+        assertEquals("updated", service.getApplicationAuthenticationMethod(request)
+                .authenticationMethod().path("Iam").path("ActorPolicy").path("Id").asText());
+
+        ObjectNode missingActorPolicy = request.deepCopy();
+        ((ObjectNode) missingActorPolicy.path("AuthenticationMethod").path("Iam")).remove("ActorPolicy");
+        assertError("ValidationException", () -> service.putApplicationAuthenticationMethod(missingActorPolicy));
+
+        ObjectNode wrongUnion = request.deepCopy();
+        ((ObjectNode) wrongUnion.path("AuthenticationMethod")).set("Other", mapper.createObjectNode());
+        assertError("ValidationException", () -> service.putApplicationAuthenticationMethod(wrongUnion));
+    }
+
+    @Test
     void deleteApplicationAuthenticationMethodDeletesIamMethodAndValidatesType() {
         SsoApplication application = createApplication("Authentication App", "authentication-app-token");
         String key = SsoAdminService.applicationAuthenticationMethodKey(application.applicationArn(), "IAM");
