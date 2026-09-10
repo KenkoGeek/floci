@@ -9,6 +9,7 @@ import io.github.hectorvent.floci.services.ssooidc.SsoOidcException;
 import io.github.hectorvent.floci.services.ssooidc.SsoOidcService;
 import io.github.hectorvent.floci.services.ssooidc.model.TokenSession;
 import io.github.hectorvent.floci.services.ssoportal.model.PortalAccountInfo;
+import io.github.hectorvent.floci.services.ssoportal.model.PortalRoleInfo;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -47,6 +48,26 @@ public class SsoPortalService {
         Integer pageSize = Pagination.parseMaxResults(maxResults, "InvalidRequestException");
         List<PortalAccountInfo> values = accounts.values().stream().toList();
         return Pagination.paginate(values, PortalAccountInfo::accountId,
+                pageSize, nextToken, 100, 100, "InvalidRequestException");
+    }
+
+    public PaginatedResult<PortalRoleInfo> listAccountRoles(
+            String accessToken, String accountId, String maxResults, String nextToken) {
+        TokenSession session = requirePortalSession(accessToken);
+        if (accountId == null || !accountId.matches("\\d{12}")) {
+            throw new AwsException("InvalidRequestException", "accountId must be a 12-digit AWS account identifier.", 400);
+        }
+        Map<String, PortalRoleInfo> roles = new LinkedHashMap<>();
+        ssoAdminService.portalAssignmentsForUser(session.principalId()).stream()
+                .filter(assignment -> accountId.equals(assignment.accountId()))
+                .forEach(assignment -> {
+                    var permissionSet = ssoAdminService.permissionSetForPortal(assignment.permissionSetArn());
+                    roles.putIfAbsent(assignment.permissionSetArn(),
+                            new PortalRoleInfo(accountId, permissionSet.name()));
+                });
+        Integer pageSize = Pagination.parseMaxResults(maxResults, "InvalidRequestException");
+        List<PortalRoleInfo> values = roles.values().stream().toList();
+        return Pagination.paginate(values, PortalRoleInfo::roleName,
                 pageSize, nextToken, 100, 100, "InvalidRequestException");
     }
 
