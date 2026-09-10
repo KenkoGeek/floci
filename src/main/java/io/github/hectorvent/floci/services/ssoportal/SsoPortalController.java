@@ -2,6 +2,7 @@ package io.github.hectorvent.floci.services.ssoportal;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.hectorvent.floci.services.ssoportal.model.PortalAccountInfo;
+import io.github.hectorvent.floci.services.ssoportal.model.PortalRoleInfo;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
@@ -23,6 +24,27 @@ public class SsoPortalController {
     public SsoPortalController(SsoPortalService service, ObjectMapper objectMapper) {
         this.service = service;
         this.objectMapper = objectMapper;
+    }
+
+    @GET
+    @Path("/assignment/roles")
+    public Response listAccountRoles(
+            @HeaderParam("x-amz-sso_bearer_token") String accessToken,
+            @QueryParam("account_id") String accountId,
+            @QueryParam("max_result") String maxResults,
+            @QueryParam("next_token") String nextToken) {
+        var page = service.listAccountRoles(accessToken, accountId, maxResults, nextToken);
+        var response = objectMapper.createObjectNode();
+        var roles = response.putArray("roleList");
+        for (PortalRoleInfo role : page.items()) {
+            var item = roles.addObject();
+            item.put("accountId", role.accountId());
+            item.put("roleName", role.roleName());
+        }
+        if (page.nextToken() != null) {
+            response.put("nextToken", page.nextToken());
+        }
+        return Response.ok(response).build();
     }
 
     @GET

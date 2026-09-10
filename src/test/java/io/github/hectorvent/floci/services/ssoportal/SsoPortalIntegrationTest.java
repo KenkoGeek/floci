@@ -63,6 +63,20 @@ class SsoPortalIntegrationTest {
                 .body("accountList.accountId", hasItems("111111111111", "222222222222"));
 
         given()
+                .header("x-amz-sso_bearer_token", accessToken)
+                .queryParam("account_id", "111111111111")
+            .when().get("/assignment/roles")
+            .then().statusCode(200)
+                .body("roleList[0].accountId", org.hamcrest.Matchers.equalTo("111111111111"))
+                .body("roleList[0].roleName", org.hamcrest.Matchers.equalTo("PortalDirect" + suffix));
+
+        given()
+                .header("x-amz-sso_bearer_token", accessToken)
+            .when().get("/assignment/roles")
+            .then().statusCode(400)
+                .body("__type", containsString("InvalidRequestException"));
+
+        given()
             .when().get("/assignment/accounts")
             .then().statusCode(401)
                 .body("__type", containsString("UnauthorizedException"));

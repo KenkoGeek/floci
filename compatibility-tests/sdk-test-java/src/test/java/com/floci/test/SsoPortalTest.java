@@ -78,6 +78,14 @@ class SsoPortalTest {
                     .extracting(software.amazon.awssdk.services.sso.model.AccountInfo::accountId)
                     .contains(accountId);
 
+            var roles = portal.listAccountRoles(request -> request
+                    .accessToken(accessToken)
+                    .accountId(accountId)
+                    .maxResults(100));
+            assertThat(roles.roleList())
+                    .extracting(software.amazon.awssdk.services.sso.model.RoleInfo::roleName)
+                    .contains("PortalSdk" + suffix);
+
             assertThatThrownBy(() -> portal.listAccounts(request -> request.accessToken("invalid")))
                     .isInstanceOf(software.amazon.awssdk.services.sso.model.UnauthorizedException.class);
         }
