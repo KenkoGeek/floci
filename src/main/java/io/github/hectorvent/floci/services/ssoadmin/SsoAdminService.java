@@ -224,6 +224,9 @@ public class SsoAdminService implements Resettable {
         if (identityStoreId == null) {
             return false;
         }
+        if (IDENTITY_STORE_ID.equals(identityStoreId)) {
+            ensureBootstrapInstance(defaultAccountId, defaultRegion);
+        }
         if (instances.scan(key -> true).stream()
                 .anyMatch(instance -> identityStoreId.equals(instance.identityStoreId()))) {
             return true;

@@ -32,10 +32,12 @@ class StorageFactoryDuplicateBackendTest {
 
     @BeforeEach
     void reset() throws IOException {
-        // StorageFactory is an application-scoped singleton, so a backend for this file may already
-        // exist and hold in-memory state from app startup. Clear all backends (wipes memory + disk),
-        // then remove the file so both create() calls below start from an empty store.
-        storageFactory.clearAll();
+        // StorageFactory is application-scoped and may already hold this DynamoDB backend from
+        // application startup. Clear only the store exercised by this regression test. Calling
+        // clearAll() here also wipes bootstrap state owned by unrelated services, including IAM
+        // Identity Center, which makes later SCIM integration tests fail with 401 in the same JVM.
+        TypeReference<Map<String, String>> typeRef = new TypeReference<>() {};
+        storageFactory.create("dynamodb", FILE_NAME, typeRef).clear();
         Files.deleteIfExists(Path.of(STORAGE_PATH, FILE_NAME));
     }
 

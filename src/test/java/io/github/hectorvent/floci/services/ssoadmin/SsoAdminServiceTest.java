@@ -46,6 +46,7 @@ class SsoAdminServiceTest {
     private InMemoryStorage<String, ApplicationAccessScope> applicationAccessScopes;
     private InMemoryStorage<String, ApplicationAuthenticationMethod> applicationAuthenticationMethods;
     private InMemoryStorage<String, ApplicationGrant> applicationGrants;
+    private InMemoryStorage<String, SsoInstance> instances;
 
     @BeforeEach
     void setUp() {
@@ -54,6 +55,7 @@ class SsoAdminServiceTest {
         applicationAccessScopes = new InMemoryStorage<>();
         applicationAuthenticationMethods = new InMemoryStorage<>();
         applicationGrants = new InMemoryStorage<>();
+        instances = new InMemoryStorage<>();
         service = new SsoAdminService(
                 new InMemoryStorage<String, PermissionSet>(),
                 new InMemoryStorage<String, Assignment>(),
@@ -72,7 +74,7 @@ class SsoAdminServiceTest {
                 applicationGrants,
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, Map<String, String>>(),
-                new InMemoryStorage<String, SsoInstance>(),
+                instances,
                 new InMemoryStorage<String, InstanceUpdateState>(),
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, Boolean>(),
@@ -85,6 +87,18 @@ class SsoAdminServiceTest {
                 ACCOUNT_ID,
                 "us-east-1");
         service.ensureBootstrapInstance(ACCOUNT_ID, "us-east-1");
+    }
+
+    @Test
+    void hasIdentityStoreRestoresBootstrapUnlessInstanceWasDeleted() {
+        String identityStoreId = service.getIdentityStoreId();
+        instances.clear();
+
+        assertTrue(service.hasIdentityStore(identityStoreId));
+
+        ObjectNode delete = mapper.createObjectNode().put("InstanceArn", service.getInstanceArn());
+        service.deleteInstance(delete, ACCOUNT_ID);
+        assertFalse(service.hasIdentityStore(identityStoreId));
     }
 
     @Test
