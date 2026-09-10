@@ -67,6 +67,7 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, Boolean>(),
                 applicationAuthenticationMethods,
                 applicationGrants,
+                new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, SsoInstance>(),
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, Boolean>(),
@@ -619,6 +620,22 @@ class SsoAdminServiceTest {
         ObjectNode invalidType = request.deepCopy();
         invalidType.put("AuthenticationMethodType", "SAML");
         assertError("ValidationException", () -> service.deleteApplicationAuthenticationMethod(invalidType));
+    }
+
+    @Test
+    void getApplicationSessionConfigurationDefaultsCustomApplicationsToDisabled() {
+        SsoApplication application = createApplication("Session Config App", "session-config-app-token");
+        ObjectNode request = mapper.createObjectNode().put("ApplicationArn", application.applicationArn());
+
+        assertEquals("DISABLED", service.getApplicationSessionConfiguration(request));
+
+        ObjectNode malformed = mapper.createObjectNode().put("ApplicationArn", "not-an-arn");
+        assertError("ValidationException", () -> service.getApplicationSessionConfiguration(malformed));
+
+        ObjectNode missing = mapper.createObjectNode();
+        missing.put("ApplicationArn",
+                "arn:aws:sso::123456789012:application/ssoins-7223b02a5d9f7c8e/apl-1111111111111111");
+        assertError("ResourceNotFoundException", () -> service.getApplicationSessionConfiguration(missing));
     }
 
     @Test
@@ -1435,6 +1452,7 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, Boolean>(),
                 new InMemoryStorage<String, ApplicationAuthenticationMethod>(),
                 new InMemoryStorage<String, ApplicationGrant>(),
+                new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, SsoInstance>(),
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, Boolean>(),
