@@ -46,6 +46,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | `PutApplicationAuthenticationMethod` | Creates or updates the IAM authentication method and actor policy for an IAM Identity Center application. |
 | `DeleteApplicationAuthenticationMethod` | Deletes the IAM authentication method configured for an IAM Identity Center application. |
 | `GetApplicationGrant` | Returns the configured OAuth 2.0 grant union for an IAM Identity Center application. |
+| `ListApplicationGrants` | Lists configured OAuth 2.0 grants and their union configuration for an IAM Identity Center application. |
 | `PutApplicationGrant` | Creates or updates a supported OAuth 2.0 grant configuration for an IAM Identity Center application. |
 | `DeleteApplicationGrant` | Deletes a supported OAuth 2.0 grant configuration from an IAM Identity Center application. |
 | `ListPermissionSets` | Lists permission sets with AWS-compatible pagination. |

@@ -389,6 +389,12 @@ class SsoAdminAccountAssignmentTest {
                     .grantType("authorization_code"));
             assertThat(fetchedGrant.grant().authorizationCode().redirectUris())
                     .containsExactly("https://example.com/callback");
+            var listedGrants = sso.listApplicationGrants(request -> request.applicationArn(applicationArn));
+            assertThat(listedGrants.grants()).singleElement().satisfies(grant -> {
+                assertThat(grant.grantTypeAsString()).isEqualTo("authorization_code");
+                assertThat(grant.grant().authorizationCode().redirectUris())
+                        .containsExactly("https://example.com/callback");
+            });
             sso.deleteApplicationGrant(request -> request
                     .applicationArn(applicationArn)
                     .grantType("authorization_code"));

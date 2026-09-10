@@ -832,6 +832,17 @@ public class SsoAdminService implements Resettable {
                 .orElseThrow(() -> notFound("Application grant not found: " + grantType));
     }
 
+    public PaginatedResult<ApplicationGrant> listApplicationGrants(JsonNode request) {
+        String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
+        getApplication(applicationArn);
+        List<ApplicationGrant> matching = applicationGrants.scan(key -> true).stream()
+                .filter(grant -> applicationArn.equals(grant.applicationArn()))
+                .sorted(Comparator.comparing(ApplicationGrant::grantType))
+                .toList();
+        return Pagination.paginate(matching, ApplicationGrant::grantType,
+                null, text(request, "NextToken"), 100, 100, "ValidationException");
+    }
+
     public synchronized void putApplicationGrant(JsonNode request) {
         String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
         getApplication(applicationArn);

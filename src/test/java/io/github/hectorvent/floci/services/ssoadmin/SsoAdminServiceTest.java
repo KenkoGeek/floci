@@ -622,6 +622,32 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void listApplicationGrantsReturnsOnlyGrantsForRequestedApplication() {
+        SsoApplication application = createApplication("List Grant App", "list-grant-app-token");
+        SsoApplication otherApplication = createApplication("Other Grant App", "other-grant-app-token");
+        ObjectNode authorizationCode = mapper.createObjectNode();
+        authorizationCode.putObject("AuthorizationCode").putArray("RedirectUris").add("https://example.com/callback");
+        applicationGrants.put(SsoAdminService.applicationGrantKey(application.applicationArn(), "authorization_code"),
+                new ApplicationGrant(application.applicationArn(), "authorization_code", authorizationCode));
+        ObjectNode refreshToken = mapper.createObjectNode();
+        refreshToken.putObject("RefreshToken");
+        applicationGrants.put(SsoAdminService.applicationGrantKey(application.applicationArn(), "refresh_token"),
+                new ApplicationGrant(application.applicationArn(), "refresh_token", refreshToken));
+        applicationGrants.put(SsoAdminService.applicationGrantKey(otherApplication.applicationArn(), "refresh_token"),
+                new ApplicationGrant(otherApplication.applicationArn(), "refresh_token", refreshToken.deepCopy()));
+
+        ObjectNode request = mapper.createObjectNode().put("ApplicationArn", application.applicationArn());
+        var result = service.listApplicationGrants(request);
+        assertEquals(2, result.items().size());
+        assertEquals("authorization_code", result.items().get(0).grantType());
+        assertEquals("refresh_token", result.items().get(1).grantType());
+        assertNull(result.nextToken());
+
+        ObjectNode badToken = request.deepCopy().put("NextToken", "not-a-token");
+        assertError("ValidationException", () -> service.listApplicationGrants(badToken));
+    }
+
+    @Test
     void putApplicationGrantValidatesUnionAndPersistsSupportedGrantTypes() {
         SsoApplication application = createApplication("Put Grant App", "put-grant-app-token");
         ObjectNode request = mapper.createObjectNode();
