@@ -129,6 +129,7 @@ nav:
     - Security Hub: services/securityhub.md
     - Amazon Detective: services/detective.md
     - Control Catalog: services/controlcatalog.md
+    - AWS Marketplace: services/marketplace.md
     - Control Tower: services/controltower.md
     - AWS Service Catalog: services/service-catalog.md
     - ElastiCache: services/elasticache.md

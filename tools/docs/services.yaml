@@ -81,6 +81,10 @@ services:
       - TagResourceByBody
       - TagResourcePut
       - UntagResourceByQuery
+  - service: marketplace
+    doc: docs/services/marketplace.md
+    sources:
+      - { path: src/main/java/io/github/hectorvent/floci/services/marketplace/MarketplaceCatalogController.java, mode: rest }
   - service: comprehend
     doc: docs/services/comprehend.md
     sources:

@@ -282,6 +282,11 @@
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>controlcatalog</artifactId>
         </dependency>
+        <!-- AWS Marketplace Catalog client -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>marketplacecatalog</artifactId>
+        </dependency>
         <!-- IAM Access Analyzer client -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>

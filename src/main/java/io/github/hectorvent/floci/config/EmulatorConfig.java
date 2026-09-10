@@ -744,6 +744,7 @@ public interface EmulatorConfig {
         LakeFormationServiceConfig lakeformation();
         EfsServiceConfig efs();
         CodeGuruReviewerServiceConfig codegurureviewer();
+        MarketplaceServiceConfig marketplace();
     }
 
     interface ConnectServiceConfig {
@@ -807,6 +808,11 @@ public interface EmulatorConfig {
     }
 
     interface CodeGuruReviewerServiceConfig {
+        @WithDefault("true")
+        boolean enabled();
+    }
+
+    interface MarketplaceServiceConfig {
         @WithDefault("true")
         boolean enabled();
     }

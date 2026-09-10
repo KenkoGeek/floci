@@ -49,6 +49,7 @@ import io.github.hectorvent.floci.services.rum.RumController;
 import io.github.hectorvent.floci.services.s3vectors.S3VectorsController;
 import io.github.hectorvent.floci.services.s3tables.S3TablesController;
 import io.github.hectorvent.floci.services.efs.EfsController;
+import io.github.hectorvent.floci.services.marketplace.MarketplaceCatalogController;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -640,7 +641,12 @@ public class ResolvedServiceCatalog {
                         "codegurureviewer", config.storage().mode(), 5000L, null, ServiceProtocol.REST_JSON,
                         protocols(ServiceProtocol.REST_JSON),
                         Set.of(), Set.of("codeguru-reviewer"), Set.of(),
-                        Set.of(io.github.hectorvent.floci.services.codegurureviewer.CodeGuruReviewerController.class))
+                        Set.of(io.github.hectorvent.floci.services.codegurureviewer.CodeGuruReviewerController.class)),
+                descriptor("marketplace", "marketplace", config.services().marketplace().enabled(), true,
+                        "marketplace", config.storage().mode(), 5000L, null, ServiceProtocol.REST_JSON,
+                        protocols(ServiceProtocol.REST_JSON),
+                        Set.of(), Set.of("aws-marketplace"), Set.of(),
+                        Set.of(MarketplaceCatalogController.class))
         ));
     }
 
