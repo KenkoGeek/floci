@@ -47,7 +47,7 @@ Operation counts are exact. For dispatch-table services (Query and JSON 1.1) eac
 | [AWS Account Management](account.md) | `/putAlternateContact`, `/getAlternateContact` | REST JSON | 2 |
 | [IAM Access Analyzer](access-analyzer.md) | `/analyzer`, `/analyzer/{name}` | REST JSON | 3 |
 | [IAM Identity Center (SSO Admin)](ssoadmin.md) | `POST /` + `X-Amz-Target: SWBExternalService.*` | JSON 1.1 | 13 |
-| [IAM Identity Center OIDC](ssooidc.md) | `/client/register` | REST JSON | 1 |
+| [IAM Identity Center OIDC](ssooidc.md) | `/client/register`, `/device_authorization` | REST JSON | 2 |
 | [Identity Store](identitystore.md) | `POST /` + `X-Amz-Target: AWSIdentityStore.*` | JSON 1.1 | 19 |
 | [Amazon Macie](macie2.md) | `/admin`, `/macie`, `/admin/configuration` | REST JSON | 6 |
 | [Amazon Inspector](inspector2.md) | `/delegatedadminaccounts/*`, `/status/batch/get`, `/enable`, `/organizationconfiguration/*` | REST JSON | 7 |

@@ -30,6 +30,39 @@ class SsoOidcIntegrationTest {
     }
 
     @Test
+    void startDeviceAuthorizationUsesRegisteredClient() {
+        var registration = given()
+                .contentType("application/json")
+                .body("{\"clientName\":\"Device Integration\",\"clientType\":\"public\","
+                        + "\"grantTypes\":[\"urn:ietf:params:oauth:grant-type:device_code\"]}")
+            .when().post("/client/register")
+            .then().statusCode(200)
+            .extract().response();
+        String clientId = registration.path("clientId");
+        String clientSecret = registration.path("clientSecret");
+
+        given()
+                .contentType("application/json")
+                .body("{\"clientId\":\"" + clientId + "\",\"clientSecret\":\"" + clientSecret
+                        + "\",\"startUrl\":\"https://example.awsapps.com/start\"}")
+            .when().post("/device_authorization")
+            .then().statusCode(200)
+                .body("deviceCode", matchesPattern("[0-9a-f]{64}"))
+                .body("userCode", matchesPattern("[0-9A-F]{4}-[0-9A-F]{4}"))
+                .body("verificationUri", equalTo("http://localhost:4566/device"))
+                .body("expiresIn", greaterThan(0))
+                .body("interval", equalTo(5));
+
+        given()
+                .contentType("application/json")
+                .body("{\"clientId\":\"" + clientId + "\",\"clientSecret\":\"wrong\","
+                        + "\"startUrl\":\"https://example.awsapps.com/start\"}")
+            .when().post("/device_authorization")
+            .then().statusCode(401)
+                .body("error", equalTo("invalid_client"));
+    }
+
+    @Test
     void registerClientReturnsOidcErrorShape() {
         given()
                 .contentType("application/json")

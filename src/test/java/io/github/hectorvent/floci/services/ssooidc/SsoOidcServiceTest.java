@@ -18,7 +18,7 @@ class SsoOidcServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new SsoOidcService(new InMemoryStorage<>(), "http://localhost:4566/");
+        service = new SsoOidcService(new InMemoryStorage<>(), new InMemoryStorage<>(), "http://localhost:4566/");
     }
 
     @Test
@@ -42,6 +42,31 @@ class SsoOidcServiceTest {
         assertEquals(client, service.requireClient(client.clientId()));
         assertEquals("http://localhost:4566/authorize", service.authorizationEndpoint());
         assertEquals("http://localhost:4566/token", service.tokenEndpoint());
+    }
+
+    @Test
+    void startDeviceAuthorizationValidatesCredentialsAndPersistsChallenge() {
+        ObjectNode register = mapper.createObjectNode();
+        register.put("clientName", "Device Client");
+        register.put("clientType", "public");
+        register.putArray("grantTypes").add("urn:ietf:params:oauth:grant-type:device_code");
+        RegisteredClient client = service.registerClient(register);
+
+        ObjectNode request = mapper.createObjectNode();
+        request.put("clientId", client.clientId());
+        request.put("clientSecret", client.clientSecret());
+        request.put("startUrl", "https://example.awsapps.com/start");
+        var authorization = service.startDeviceAuthorization(request);
+
+        assertEquals(client.clientId(), authorization.clientId());
+        assertEquals(64, authorization.deviceCode().length());
+        assertTrue(authorization.userCode().matches("[0-9A-F]{4}-[0-9A-F]{4}"));
+        assertEquals(authorization, service.requireDeviceAuthorization(authorization.deviceCode()));
+        assertEquals("http://localhost:4566/device", service.verificationUri());
+        assertTrue(service.verificationUriComplete(authorization).endsWith("user_code=" + authorization.userCode()));
+
+        ObjectNode wrongSecret = request.deepCopy().put("clientSecret", "wrong");
+        assertOidcError("invalid_client", () -> service.startDeviceAuthorization(wrongSecret));
     }
 
     @Test
