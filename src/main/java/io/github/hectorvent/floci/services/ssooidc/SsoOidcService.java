@@ -6,12 +6,18 @@ import io.github.hectorvent.floci.config.EmulatorConfig;
 import io.github.hectorvent.floci.core.common.Resettable;
 import io.github.hectorvent.floci.core.storage.StorageBackend;
 import io.github.hectorvent.floci.core.storage.StorageFactory;
+import io.github.hectorvent.floci.services.ssooidc.model.AuthorizationCode;
 import io.github.hectorvent.floci.services.ssooidc.model.DeviceAuthorization;
 import io.github.hectorvent.floci.services.ssooidc.model.RegisteredClient;
+import io.github.hectorvent.floci.services.ssooidc.model.TokenSession;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +30,9 @@ public class SsoOidcService implements Resettable {
     private static final long CLIENT_SECRET_LIFETIME_SECONDS = 90L * 24L * 60L * 60L;
     private static final int DEVICE_CODE_LIFETIME_SECONDS = 600;
     private static final int DEVICE_POLL_INTERVAL_SECONDS = 5;
+    private static final int AUTHORIZATION_CODE_LIFETIME_SECONDS = 300;
+    private static final int ACCESS_TOKEN_LIFETIME_SECONDS = 3600;
+    private static final long REFRESH_TOKEN_LIFETIME_SECONDS = 30L * 24L * 60L * 60L;
     private static final Set<String> SUPPORTED_GRANT_TYPES = Set.of(
             "authorization_code",
             "urn:ietf:params:oauth:grant-type:device_code",
@@ -33,6 +42,8 @@ public class SsoOidcService implements Resettable {
 
     private final StorageBackend<String, RegisteredClient> clients;
     private final StorageBackend<String, DeviceAuthorization> deviceAuthorizations;
+    private final StorageBackend<String, AuthorizationCode> authorizationCodes;
+    private final StorageBackend<String, TokenSession> tokenSessions;
     private final String baseUrl;
 
     @Inject
@@ -41,14 +52,22 @@ public class SsoOidcService implements Resettable {
                         new TypeReference<Map<String, RegisteredClient>>() {}),
                 storageFactory.create("ssooidc", "ssooidc-device-authorizations.json",
                         new TypeReference<Map<String, DeviceAuthorization>>() {}),
+                storageFactory.create("ssooidc", "ssooidc-authorization-codes.json",
+                        new TypeReference<Map<String, AuthorizationCode>>() {}),
+                storageFactory.create("ssooidc", "ssooidc-token-sessions.json",
+                        new TypeReference<Map<String, TokenSession>>() {}),
                 trimTrailingSlash(config.effectiveBaseUrl()));
     }
 
     SsoOidcService(StorageBackend<String, RegisteredClient> clients,
                    StorageBackend<String, DeviceAuthorization> deviceAuthorizations,
+                   StorageBackend<String, AuthorizationCode> authorizationCodes,
+                   StorageBackend<String, TokenSession> tokenSessions,
                    String baseUrl) {
         this.clients = clients;
         this.deviceAuthorizations = deviceAuthorizations;
+        this.authorizationCodes = authorizationCodes;
+        this.tokenSessions = tokenSessions;
         this.baseUrl = trimTrailingSlash(baseUrl);
     }
 
@@ -129,9 +148,140 @@ public class SsoOidcService implements Resettable {
                 startUrl,
                 now + DEVICE_CODE_LIFETIME_SECONDS,
                 DEVICE_POLL_INTERVAL_SECONDS,
-                false);
+                false,
+                0L);
         deviceAuthorizations.put(deviceCode, authorization);
         return authorization;
+    }
+
+    public synchronized DeviceAuthorization authorizeDevice(String userCode) {
+        if (userCode == null || userCode.isBlank()) {
+            throw new SsoOidcException("invalid_request", "user_code is required", 400);
+        }
+        DeviceAuthorization authorization = deviceAuthorizations.scan(key -> true).stream()
+                .filter(item -> userCode.equals(item.userCode()))
+                .findFirst()
+                .orElseThrow(() -> new SsoOidcException("invalid_grant", "User code is invalid", 400));
+        if (authorization.expiresAtEpochSeconds() <= System.currentTimeMillis() / 1000L) {
+            throw new SsoOidcException("expired_token", "Device code has expired", 400);
+        }
+        DeviceAuthorization authorized = new DeviceAuthorization(
+                authorization.deviceCode(), authorization.userCode(), authorization.clientId(), authorization.startUrl(),
+                authorization.expiresAtEpochSeconds(), authorization.intervalSeconds(), true,
+                authorization.lastPollAtEpochMillis());
+        deviceAuthorizations.put(authorization.deviceCode(), authorized);
+        return authorized;
+    }
+
+    public synchronized AuthorizationCode createAuthorizationCode(
+            String clientId, String redirectUri, String codeChallenge) {
+        RegisteredClient client = requireClient(clientId);
+        if (!client.grantTypes().isEmpty() && !client.grantTypes().contains("authorization_code")) {
+            throw new SsoOidcException("unauthorized_client", "Client is not registered for authorization code", 400);
+        }
+        if (redirectUri == null || redirectUri.isBlank() || !client.redirectUris().contains(redirectUri)) {
+            throw new SsoOidcException("invalid_redirect_uri", "Redirect URI is not registered", 400);
+        }
+        if (codeChallenge == null || codeChallenge.isBlank()) {
+            throw new SsoOidcException("invalid_request", "code_challenge is required", 400);
+        }
+        String code = randomToken();
+        AuthorizationCode authorizationCode = new AuthorizationCode(
+                code, clientId, redirectUri, codeChallenge,
+                System.currentTimeMillis() / 1000L + AUTHORIZATION_CODE_LIFETIME_SECONDS);
+        authorizationCodes.put(code, authorizationCode);
+        return authorizationCode;
+    }
+
+    public synchronized TokenSession createToken(JsonNode request) {
+        String clientId = requiredText(request, "clientId");
+        String clientSecret = requiredText(request, "clientSecret");
+        RegisteredClient client = requireClientCredentials(clientId, clientSecret);
+        String grantType = requiredText(request, "grantType");
+        if (!SUPPORTED_GRANT_TYPES.contains(grantType)) {
+            throw new SsoOidcException("unsupported_grant_type", "Unsupported grant type: " + grantType, 400);
+        }
+        if (!client.grantTypes().isEmpty() && !client.grantTypes().contains(grantType)) {
+            throw new SsoOidcException("unauthorized_client", "Client is not registered for this grant type", 400);
+        }
+
+        return switch (grantType) {
+            case "urn:ietf:params:oauth:grant-type:device_code" -> createTokenFromDeviceCode(request, client);
+            case "authorization_code" -> createTokenFromAuthorizationCode(request, client);
+            case "refresh_token" -> createTokenFromRefreshToken(request, client);
+            default -> throw new SsoOidcException("unsupported_grant_type", "Unsupported grant type", 400);
+        };
+    }
+
+    private TokenSession createTokenFromDeviceCode(JsonNode request, RegisteredClient client) {
+        String deviceCode = requiredText(request, "deviceCode");
+        DeviceAuthorization authorization = requireDeviceAuthorization(deviceCode);
+        if (!client.clientId().equals(authorization.clientId())) {
+            throw new SsoOidcException("invalid_grant", "Device code belongs to another client", 400);
+        }
+        long nowSeconds = System.currentTimeMillis() / 1000L;
+        long nowMillis = System.currentTimeMillis();
+        if (authorization.expiresAtEpochSeconds() <= nowSeconds) {
+            deviceAuthorizations.delete(deviceCode);
+            throw new SsoOidcException("expired_token", "Device code has expired", 400);
+        }
+        if (authorization.lastPollAtEpochMillis() > 0
+                && nowMillis - authorization.lastPollAtEpochMillis() < authorization.intervalSeconds() * 1000L) {
+            throw new SsoOidcException("slow_down", "Token polling is too frequent", 400);
+        }
+        if (!authorization.authorized()) {
+            deviceAuthorizations.put(deviceCode, new DeviceAuthorization(
+                    authorization.deviceCode(), authorization.userCode(), authorization.clientId(), authorization.startUrl(),
+                    authorization.expiresAtEpochSeconds(), authorization.intervalSeconds(), false, nowMillis));
+            throw new SsoOidcException("authorization_pending", "Device authorization is pending", 400);
+        }
+        deviceAuthorizations.delete(deviceCode);
+        return issueToken(client);
+    }
+
+    private TokenSession createTokenFromAuthorizationCode(JsonNode request, RegisteredClient client) {
+        String code = requiredText(request, "code");
+        String codeVerifier = requiredText(request, "codeVerifier");
+        String redirectUri = requiredText(request, "redirectUri");
+        AuthorizationCode authorizationCode = authorizationCodes.get(code)
+                .orElseThrow(() -> new SsoOidcException("invalid_grant", "Authorization code is invalid", 400));
+        if (authorizationCode.expiresAtEpochSeconds() <= System.currentTimeMillis() / 1000L) {
+            authorizationCodes.delete(code);
+            throw new SsoOidcException("expired_token", "Authorization code has expired", 400);
+        }
+        if (!client.clientId().equals(authorizationCode.clientId())
+                || !redirectUri.equals(authorizationCode.redirectUri())
+                || !pkceChallenge(codeVerifier).equals(authorizationCode.codeChallenge())) {
+            throw new SsoOidcException("invalid_grant", "Authorization code validation failed", 400);
+        }
+        authorizationCodes.delete(code);
+        return issueToken(client);
+    }
+
+    private TokenSession createTokenFromRefreshToken(JsonNode request, RegisteredClient client) {
+        String refreshToken = requiredText(request, "refreshToken");
+        TokenSession prior = tokenSessions.get("refresh:" + refreshToken)
+                .orElseThrow(() -> new SsoOidcException("invalid_grant", "Refresh token is invalid", 400));
+        if (!client.clientId().equals(prior.clientId())) {
+            throw new SsoOidcException("invalid_grant", "Refresh token belongs to another client", 400);
+        }
+        if (prior.refreshTokenExpiresAtEpochSeconds() <= System.currentTimeMillis() / 1000L) {
+            tokenSessions.delete("refresh:" + refreshToken);
+            throw new SsoOidcException("expired_token", "Refresh token has expired", 400);
+        }
+        return issueToken(client);
+    }
+
+    private TokenSession issueToken(RegisteredClient client) {
+        long now = System.currentTimeMillis() / 1000L;
+        String accessToken = randomToken();
+        String refreshToken = randomToken();
+        TokenSession session = new TokenSession(
+                accessToken, refreshToken, client.clientId(), client.scopes(),
+                now + ACCESS_TOKEN_LIFETIME_SECONDS, now + REFRESH_TOKEN_LIFETIME_SECONDS);
+        tokenSessions.put("access:" + accessToken, session);
+        tokenSessions.put("refresh:" + refreshToken, session);
+        return session;
     }
 
     public RegisteredClient requireClient(String clientId) {
@@ -180,6 +330,8 @@ public class SsoOidcService implements Resettable {
     public void clear() {
         clients.clear();
         deviceAuthorizations.clear();
+        authorizationCodes.clear();
+        tokenSessions.clear();
     }
 
     private static String requiredText(JsonNode request, String field) {
@@ -222,6 +374,21 @@ public class SsoOidcService implements Resettable {
 
     private static SsoOidcException invalidClientMetadata(String description) {
         return new SsoOidcException("invalid_client_metadata", description, 400);
+    }
+
+    private static String randomToken() {
+        return UUID.randomUUID().toString().replace("-", "")
+                + UUID.randomUUID().toString().replace("-", "");
+    }
+
+    private static String pkceChallenge(String verifier) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(verifier.getBytes(StandardCharsets.US_ASCII));
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is unavailable", e);
+        }
     }
 
     private static String trimTrailingSlash(String value) {

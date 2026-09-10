@@ -18,7 +18,9 @@ class SsoOidcServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new SsoOidcService(new InMemoryStorage<>(), new InMemoryStorage<>(), "http://localhost:4566/");
+        service = new SsoOidcService(
+                new InMemoryStorage<>(), new InMemoryStorage<>(), new InMemoryStorage<>(),
+                new InMemoryStorage<>(), "http://localhost:4566/");
     }
 
     @Test
@@ -67,6 +69,79 @@ class SsoOidcServiceTest {
 
         ObjectNode wrongSecret = request.deepCopy().put("clientSecret", "wrong");
         assertOidcError("invalid_client", () -> service.startDeviceAuthorization(wrongSecret));
+    }
+
+    @Test
+    void createTokenSupportsDeviceAndRefreshGrants() {
+        ObjectNode register = mapper.createObjectNode();
+        register.put("clientName", "Token Client");
+        register.put("clientType", "public");
+        register.putArray("grantTypes")
+                .add("urn:ietf:params:oauth:grant-type:device_code")
+                .add("refresh_token");
+        RegisteredClient client = service.registerClient(register);
+        ObjectNode start = mapper.createObjectNode();
+        start.put("clientId", client.clientId());
+        start.put("clientSecret", client.clientSecret());
+        start.put("startUrl", "https://example.awsapps.com/start");
+        var authorization = service.startDeviceAuthorization(start);
+
+        ObjectNode token = mapper.createObjectNode();
+        token.put("clientId", client.clientId());
+        token.put("clientSecret", client.clientSecret());
+        token.put("grantType", "urn:ietf:params:oauth:grant-type:device_code");
+        token.put("deviceCode", authorization.deviceCode());
+        assertOidcError("authorization_pending", () -> service.createToken(token));
+        assertOidcError("slow_down", () -> service.createToken(token));
+
+        var approvedAuthorization = service.startDeviceAuthorization(start);
+        service.authorizeDevice(approvedAuthorization.userCode());
+        token.put("deviceCode", approvedAuthorization.deviceCode());
+        var session = service.createToken(token);
+        assertEquals("Token Client", client.clientName());
+        assertEquals(64, session.accessToken().length());
+        assertEquals(64, session.refreshToken().length());
+
+        ObjectNode refresh = mapper.createObjectNode();
+        refresh.put("clientId", client.clientId());
+        refresh.put("clientSecret", client.clientSecret());
+        refresh.put("grantType", "refresh_token");
+        refresh.put("refreshToken", session.refreshToken());
+        assertEquals(client.clientId(), service.createToken(refresh).clientId());
+    }
+
+    @Test
+    void createTokenSupportsAuthorizationCodePkce() {
+        ObjectNode register = mapper.createObjectNode();
+        register.put("clientName", "PKCE Client");
+        register.put("clientType", "public");
+        register.putArray("grantTypes").add("authorization_code");
+        register.putArray("redirectUris").add("http://127.0.0.1:8400/callback");
+        RegisteredClient client = service.registerClient(register);
+        String verifier = "01234567890123456789012345678901234567890123456789";
+        String challenge = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+                sha256(verifier));
+        var code = service.createAuthorizationCode(client.clientId(),
+                "http://127.0.0.1:8400/callback", challenge);
+
+        ObjectNode token = mapper.createObjectNode();
+        token.put("clientId", client.clientId());
+        token.put("clientSecret", client.clientSecret());
+        token.put("grantType", "authorization_code");
+        token.put("code", code.code());
+        token.put("codeVerifier", verifier);
+        token.put("redirectUri", "http://127.0.0.1:8400/callback");
+        assertEquals(client.clientId(), service.createToken(token).clientId());
+        assertOidcError("invalid_grant", () -> service.createToken(token));
+    }
+
+    private static byte[] sha256(String value) {
+        try {
+            return java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     @Test

@@ -13,11 +13,14 @@ Floci emulates the IAM Identity Center OIDC registration and token endpoints use
 | --- | --- |
 | `RegisterClient` | Registers a public OIDC client, persists its generated client credentials, and returns local authorization and token endpoints. |
 | `StartDeviceAuthorization` | Validates a registered public client and creates a persisted short-lived device authorization challenge. |
+| `CreateToken` | Exchanges device, PKCE authorization-code, or refresh-token grants for persisted bearer and refresh tokens. |
 <!-- floci:actions:end -->
 
 `RegisterClient` supports the authorization-code, device-code, and refresh-token grant identifiers documented by AWS. Client registrations are persisted so later device authorization and token operations can authenticate the generated client ID and secret.
 
 `StartDeviceAuthorization` validates the client credentials and stores the generated device and user codes for later token polling. Floci uses a 10-minute device-code lifetime and a 5-second polling interval as local emulator defaults.
+
+`CreateToken` supports all three AWS-documented public-client grants. Device authorization can be completed locally by visiting the returned `/device?user_code=...` URL. Authorization Code uses the local `/authorize` endpoint with PKCE S256 and registered redirect URIs. Floci issues one-hour access tokens and 30-day refresh tokens as emulator defaults; the public API documentation does not define fixed lifetimes for these values. The `scope` request is intentionally ignored because AWS states that this operation always grants the scopes configured during client registration.
 
 OIDC failures use the AWS response shape with `error` and `error_description`. The local emulator assigns a 90-day client-secret lifetime; AWS documents the expiration timestamp but does not publish a fixed lifetime for this operation.
 

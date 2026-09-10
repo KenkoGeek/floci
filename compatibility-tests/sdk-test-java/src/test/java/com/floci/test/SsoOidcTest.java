@@ -53,6 +53,34 @@ class SsoOidcTest {
             assertThat(response.verificationUriComplete()).contains("user_code=" + response.userCode());
             assertThat(response.expiresIn()).isPositive();
             assertThat(response.interval()).isEqualTo(5);
+
+            try {
+                var request = java.net.http.HttpRequest.newBuilder(java.net.URI.create(response.verificationUriComplete())).GET().build();
+                var browserResponse = java.net.http.HttpClient.newHttpClient().send(
+                        request, java.net.http.HttpResponse.BodyHandlers.ofString());
+                assertThat(browserResponse.statusCode()).isEqualTo(200);
+            } catch (java.io.IOException e) {
+                throw new RuntimeException(e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
+            }
+
+            var token = oidc.createToken(request -> request
+                    .clientId(client.clientId())
+                    .clientSecret(client.clientSecret())
+                    .grantType("urn:ietf:params:oauth:grant-type:device_code")
+                    .deviceCode(response.deviceCode()));
+            assertThat(token.tokenType()).isEqualTo("Bearer");
+            assertThat(token.accessToken()).isNotBlank();
+            assertThat(token.refreshToken()).isNotBlank();
+
+            var refreshed = oidc.createToken(request -> request
+                    .clientId(client.clientId())
+                    .clientSecret(client.clientSecret())
+                    .grantType("refresh_token")
+                    .refreshToken(token.refreshToken()));
+            assertThat(refreshed.accessToken()).isNotEqualTo(token.accessToken());
         }
     }
 }
