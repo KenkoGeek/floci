@@ -41,6 +41,16 @@ class SsoAdminAccountAssignmentTest {
                 assertThat(region.statusAsString()).isEqualTo("ACTIVE");
             });
 
+            var removed = sso.removeRegion(request -> request
+                    .instanceArn(instanceArn)
+                    .regionName("ap-southeast-3"));
+            assertThat(removed.statusAsString()).isEqualTo("REMOVING");
+            assertThatThrownBy(() -> sso.describeRegion(request -> request
+                    .instanceArn(instanceArn)
+                    .regionName("ap-southeast-3")))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ResourceNotFoundException.class);
+
+            sso.addRegion(request -> request.instanceArn(instanceArn).regionName("ap-southeast-3"));
             assertThatThrownBy(() -> sso.addRegion(request -> request
                     .instanceArn(instanceArn)
                     .regionName("ap-southeast-3")))

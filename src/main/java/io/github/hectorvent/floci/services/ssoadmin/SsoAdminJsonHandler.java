@@ -41,6 +41,7 @@ public class SsoAdminJsonHandler {
             case "ListTrustedTokenIssuers" -> listTrustedTokenIssuers(request);
             case "DeleteTrustedTokenIssuer" -> deleteTrustedTokenIssuer(request);
             case "AddRegion" -> addRegion(request);
+            case "RemoveRegion" -> removeRegion(request, region);
             case "DescribeRegion" -> describeRegion(request);
             case "ListRegions" -> listRegions(request);
             case "ListTagsForResource" -> listTagsForResource(request);
@@ -236,6 +237,11 @@ public class SsoAdminJsonHandler {
 
     private Response addRegion(JsonNode request) {
         var region = service.addRegion(request);
+        return Response.ok(mapper.createObjectNode().put("Status", region.status())).build();
+    }
+
+    private Response removeRegion(JsonNode request, String requestRegion) {
+        var region = service.removeRegion(request, requestRegion);
         return Response.ok(mapper.createObjectNode().put("Status", region.status())).build();
     }
 

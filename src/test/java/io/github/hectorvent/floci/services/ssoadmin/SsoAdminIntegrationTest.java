@@ -103,6 +103,35 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void removeRegionReturnsRemovingAndCompletesLocalRemoval() {
+        String request = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\",\"RegionName\":\"ap-south-2\"}";
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.AddRegion")
+            .body(request)
+        .when().post("/")
+        .then().statusCode(200).body("Status", equalTo("ADDING"));
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.RemoveRegion")
+            .body(request)
+        .when().post("/")
+        .then().statusCode(200).body("Status", equalTo("REMOVING"));
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.DescribeRegion")
+            .body(request)
+        .when().post("/")
+        .then().statusCode(400)
+            .body("__type", org.hamcrest.Matchers.containsString("ResourceNotFoundException"));
+    }
+
+    @Test
     void listTagsForResourceReturnsPermissionSetCreationTags() {
         String instanceArn = "arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e";
         String permissionSetArn = given()
