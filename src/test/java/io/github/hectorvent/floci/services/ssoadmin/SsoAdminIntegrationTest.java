@@ -535,6 +535,17 @@ class SsoAdminIntegrationTest {
         .when().post("/")
         .then().statusCode(200)
             .body("AuthenticationMethod.Iam.ActorPolicy.Version", equalTo("2012-10-17"));
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.ListApplicationAuthenticationMethods")
+            .body("{\"ApplicationArn\":\"" + applicationArn + "\"}")
+        .when().post("/")
+        .then().statusCode(200)
+            .body("AuthenticationMethods.size()", equalTo(1))
+            .body("AuthenticationMethods[0].AuthenticationMethodType", equalTo("IAM"))
+            .body("AuthenticationMethods[0].AuthenticationMethod.Iam.ActorPolicy.Version", equalTo("2012-10-17"));
     }
 
     @Test

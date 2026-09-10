@@ -334,6 +334,13 @@ class SsoAdminAccountAssignmentTest {
                     .authenticationMethodType("IAM"));
             assertThat(fetchedMethod.authenticationMethod().iam().actorPolicy().asMap().get("Version").asString())
                     .isEqualTo("2012-10-17");
+            var listedMethods = sso.listApplicationAuthenticationMethods(request -> request
+                    .applicationArn(applicationArn));
+            assertThat(listedMethods.authenticationMethods()).singleElement().satisfies(method -> {
+                assertThat(method.authenticationMethodTypeAsString()).isEqualTo("IAM");
+                assertThat(method.authenticationMethod().iam().actorPolicy().asMap().get("Version").asString())
+                        .isEqualTo("2012-10-17");
+            });
 
             sso.deleteApplicationAuthenticationMethod(request -> request
                     .applicationArn(applicationArn)
