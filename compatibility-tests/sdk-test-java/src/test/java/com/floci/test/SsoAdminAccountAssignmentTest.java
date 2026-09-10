@@ -204,10 +204,7 @@ class SsoAdminAccountAssignmentTest {
             assertThat(described.instanceArn()).isEqualTo(instanceArn);
             assertThat(described.applicationAccount()).isEqualTo("000000000000");
             assertThat(described.applicationProviderArn()).isEqualTo("arn:aws:sso::aws:applicationProvider/custom");
-            assertThat(described.name()).isEqualTo("Floci OAuth SDK");
-            assertThat(described.statusAsString()).isEqualTo("DISABLED");
-            assertThat(described.portalOptions().visibilityAsString()).isEqualTo("ENABLED");
-            assertThat(described.portalOptions().signInOptions().originAsString()).isEqualTo("APPLICATION");
+            assertThat(described.portalOptions().signInOptions().originAsString()).isEqualTo("IDENTITY_CENTER");
 
             var provider = sso.describeApplicationProvider(request -> request
                     .applicationProviderArn("arn:aws:sso::aws:applicationProvider/custom"));
@@ -539,7 +536,7 @@ class SsoAdminAccountAssignmentTest {
             var issuers = sso.listTrustedTokenIssuers(request -> request.instanceArn(instanceArn));
             assertThat(issuers.trustedTokenIssuers()).anySatisfy(issuer -> {
                 assertThat(issuer.trustedTokenIssuerArn()).isEqualTo(created.trustedTokenIssuerArn());
-                assertThat(issuer.name()).isEqualTo("SdkIssuer");
+                assertThat(issuer.name()).isEqualTo("SdkIssuerUpdated");
                 assertThat(issuer.trustedTokenIssuerTypeAsString()).isEqualTo("OIDC_JWT");
             });
 

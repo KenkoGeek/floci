@@ -57,7 +57,10 @@ class SsoOidcTest {
             assertThat(response.interval()).isEqualTo(5);
 
             try {
-                var request = java.net.http.HttpRequest.newBuilder(java.net.URI.create(response.verificationUriComplete())).GET().build();
+                var advertisedUri = java.net.URI.create(response.verificationUriComplete());
+                var uri = TestFixtures.endpoint().resolve(
+                        advertisedUri.getRawPath() + "?" + advertisedUri.getRawQuery());
+                var request = java.net.http.HttpRequest.newBuilder(uri).GET().build();
                 var browserResponse = java.net.http.HttpClient.newHttpClient().send(
                         request, java.net.http.HttpResponse.BodyHandlers.ofString());
                 assertThat(browserResponse.statusCode()).isEqualTo(200);

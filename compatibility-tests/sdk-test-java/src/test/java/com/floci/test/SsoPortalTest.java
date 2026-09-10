@@ -129,8 +129,9 @@ class SsoPortalTest {
     private static void authorizeDevice(String verificationUriComplete, String userId) {
         try {
             String separator = verificationUriComplete.contains("?") ? "&" : "?";
-            URI uri = URI.create(verificationUriComplete + separator + "principal_id="
+            URI advertisedUri = URI.create(verificationUriComplete + separator + "principal_id="
                     + URLEncoder.encode(userId, StandardCharsets.UTF_8));
+            URI uri = TestFixtures.endpoint().resolve(advertisedUri.getRawPath() + "?" + advertisedUri.getRawQuery());
             HttpResponse<String> response = HttpClient.newHttpClient().send(
                     HttpRequest.newBuilder(uri).GET().build(), HttpResponse.BodyHandlers.ofString());
             assertThat(response.statusCode()).isEqualTo(200);
