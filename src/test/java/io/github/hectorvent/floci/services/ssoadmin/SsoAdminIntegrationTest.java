@@ -631,6 +631,17 @@ class SsoAdminIntegrationTest {
         .when().post("/")
         .then().statusCode(200)
             .body("Grant.AuthorizationCode.RedirectUris[0]", equalTo("https://example.com/callback"));
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.ListApplicationGrants")
+            .body("{\"ApplicationArn\":\"" + applicationArn + "\"}")
+        .when().post("/")
+        .then().statusCode(200)
+            .body("Grants.size()", equalTo(1))
+            .body("Grants[0].GrantType", equalTo("authorization_code"))
+            .body("Grants[0].Grant.AuthorizationCode.RedirectUris[0]", equalTo("https://example.com/callback"));
     }
 
     @Test
