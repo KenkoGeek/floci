@@ -12,6 +12,7 @@ import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAssignment;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAuthenticationMethod;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationGrant;
 import io.github.hectorvent.floci.services.ssoadmin.model.InstanceAccessControlAttributeConfiguration;
+import io.github.hectorvent.floci.services.ssoadmin.model.InstanceUpdateState;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSetProvisioning;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSetProvisioningOperation;
@@ -71,6 +72,7 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, Map<String, String>>(),
                 new InMemoryStorage<String, SsoInstance>(),
+                new InMemoryStorage<String, InstanceUpdateState>(),
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, Boolean>(),
                 new InMemoryStorage<String, InstanceAccessControlAttributeConfiguration>(),
@@ -294,10 +296,65 @@ class SsoAdminServiceTest {
         assertEquals(created.instanceArn(), emptyService.createInstance(request, ACCOUNT_ID, "us-west-2").instanceArn());
         assertEquals(1, emptyService.listInstances(ACCOUNT_ID).size());
 
+        ObjectNode rename = mapper.createObjectNode();
+        rename.put("InstanceArn", created.instanceArn());
+        rename.put("Name", "RenamedInstance");
+        InstanceUpdateState renamed = emptyService.updateInstance(rename, ACCOUNT_ID);
+        assertEquals("RenamedInstance", renamed.name());
+        assertFalse(renamed.permissionSetsEnabled());
+
+        ObjectNode enablePermissionSets = mapper.createObjectNode();
+        enablePermissionSets.put("InstanceArn", created.instanceArn());
+        enablePermissionSets.put("PermissionSetsEnabled", true);
+        assertTrue(emptyService.updateInstance(enablePermissionSets, ACCOUNT_ID).permissionSetsEnabled());
+        assertEquals(created.instanceArn(), emptyService.createInstance(request, ACCOUNT_ID, "us-west-2").instanceArn());
+
+        ObjectNode disablePermissionSets = enablePermissionSets.deepCopy().put("PermissionSetsEnabled", false);
+        assertError("ValidationException", () -> emptyService.updateInstance(disablePermissionSets, ACCOUNT_ID));
+
         ObjectNode mismatch = request.deepCopy();
         mismatch.put("Name", "DifferentName");
         assertError("IdempotentParameterMismatch",
                 () -> emptyService.createInstance(mismatch, ACCOUNT_ID, "us-west-2"));
+    }
+
+    @Test
+    void updateInstanceValidatesEncryptionConfiguration() {
+        ObjectNode customerManaged = mapper.createObjectNode();
+        customerManaged.put("InstanceArn", service.getInstanceArn());
+        customerManaged.putObject("EncryptionConfiguration")
+                .put("KeyType", "CUSTOMER_MANAGED_KEY")
+                .put("KmsKeyArn", "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-1234567890ab");
+        InstanceUpdateState encrypted = service.updateInstance(customerManaged, ACCOUNT_ID);
+        assertEquals("CUSTOMER_MANAGED_KEY", encrypted.keyType());
+        assertEquals("ENABLED", encrypted.encryptionStatus());
+
+        ObjectNode both = customerManaged.deepCopy().put("PermissionSetsEnabled", true);
+        assertError("ValidationException", () -> service.updateInstance(both, ACCOUNT_ID));
+
+        ObjectNode missingKmsArn = mapper.createObjectNode();
+        missingKmsArn.put("InstanceArn", service.getInstanceArn());
+        missingKmsArn.putObject("EncryptionConfiguration").put("KeyType", "CUSTOMER_MANAGED_KEY");
+        assertError("ValidationException", () -> service.updateInstance(missingKmsArn, ACCOUNT_ID));
+
+        ObjectNode wrongRegion = customerManaged.deepCopy();
+        wrongRegion.withObject("EncryptionConfiguration")
+                .put("KmsKeyArn", "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-1234567890ab");
+        assertError("ValidationException", () -> service.updateInstance(wrongRegion, ACCOUNT_ID));
+
+        ObjectNode wrongAccount = customerManaged.deepCopy();
+        wrongAccount.withObject("EncryptionConfiguration")
+                .put("KmsKeyArn", "arn:aws:kms:us-east-1:999999999999:key/12345678-1234-1234-1234-1234567890ab");
+        assertError("ValidationException", () -> service.updateInstance(wrongAccount, ACCOUNT_ID));
+
+        assertError("AccessDeniedException", () -> service.updateInstance(customerManaged, "999999999999"));
+
+        ObjectNode awsOwnedWithArn = mapper.createObjectNode();
+        awsOwnedWithArn.put("InstanceArn", service.getInstanceArn());
+        awsOwnedWithArn.putObject("EncryptionConfiguration")
+                .put("KeyType", "AWS_OWNED_KMS_KEY")
+                .put("KmsKeyArn", "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-1234567890ab");
+        assertError("ValidationException", () -> service.updateInstance(awsOwnedWithArn, ACCOUNT_ID));
     }
 
     @Test
@@ -1605,6 +1662,7 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, Map<String, String>>(),
                 new InMemoryStorage<String, SsoInstance>(),
+                new InMemoryStorage<String, InstanceUpdateState>(),
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, Boolean>(),
                 new InMemoryStorage<String, InstanceAccessControlAttributeConfiguration>(),

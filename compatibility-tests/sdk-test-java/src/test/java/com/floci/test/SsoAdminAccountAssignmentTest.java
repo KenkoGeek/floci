@@ -609,6 +609,18 @@ class SsoAdminAccountAssignmentTest {
             assertThat(described.name()).isEqualTo("SdkAccountInstance");
             assertThat(described.statusAsString()).isEqualTo("ACTIVE");
             assertThat(described.permissionSetsEnabled()).isFalse();
+            assertThat(described.encryptionConfigurationDetails().keyTypeAsString()).isEqualTo("AWS_OWNED_KMS_KEY");
+
+            var renamed = sso.updateInstance(request -> request.instanceArn(instanceArn).name("SdkAccountRenamed"));
+            assertThat(renamed.sdkHttpResponse().isSuccessful()).isTrue();
+            sso.updateInstance(request -> request.instanceArn(instanceArn).permissionSetsEnabled(true));
+            var updated = sso.describeInstance(request -> request.instanceArn(instanceArn));
+            assertThat(updated.name()).isEqualTo("SdkAccountRenamed");
+            assertThat(updated.permissionSetsEnabled()).isTrue();
+            assertThat(sso.createInstance(request -> request
+                    .name("SdkAccountInstance")
+                    .clientToken("sdk-create-instance")
+                    .tags(tag -> tag.key("Environment").value("test"))).instanceArn()).isEqualTo(instanceArn);
 
             var listed = sso.listInstances(request -> {}).instances();
             assertThat(listed).hasSize(1);

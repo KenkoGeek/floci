@@ -31,6 +31,7 @@ public class SsoAdminJsonHandler {
         return switch (action) {
             case "ListInstances" -> listInstances(callerAccountId);
             case "CreateInstance" -> createInstance(request, callerAccountId, region);
+            case "UpdateInstance" -> updateInstance(request, callerAccountId);
             case "DescribeInstance" -> describeInstance(request);
             case "DeleteInstance" -> deleteInstance(request, callerAccountId);
             case "CreateInstanceAccessControlAttributeConfiguration" -> createInstanceAccessControlAttributeConfiguration(request);
@@ -116,8 +117,9 @@ public class SsoAdminJsonHandler {
             ObjectNode node = instances.addObject();
             node.put("InstanceArn", instance.instanceArn());
             node.put("IdentityStoreId", instance.identityStoreId());
-            if (instance.name() != null) {
-                node.put("Name", instance.name());
+            var updateState = service.instanceUpdateState(instance);
+            if (updateState.name() != null) {
+                node.put("Name", updateState.name());
             }
             node.put("OwnerAccountId", instance.ownerAccountId());
             node.put("CreatedDate", instance.createdDateEpochMillis() / 1000.0d);
@@ -143,17 +145,32 @@ public class SsoAdminJsonHandler {
         return Response.ok(mapper.createObjectNode().put("InstanceArn", instance.instanceArn())).build();
     }
 
+    private Response updateInstance(JsonNode request, String callerAccountId) {
+        service.updateInstance(request, callerAccountId);
+        return Response.ok().build();
+    }
+
     private Response describeInstance(JsonNode request) {
         var instance = service.describeInstance(request);
+        var updateState = service.instanceUpdateState(instance);
         ObjectNode response = mapper.createObjectNode();
         response.put("CreatedDate", instance.createdDateEpochMillis() / 1000.0d);
         response.put("IdentityStoreId", instance.identityStoreId());
         response.put("InstanceArn", instance.instanceArn());
-        if (instance.name() != null) {
-            response.put("Name", instance.name());
+        if (updateState.name() != null) {
+            response.put("Name", updateState.name());
         }
         response.put("OwnerAccountId", instance.ownerAccountId());
-        response.put("PermissionSetsEnabled", !instance.accountInstance());
+        response.put("PermissionSetsEnabled", updateState.permissionSetsEnabled());
+        ObjectNode encryption = response.putObject("EncryptionConfigurationDetails");
+        encryption.put("EncryptionStatus", updateState.encryptionStatus());
+        encryption.put("KeyType", updateState.keyType());
+        if (updateState.kmsKeyArn() != null) {
+            encryption.put("KmsKeyArn", updateState.kmsKeyArn());
+        }
+        if (updateState.encryptionStatusReason() != null) {
+            encryption.put("EncryptionStatusReason", updateState.encryptionStatusReason());
+        }
         response.put("Status", instance.status());
         if (instance.statusReason() != null) {
             response.put("StatusReason", instance.statusReason());
