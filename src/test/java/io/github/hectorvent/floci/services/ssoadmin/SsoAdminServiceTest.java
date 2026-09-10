@@ -1096,6 +1096,16 @@ class SsoAdminServiceTest {
         ObjectNode missingTags = mapper.createObjectNode().put("ResourceArn", permissionSet.arn());
         assertError("ValidationException", () -> service.tagResource(missingTags));
 
+        ObjectNode untag = mapper.createObjectNode();
+        untag.put("ResourceArn", permissionSet.arn());
+        untag.putArray("TagKeys").add("Environment").add("does-not-exist");
+        service.untagResource(untag);
+        assertTrue(service.listTagsForResource(request).items().stream()
+                .noneMatch(entry -> "Environment".equals(entry.getKey())));
+
+        ObjectNode missingTagKeys = mapper.createObjectNode().put("ResourceArn", permissionSet.arn());
+        assertError("ValidationException", () -> service.untagResource(missingTagKeys));
+
         ObjectNode invalidToken = request.deepCopy();
         invalidToken.put("NextToken", "bad%token");
         assertError("ValidationException", () -> service.listTagsForResource(invalidToken));

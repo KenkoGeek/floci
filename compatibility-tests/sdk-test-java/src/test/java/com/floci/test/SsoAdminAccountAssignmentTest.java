@@ -156,6 +156,13 @@ class SsoAdminAccountAssignmentTest {
             assertThat(sso.listTagsForResource(request -> request.resourceArn(created.applicationArn())).tags())
                     .extracting(tag -> tag.key() + "=" + tag.value())
                     .containsExactly("Environment=prod", "Owner=platform");
+            var untagged = sso.untagResource(request -> request
+                    .resourceArn(created.applicationArn())
+                    .tagKeys("Owner"));
+            assertThat(untagged.sdkHttpResponse().isSuccessful()).isTrue();
+            assertThat(sso.listTagsForResource(request -> request.resourceArn(created.applicationArn())).tags())
+                    .extracting(tag -> tag.key() + "=" + tag.value())
+                    .containsExactly("Environment=prod");
             var replayAfterTagging = sso.createApplication(request -> request
                     .instanceArn(instanceArn)
                     .applicationProviderArn("arn:aws:sso::aws:applicationProvider/custom")
