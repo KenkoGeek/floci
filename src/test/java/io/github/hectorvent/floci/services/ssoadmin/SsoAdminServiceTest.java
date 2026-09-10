@@ -64,6 +64,7 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, ApplicationAssignment>(),
                 applicationAccessScopes,
+                new InMemoryStorage<String, Boolean>(),
                 applicationAuthenticationMethods,
                 applicationGrants,
                 new InMemoryStorage<String, SsoInstance>(),
@@ -399,6 +400,23 @@ class SsoAdminServiceTest {
         SsoApplication recreated = service.createApplication(createRequest, ACCOUNT_ID, "us-east-1");
         assertFalse(recreated.applicationArn().equals(application.applicationArn()));
         assertError("ResourceNotFoundException", () -> service.deleteApplication(application.applicationArn()));
+    }
+
+    @Test
+    void getApplicationAssignmentConfigurationDefaultsToAssignmentsRequired() {
+        SsoApplication application = createApplication("Assignment Config App", "assignment-config-app-token");
+        ObjectNode request = mapper.createObjectNode();
+        request.put("ApplicationArn", application.applicationArn());
+
+        assertTrue(service.getApplicationAssignmentConfiguration(request));
+
+        ObjectNode malformed = mapper.createObjectNode().put("ApplicationArn", "not-an-arn");
+        assertError("ValidationException", () -> service.getApplicationAssignmentConfiguration(malformed));
+
+        ObjectNode missing = mapper.createObjectNode();
+        missing.put("ApplicationArn",
+                "arn:aws:sso::123456789012:application/ssoins-7223b02a5d9f7c8e/apl-1111111111111111");
+        assertError("ResourceNotFoundException", () -> service.getApplicationAssignmentConfiguration(missing));
     }
 
     @Test
@@ -1223,6 +1241,7 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, ApplicationAssignment>(),
                 new InMemoryStorage<String, ApplicationAccessScope>(),
+                new InMemoryStorage<String, Boolean>(),
                 new InMemoryStorage<String, ApplicationAuthenticationMethod>(),
                 new InMemoryStorage<String, ApplicationGrant>(),
                 new InMemoryStorage<String, SsoInstance>(),

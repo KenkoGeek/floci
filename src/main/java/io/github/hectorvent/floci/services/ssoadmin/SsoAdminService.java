@@ -97,6 +97,7 @@ public class SsoAdminService implements Resettable {
     private final StorageBackend<String, String> applicationClientTokens;
     private final StorageBackend<String, ApplicationAssignment> applicationAssignments;
     private final StorageBackend<String, ApplicationAccessScope> applicationAccessScopes;
+    private final StorageBackend<String, Boolean> applicationAssignmentConfigurations;
     private final StorageBackend<String, ApplicationAuthenticationMethod> applicationAuthenticationMethods;
     private final StorageBackend<String, ApplicationGrant> applicationGrants;
     private final StorageBackend<String, SsoInstance> instances;
@@ -125,6 +126,7 @@ public class SsoAdminService implements Resettable {
                 storageFactory.create("ssoadmin", "ssoadmin-application-client-tokens.json", new TypeReference<Map<String, String>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-application-assignments.json", new TypeReference<Map<String, ApplicationAssignment>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-application-access-scopes.json", new TypeReference<Map<String, ApplicationAccessScope>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-application-assignment-configurations.json", new TypeReference<Map<String, Boolean>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-application-authentication-methods.json", new TypeReference<Map<String, ApplicationAuthenticationMethod>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-application-grants.json", new TypeReference<Map<String, ApplicationGrant>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instances.json", new TypeReference<Map<String, SsoInstance>>() {}),
@@ -150,6 +152,7 @@ public class SsoAdminService implements Resettable {
                     StorageBackend<String, String> applicationClientTokens,
                     StorageBackend<String, ApplicationAssignment> applicationAssignments,
                     StorageBackend<String, ApplicationAccessScope> applicationAccessScopes,
+                    StorageBackend<String, Boolean> applicationAssignmentConfigurations,
                     StorageBackend<String, ApplicationAuthenticationMethod> applicationAuthenticationMethods,
                     StorageBackend<String, ApplicationGrant> applicationGrants,
                     StorageBackend<String, SsoInstance> instances,
@@ -173,6 +176,7 @@ public class SsoAdminService implements Resettable {
         this.applicationClientTokens = applicationClientTokens;
         this.applicationAssignments = applicationAssignments;
         this.applicationAccessScopes = applicationAccessScopes;
+        this.applicationAssignmentConfigurations = applicationAssignmentConfigurations;
         this.applicationAuthenticationMethods = applicationAuthenticationMethods;
         this.applicationGrants = applicationGrants;
         this.instances = instances;
@@ -549,6 +553,7 @@ public class SsoAdminService implements Resettable {
                 applicationAccessScopes.delete(key);
             }
         }
+        applicationAssignmentConfigurations.delete(applicationArn);
         for (String key : new java.util.ArrayList<>(applicationAuthenticationMethods.keys())) {
             ApplicationAuthenticationMethod method = applicationAuthenticationMethods.get(key).orElse(null);
             if (method != null && applicationArn.equals(method.applicationArn())) {
@@ -561,6 +566,12 @@ public class SsoAdminService implements Resettable {
                 applicationGrants.delete(key);
             }
         }
+    }
+
+    public boolean getApplicationAssignmentConfiguration(JsonNode request) {
+        String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
+        getApplication(applicationArn);
+        return applicationAssignmentConfigurations.get(applicationArn).orElse(true);
     }
 
     public synchronized ApplicationAccessScope putApplicationAccessScope(JsonNode request) {
@@ -1772,6 +1783,7 @@ public class SsoAdminService implements Resettable {
         applicationClientTokens.clear();
         applicationAssignments.clear();
         applicationAccessScopes.clear();
+        applicationAssignmentConfigurations.clear();
         applicationAuthenticationMethods.clear();
         applicationGrants.clear();
         instances.clear();

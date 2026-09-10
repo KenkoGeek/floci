@@ -311,6 +311,30 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void getApplicationAssignmentConfigurationReturnsTheAwsDefault() {
+        String applicationArn = given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.CreateApplication")
+            .body("{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
+                    + "\"ApplicationProviderArn\":\"arn:aws:sso::aws:applicationProvider/custom\","
+                    + "\"Name\":\"Assignment Config Integration\"}")
+        .when().post("/")
+        .then().statusCode(200)
+            .extract().path("ApplicationArn");
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.GetApplicationAssignmentConfiguration")
+            .body("{\"ApplicationArn\":\"" + applicationArn + "\"}")
+        .when().post("/")
+        .then()
+            .statusCode(200)
+            .body("AssignmentRequired", equalTo(true));
+    }
+
+    @Test
     void putApplicationAccessScopeReturnsEmptyAwsResponse() {
         String applicationArn = given()
             .contentType("application/x-amz-json-1.1")
