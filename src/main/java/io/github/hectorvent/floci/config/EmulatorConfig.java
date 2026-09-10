@@ -724,6 +724,7 @@ public interface EmulatorConfig {
         NetworkFirewallServiceConfig networkfirewall();
         ServiceCatalogServiceConfig servicecatalog();
         SsoAdminServiceConfig ssoadmin();
+        SsoOidcServiceConfig ssooidc();
         Macie2ServiceConfig macie2();
         AccountServiceConfig account();
         AccessAnalyzerServiceConfig accessanalyzer();
@@ -758,6 +759,11 @@ public interface EmulatorConfig {
     }
 
     interface SsoAdminServiceConfig {
+        @WithDefault("true")
+        boolean enabled();
+    }
+
+    interface SsoOidcServiceConfig {
         @WithDefault("true")
         boolean enabled();
     }
