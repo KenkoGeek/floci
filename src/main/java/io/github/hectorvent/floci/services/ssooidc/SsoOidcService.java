@@ -149,12 +149,13 @@ public class SsoOidcService implements Resettable {
                 now + DEVICE_CODE_LIFETIME_SECONDS,
                 DEVICE_POLL_INTERVAL_SECONDS,
                 false,
-                0L);
+                0L,
+                null);
         deviceAuthorizations.put(deviceCode, authorization);
         return authorization;
     }
 
-    public synchronized DeviceAuthorization authorizeDevice(String userCode) {
+    public synchronized DeviceAuthorization authorizeDevice(String userCode, String principalId) {
         if (userCode == null || userCode.isBlank()) {
             throw new SsoOidcException("invalid_request", "user_code is required", 400);
         }
@@ -168,7 +169,7 @@ public class SsoOidcService implements Resettable {
         DeviceAuthorization authorized = new DeviceAuthorization(
                 authorization.deviceCode(), authorization.userCode(), authorization.clientId(), authorization.startUrl(),
                 authorization.expiresAtEpochSeconds(), authorization.intervalSeconds(), true,
-                authorization.lastPollAtEpochMillis());
+                authorization.lastPollAtEpochMillis(), principalId);
         deviceAuthorizations.put(authorization.deviceCode(), authorized);
         return authorized;
     }
@@ -179,16 +180,23 @@ public class SsoOidcService implements Resettable {
         if (!client.grantTypes().isEmpty() && !client.grantTypes().contains("authorization_code")) {
             throw new SsoOidcException("unauthorized_client", "Client is not registered for authorization code", 400);
         }
-        return createAuthorizationCode(clientId, redirectUri, codeChallenge, client.redirectUris());
+        return createAuthorizationCode(clientId, redirectUri, codeChallenge, client.redirectUris(), null);
     }
 
     public synchronized AuthorizationCode createIamAuthorizationCode(
             String applicationArn, String redirectUri, String codeChallenge, List<String> allowedRedirectUris) {
-        return createAuthorizationCode(applicationArn, redirectUri, codeChallenge, allowedRedirectUris);
+        return createAuthorizationCode(applicationArn, redirectUri, codeChallenge, allowedRedirectUris, null);
     }
 
     private AuthorizationCode createAuthorizationCode(
-            String clientId, String redirectUri, String codeChallenge, List<String> allowedRedirectUris) {
+            String clientId, String redirectUri, String codeChallenge, List<String> allowedRedirectUris,
+            String principalId) {
+        return createAuthorizationCodeForPrincipal(clientId, redirectUri, codeChallenge, allowedRedirectUris, principalId);
+    }
+
+    public synchronized AuthorizationCode createAuthorizationCodeForPrincipal(
+            String clientId, String redirectUri, String codeChallenge, List<String> allowedRedirectUris,
+            String principalId) {
         if (redirectUri == null || redirectUri.isBlank() || !allowedRedirectUris.contains(redirectUri)) {
             throw new SsoOidcException("invalid_redirect_uri", "Redirect URI is not registered", 400);
         }
@@ -198,7 +206,7 @@ public class SsoOidcService implements Resettable {
         String code = randomToken();
         AuthorizationCode authorizationCode = new AuthorizationCode(
                 code, clientId, redirectUri, codeChallenge,
-                System.currentTimeMillis() / 1000L + AUTHORIZATION_CODE_LIFETIME_SECONDS);
+                System.currentTimeMillis() / 1000L + AUTHORIZATION_CODE_LIFETIME_SECONDS, principalId);
         authorizationCodes.put(code, authorizationCode);
         return authorizationCode;
     }
@@ -242,11 +250,12 @@ public class SsoOidcService implements Resettable {
         if (!authorization.authorized()) {
             deviceAuthorizations.put(deviceCode, new DeviceAuthorization(
                     authorization.deviceCode(), authorization.userCode(), authorization.clientId(), authorization.startUrl(),
-                    authorization.expiresAtEpochSeconds(), authorization.intervalSeconds(), false, nowMillis));
+                    authorization.expiresAtEpochSeconds(), authorization.intervalSeconds(), false, nowMillis,
+                    authorization.principalId()));
             throw new SsoOidcException("authorization_pending", "Device authorization is pending", 400);
         }
         deviceAuthorizations.delete(deviceCode);
-        return issueToken(client);
+        return issueToken(client, authorization.principalId());
     }
 
     private TokenSession createTokenFromAuthorizationCode(JsonNode request, RegisteredClient client) {
@@ -265,7 +274,7 @@ public class SsoOidcService implements Resettable {
             throw new SsoOidcException("invalid_grant", "Authorization code validation failed", 400);
         }
         authorizationCodes.delete(code);
-        return issueToken(client);
+        return issueToken(client, authorizationCode.principalId());
     }
 
     private TokenSession createTokenFromRefreshToken(JsonNode request, RegisteredClient client) {
@@ -279,11 +288,11 @@ public class SsoOidcService implements Resettable {
             tokenSessions.delete("refresh:" + refreshToken);
             throw new SsoOidcException("expired_token", "Refresh token has expired", 400);
         }
-        return issueToken(client);
+        return issueToken(client, prior.principalId());
     }
 
-    private TokenSession issueToken(RegisteredClient client) {
-        return issueToken(client.clientId(), client.scopes(), true);
+    private TokenSession issueToken(RegisteredClient client, String principalId) {
+        return issueToken(client.clientId(), client.scopes(), true, principalId);
     }
 
     public synchronized TokenSession createIamToken(JsonNode request, String applicationArn, List<String> grantedScopes) {
@@ -293,7 +302,7 @@ public class SsoOidcService implements Resettable {
             case "refresh_token" -> createIamTokenFromRefreshToken(request, applicationArn, grantedScopes);
             case "urn:ietf:params:oauth:grant-type:jwt-bearer" -> {
                 requiredText(request, "assertion");
-                yield issueToken(applicationArn, grantedScopes, true);
+                yield issueToken(applicationArn, grantedScopes, true, null);
             }
             case "urn:ietf:params:oauth:grant-type:token-exchange" ->
                     createIamTokenFromExchange(request, applicationArn, grantedScopes);
@@ -318,7 +327,7 @@ public class SsoOidcService implements Resettable {
             throw new SsoOidcException("invalid_grant", "Authorization code validation failed", 400);
         }
         authorizationCodes.delete(code);
-        return issueToken(applicationArn, grantedScopes, true);
+        return issueToken(applicationArn, grantedScopes, true, authorizationCode.principalId());
     }
 
     private TokenSession createIamTokenFromRefreshToken(
@@ -328,7 +337,7 @@ public class SsoOidcService implements Resettable {
         if (!prior.scopes().containsAll(grantedScopes)) {
             throw new SsoOidcException("invalid_scope", "Requested scopes exceed the refresh token scopes", 400);
         }
-        return issueToken(applicationArn, grantedScopes, true);
+        return issueToken(applicationArn, grantedScopes, true, prior.principalId());
     }
 
     private TokenSession createIamTokenFromExchange(
@@ -349,7 +358,7 @@ public class SsoOidcService implements Resettable {
             throw new SsoOidcException("invalid_grant", "Subject token must be issued to a different application", 400);
         }
         return issueToken(applicationArn, grantedScopes,
-                !"urn:ietf:params:oauth:token-type:access_token".equals(requestedTokenType));
+                !"urn:ietf:params:oauth:token-type:access_token".equals(requestedTokenType), subject.principalId());
     }
 
     public TokenSession requireRefreshToken(String applicationArn, String refreshToken) {
@@ -376,17 +385,19 @@ public class SsoOidcService implements Resettable {
     }
 
     public TokenSession issueIamToken(String applicationArn, List<String> scopes, boolean issueRefreshToken) {
-        return issueToken(applicationArn, scopes, issueRefreshToken);
+        return issueToken(applicationArn, scopes, issueRefreshToken, null);
     }
 
-    private TokenSession issueToken(String clientId, List<String> scopes, boolean issueRefreshToken) {
+    private TokenSession issueToken(String clientId, List<String> scopes, boolean issueRefreshToken,
+                                    String principalId) {
         long now = System.currentTimeMillis() / 1000L;
         String accessToken = randomToken();
         String refreshToken = issueRefreshToken ? randomToken() : null;
         TokenSession session = new TokenSession(
                 accessToken, refreshToken, clientId, scopes,
                 now + ACCESS_TOKEN_LIFETIME_SECONDS,
-                issueRefreshToken ? now + REFRESH_TOKEN_LIFETIME_SECONDS : 0L);
+                issueRefreshToken ? now + REFRESH_TOKEN_LIFETIME_SECONDS : 0L,
+                principalId);
         tokenSessions.put("access:" + accessToken, session);
         if (refreshToken != null) {
             tokenSessions.put("refresh:" + refreshToken, session);

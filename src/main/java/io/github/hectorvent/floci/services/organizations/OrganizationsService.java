@@ -541,6 +541,15 @@ public class OrganizationsService implements ScpProvider {
         return requireAccount(requireOrganizationForCaller(callerAccountId), accountId);
     }
 
+    public java.util.Optional<OrganizationAccount> findAccountForPortal(String accountId) {
+        if (accountId == null || !ACCOUNT_ID_PATTERN.matcher(accountId).matches()) {
+            return java.util.Optional.empty();
+        }
+        return accounts.scanAllAccounts().stream()
+                .filter(account -> accountId.equals(account.getId()))
+                .findFirst();
+    }
+
     public List<OrganizationAccount> listAccounts(String callerAccountId) {
         Organization organization = requireOrganizationForCaller(callerAccountId);
         return accountsIn(organization).stream()

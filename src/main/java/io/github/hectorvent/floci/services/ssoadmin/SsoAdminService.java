@@ -1729,6 +1729,50 @@ public class SsoAdminService implements Resettable {
                 .sorted(Comparator.comparing(Assignment::principalId)).toList();
     }
 
+    public List<Assignment> portalAssignmentsForUser(String userId) {
+        validatePrincipalId(userId);
+        Map<String, Set<String>> groupsByIdentityStore = new java.util.HashMap<>();
+        Set<String> invalidIdentityStores = new java.util.HashSet<>();
+        return assignments.scan(key -> true).stream()
+                .filter(assignment -> {
+                    SsoInstance instance = requireInstance(instanceArnForPermissionSet(assignment.permissionSetArn()));
+                    String storeId = instance.identityStoreId();
+                    if (invalidIdentityStores.contains(storeId)) {
+                        return false;
+                    }
+                    Set<String> groupIds;
+                    try {
+                        groupIds = groupsByIdentityStore.computeIfAbsent(storeId,
+                                id -> identityStoreService.groupIdsForUser(id, userId));
+                    } catch (AwsException e) {
+                        invalidIdentityStores.add(storeId);
+                        return false;
+                    }
+                    if ("USER".equals(assignment.principalType())) {
+                        return userId.equals(assignment.principalId());
+                    }
+                    if (!"GROUP".equals(assignment.principalType())) {
+                        return false;
+                    }
+                    return groupIds.contains(assignment.principalId());
+                })
+                .sorted(Comparator.comparing(Assignment::accountId)
+                        .thenComparing(Assignment::permissionSetArn)
+                        .thenComparing(Assignment::principalType)
+                        .thenComparing(Assignment::principalId))
+                .toList();
+    }
+
+    public SsoInstance instanceForPermissionSetForPortal(String permissionSetArn) {
+        validatePermissionSetArn(permissionSetArn);
+        return requireInstance(instanceArnForPermissionSet(permissionSetArn));
+    }
+
+    public PermissionSet permissionSetForPortal(String permissionSetArn) {
+        SsoInstance instance = instanceForPermissionSetForPortal(permissionSetArn);
+        return getPermissionSet(instance.instanceArn(), permissionSetArn);
+    }
+
     public PaginatedResult<Assignment> listAssignmentsForPrincipal(JsonNode request, String callerAccountId) {
         String instanceArn = required(request, "InstanceArn");
         SsoInstance instance = requireInstance(instanceArn);

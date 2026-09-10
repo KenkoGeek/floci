@@ -8,5 +8,6 @@ public record DeviceAuthorization(
         long expiresAtEpochSeconds,
         int intervalSeconds,
         boolean authorized,
-        long lastPollAtEpochMillis
+        long lastPollAtEpochMillis,
+        String principalId
 ) {}

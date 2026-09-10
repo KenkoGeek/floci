@@ -331,9 +331,10 @@ public class SsoOidcController {
 
     @GET
     @Path("/device")
-    public Response authorizeDevice(@QueryParam("user_code") String userCode) {
+    public Response authorizeDevice(@QueryParam("user_code") String userCode,
+                                    @QueryParam("principal_id") String principalId) {
         try {
-            DeviceAuthorization authorization = service.authorizeDevice(userCode);
+            DeviceAuthorization authorization = service.authorizeDevice(userCode, principalId);
             return Response.ok(objectMapper.createObjectNode()
                     .put("status", "authorized")
                     .put("userCode", authorization.userCode())).build();
@@ -349,7 +350,8 @@ public class SsoOidcController {
                                   @QueryParam("redirect_uri") String redirectUri,
                                   @QueryParam("code_challenge") String codeChallenge,
                                   @QueryParam("code_challenge_method") String codeChallengeMethod,
-                                  @QueryParam("state") String state) {
+                                  @QueryParam("state") String state,
+                                  @QueryParam("principal_id") String principalId) {
         try {
             if (!"code".equals(responseType)) {
                 throw new SsoOidcException("invalid_request", "response_type must be code", 400);
@@ -363,9 +365,12 @@ public class SsoOidcController {
                 List<String> redirects = new ArrayList<>();
                 grant.grant().path("AuthorizationCode").path("RedirectUris")
                         .forEach(uri -> { if (uri.isTextual()) redirects.add(uri.textValue()); });
-                authorization = service.createIamAuthorizationCode(clientId, redirectUri, codeChallenge, redirects);
+                authorization = service.createAuthorizationCodeForPrincipal(
+                        clientId, redirectUri, codeChallenge, redirects, principalId);
             } else {
-                authorization = service.createAuthorizationCode(clientId, redirectUri, codeChallenge);
+                var client = service.requireClient(clientId);
+                authorization = service.createAuthorizationCodeForPrincipal(
+                        clientId, redirectUri, codeChallenge, client.redirectUris(), principalId);
             }
             String separator = redirectUri.contains("?") ? "&" : "?";
             String location = redirectUri + separator + "code="

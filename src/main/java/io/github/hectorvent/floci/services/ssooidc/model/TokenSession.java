@@ -8,7 +8,8 @@ public record TokenSession(
         String clientId,
         List<String> scopes,
         long accessTokenExpiresAtEpochSeconds,
-        long refreshTokenExpiresAtEpochSeconds
+        long refreshTokenExpiresAtEpochSeconds,
+        String principalId
 ) {
     public TokenSession {
         scopes = scopes == null ? List.of() : List.copyOf(scopes);
