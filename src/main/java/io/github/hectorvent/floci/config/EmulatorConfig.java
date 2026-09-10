@@ -766,6 +766,8 @@ public interface EmulatorConfig {
     interface SsoOidcServiceConfig {
         @WithDefault("true")
         boolean enabled();
+
+        Optional<String> localPrincipalId();
     }
 
     interface Macie2ServiceConfig {
@@ -786,6 +788,9 @@ public interface EmulatorConfig {
     interface IdentityStoreServiceConfig {
         @WithDefault("true")
         boolean enabled();
+
+        @WithDefault("floci-scim-token")
+        String scimBearerToken();
     }
 
     interface BudgetsServiceConfig {

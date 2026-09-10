@@ -736,16 +736,19 @@ public class SsoAdminService implements Resettable {
         for (String applicationArn : applicationArns) {
             deleteApplication(applicationArn);
         }
-        for (String permissionSetArn : new ArrayList<>(permissionSets.keys())) {
+        Set<String> instancePermissionSets = permissionSets.keys().stream()
+                .filter(permissionSetArn -> instanceArn.equals(instanceArnForPermissionSet(permissionSetArn)))
+                .collect(java.util.stream.Collectors.toSet());
+        for (String permissionSetArn : instancePermissionSets) {
+            permissionSets.delete(permissionSetArn);
             resourceTagOverrides.delete(permissionSetArn);
         }
-
-        permissionSets.clear();
-        assignments.clear();
-        assignmentOperations.clear();
-        assignmentDeletionOperations.clear();
-        permissionSetProvisionings.clear();
-        permissionSetProvisioningOperations.clear();
+        deleteByPermissionSet(assignments, Assignment::permissionSetArn, instancePermissionSets);
+        deleteByPermissionSet(assignmentOperations, AssignmentOperation::permissionSetArn, instancePermissionSets);
+        deleteByPermissionSet(assignmentDeletionOperations, AssignmentDeletionOperation::permissionSetArn, instancePermissionSets);
+        deleteByPermissionSet(permissionSetProvisionings, PermissionSetProvisioning::permissionSetArn, instancePermissionSets);
+        deleteByPermissionSet(permissionSetProvisioningOperations, PermissionSetProvisioningOperation::permissionSetArn,
+                instancePermissionSets);
         accessControlAttributeConfigurations.delete(instanceArn);
         for (String key : new java.util.ArrayList<>(trustedTokenIssuers.keys())) {
             TrustedTokenIssuer issuer = trustedTokenIssuers.get(key).orElse(null);
@@ -2412,6 +2415,18 @@ public class SsoAdminService implements Resettable {
 
     private static String customerManagedPolicyKey(String name, String path) {
         return name.toLowerCase(java.util.Locale.ROOT) + "\n" + path;
+    }
+
+
+    private static <T> void deleteByPermissionSet(StorageBackend<String, T> storage,
+                                                  java.util.function.Function<T, String> permissionSetArn,
+                                                  Set<String> permissionSetArns) {
+        for (String key : new ArrayList<>(storage.keys())) {
+            T value = storage.get(key).orElse(null);
+            if (value != null && permissionSetArns.contains(permissionSetArn.apply(value))) {
+                storage.delete(key);
+            }
+        }
     }
 
     private static String instanceArnForPermissionSet(String permissionSetArn) {

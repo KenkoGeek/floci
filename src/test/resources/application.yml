@@ -388,6 +388,9 @@ floci:
       enabled: true
     ssoadmin:
       enabled: true
+    ssooidc:
+      enabled: true
+      local-principal-id: ${FLOCI_SERVICES_SSOOIDC_LOCAL_PRINCIPAL_ID:}
     macie2:
       enabled: true
     account:
@@ -398,6 +401,7 @@ floci:
       enabled: true
     identitystore:
       enabled: true
+      scim-bearer-token: ${FLOCI_SERVICES_IDENTITYSTORE_SCIM_BEARER_TOKEN:floci-scim-token}
     budgets:
       enabled: true
     inspector2:

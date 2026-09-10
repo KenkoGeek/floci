@@ -44,7 +44,7 @@ Deleting a user or group removes its related local group memberships so subseque
 
 ## IAM Identity Center SCIM
 
-Floci also accepts IAM Identity Center SCIM v2 requests under `/{tenant_id}/scim/v2`. SCIM requests require the AWS-supported `Authorization: Bearer <token>` authentication shape. Because Floci does not provision real IAM Identity Center access tokens, any non-empty bearer token is accepted locally; the tenant still must resolve to an existing IAM Identity Center identity store.
+Floci also accepts IAM Identity Center SCIM v2 requests under `/{tenant_id}/scim/v2`. SCIM requests require the AWS-supported `Authorization: Bearer <token>` authentication shape. Because Floci does not provision real IAM Identity Center access tokens, it validates against the configured local token. The default is `floci-scim-token`; set `FLOCI_SERVICES_IDENTITYSTORE_SCIM_BEARER_TOKEN` to override it. The tenant must also resolve to an existing IAM Identity Center identity store.
 
 `CreateGroup` is supported through `POST /{tenant_id}/scim/v2/Groups`. It requires `displayName`, accepts `externalId`, supports up to 100 user members in one request, returns the AWS SCIM `201` group representation, and persists the group and memberships into the same Identity Store state used by the JSON 1.1 API. A tenant ID beginning with a ten-character identity-store prefix resolves to `d-<prefix>`; legacy UUID-form identity stores may use the UUID directly. Invalid tenants and missing bearer authorization return SCIM `401` errors.
 

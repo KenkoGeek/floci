@@ -309,6 +309,39 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void deleteInstancePreservesOtherAccountPermissionSets() {
+        SsoAdminService emptyService = emptyService();
+        String firstAccount = "111111111111";
+        String secondAccount = "222222222222";
+
+        ObjectNode firstCreate = mapper.createObjectNode();
+        firstCreate.put("Name", "FirstInstance");
+        firstCreate.put("ClientToken", "first-instance-token");
+        SsoInstance first = emptyService.createInstance(firstCreate, firstAccount, "us-east-1");
+
+        ObjectNode secondCreate = mapper.createObjectNode();
+        secondCreate.put("Name", "SecondInstance");
+        secondCreate.put("ClientToken", "second-instance-token");
+        SsoInstance second = emptyService.createInstance(secondCreate, secondAccount, "us-west-2");
+
+        ObjectNode firstPermissionSet = mapper.createObjectNode();
+        firstPermissionSet.put("InstanceArn", first.instanceArn());
+        firstPermissionSet.put("Name", "FirstAdmins");
+        PermissionSet firstPs = emptyService.createPermissionSet(firstPermissionSet);
+
+        ObjectNode secondPermissionSet = mapper.createObjectNode();
+        secondPermissionSet.put("InstanceArn", second.instanceArn());
+        secondPermissionSet.put("Name", "SecondAdmins");
+        PermissionSet secondPs = emptyService.createPermissionSet(secondPermissionSet);
+
+        emptyService.deleteInstance(mapper.createObjectNode().put("InstanceArn", first.instanceArn()), firstAccount);
+
+        assertError("ResourceNotFoundException",
+                () -> emptyService.getPermissionSet(first.instanceArn(), firstPs.arn()));
+        assertEquals(secondPs, emptyService.getPermissionSet(second.instanceArn(), secondPs.arn()));
+    }
+
+    @Test
     void deleteInstanceRejectsMalformedArnAndCascadesOwnedResources() {
         SsoAdminService emptyService = emptyService();
         ObjectNode malformed = mapper.createObjectNode();

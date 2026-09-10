@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.hectorvent.floci.config.EmulatorConfig;
 import io.github.hectorvent.floci.core.common.AwsException;
 import io.github.hectorvent.floci.services.identitystore.model.Group;
 import io.github.hectorvent.floci.services.identitystore.model.Membership;
@@ -29,6 +30,7 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -71,12 +73,15 @@ public class ScimController {
     private final IdentityStoreService identityStoreService;
     private final SsoAdminService ssoAdminService;
     private final ObjectMapper mapper;
+    private final byte[] scimBearerToken;
 
     @Inject
-    public ScimController(IdentityStoreService identityStoreService, SsoAdminService ssoAdminService, ObjectMapper mapper) {
+    public ScimController(IdentityStoreService identityStoreService, SsoAdminService ssoAdminService,
+                          ObjectMapper mapper, EmulatorConfig config) {
         this.identityStoreService = identityStoreService;
         this.ssoAdminService = ssoAdminService;
         this.mapper = mapper;
+        this.scimBearerToken = config.services().identitystore().scimBearerToken().getBytes(StandardCharsets.UTF_8);
     }
 
     @GET
@@ -688,8 +693,12 @@ public class ScimController {
         return identityStoreId;
     }
 
-    private static void requireBearer(String authorization) {
-        if (authorization == null || !authorization.startsWith("Bearer ") || authorization.substring(7).isBlank()) {
+    private void requireBearer(String authorization) {
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            throw unauthorized("Authorization header is invalid or missing.");
+        }
+        byte[] presented = authorization.substring(7).getBytes(StandardCharsets.UTF_8);
+        if (presented.length == 0 || !MessageDigest.isEqual(scimBearerToken, presented)) {
             throw unauthorized("Authorization header is invalid or missing.");
         }
     }

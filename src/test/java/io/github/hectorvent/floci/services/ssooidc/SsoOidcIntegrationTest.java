@@ -77,6 +77,31 @@ class SsoOidcIntegrationTest {
     }
 
     @Test
+    void deviceAuthorizationRejectsCallerSelectedPrincipal() {
+        var registration = given()
+                .contentType("application/json")
+                .body("{\"clientName\":\"Principal Guard\",\"clientType\":\"public\","
+                        + "\"grantTypes\":[\"urn:ietf:params:oauth:grant-type:device_code\"]}")
+            .when().post("/client/register")
+            .then().statusCode(200)
+            .extract().response();
+        var authorization = given()
+                .contentType("application/json")
+                .body("{\"clientId\":\"" + registration.path("clientId") + "\",\"clientSecret\":\""
+                        + registration.path("clientSecret") + "\",\"startUrl\":\"https://example.awsapps.com/start\"}")
+            .when().post("/device_authorization")
+            .then().statusCode(200)
+            .extract().response();
+
+        given()
+                .queryParam("user_code", authorization.path("userCode"))
+                .queryParam("principal_id", "11111111-2222-3333-4444-555555555555")
+            .when().get("/device")
+            .then().statusCode(403)
+                .body("error", equalTo("access_denied"));
+    }
+
+    @Test
     void createTokenCompletesDeviceFlowAndRefreshesToken() {
         var registration = given()
                 .contentType("application/json")

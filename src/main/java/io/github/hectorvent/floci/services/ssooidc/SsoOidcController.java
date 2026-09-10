@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.hectorvent.floci.services.ssooidc.model.AuthorizationCode;
 import io.github.hectorvent.floci.services.ssooidc.model.DeviceAuthorization;
 import io.github.hectorvent.floci.services.ssooidc.model.RegisteredClient;
+import io.github.hectorvent.floci.config.EmulatorConfig;
 import io.github.hectorvent.floci.core.common.RequestContext;
 import io.github.hectorvent.floci.services.ssoadmin.SsoAdminService;
 import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationAccessScope;
@@ -48,14 +49,16 @@ public class SsoOidcController {
     private final SsoAdminService ssoAdminService;
     private final RequestContext requestContext;
     private final ObjectMapper objectMapper;
+    private final String localPrincipalId;
 
     @Inject
     public SsoOidcController(SsoOidcService service, SsoAdminService ssoAdminService,
-                             RequestContext requestContext, ObjectMapper objectMapper) {
+                             RequestContext requestContext, ObjectMapper objectMapper, EmulatorConfig config) {
         this.service = service;
         this.ssoAdminService = ssoAdminService;
         this.requestContext = requestContext;
         this.objectMapper = objectMapper;
+        this.localPrincipalId = config.services().ssooidc().localPrincipalId().filter(id -> !id.isBlank()).orElse(null);
     }
 
     @POST
@@ -321,6 +324,14 @@ public class SsoOidcController {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 
+    private String resolveLocalPrincipal(String requestedPrincipalId) {
+        if (requestedPrincipalId != null && !requestedPrincipalId.equals(localPrincipalId)) {
+            throw new SsoOidcException("access_denied",
+                    "principal_id is not authorized by the local OIDC configuration", 403);
+        }
+        return localPrincipalId;
+    }
+
     private static String requiredText(JsonNode request, String field) {
         JsonNode value = request == null ? null : request.get(field);
         if (value == null || !value.isTextual() || value.textValue().isBlank()) {
@@ -334,7 +345,7 @@ public class SsoOidcController {
     public Response authorizeDevice(@QueryParam("user_code") String userCode,
                                     @QueryParam("principal_id") String principalId) {
         try {
-            DeviceAuthorization authorization = service.authorizeDevice(userCode, principalId);
+            DeviceAuthorization authorization = service.authorizeDevice(userCode, resolveLocalPrincipal(principalId));
             return Response.ok(objectMapper.createObjectNode()
                     .put("status", "authorized")
                     .put("userCode", authorization.userCode())).build();
@@ -366,11 +377,11 @@ public class SsoOidcController {
                 grant.grant().path("AuthorizationCode").path("RedirectUris")
                         .forEach(uri -> { if (uri.isTextual()) redirects.add(uri.textValue()); });
                 authorization = service.createAuthorizationCodeForPrincipal(
-                        clientId, redirectUri, codeChallenge, redirects, principalId);
+                        clientId, redirectUri, codeChallenge, redirects, resolveLocalPrincipal(principalId));
             } else {
                 var client = service.requireClient(clientId);
                 authorization = service.createAuthorizationCodeForPrincipal(
-                        clientId, redirectUri, codeChallenge, client.redirectUris(), principalId);
+                        clientId, redirectUri, codeChallenge, client.redirectUris(), resolveLocalPrincipal(principalId));
             }
             String separator = redirectUri.contains("?") ? "&" : "?";
             String location = redirectUri + separator + "code="

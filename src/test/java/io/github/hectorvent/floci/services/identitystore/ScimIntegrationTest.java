@@ -24,6 +24,17 @@ class ScimIntegrationTest {
     }
 
     @Test
+    void rejectsUnknownBearerToken() {
+        given()
+                .header("Authorization", "Bearer wrong-token")
+            .when()
+                .get("/" + TENANT + "/scim/v2/ServiceProviderConfig")
+            .then()
+                .statusCode(401)
+                .body("status", equalTo("401"));
+    }
+
+    @Test
     void createGroupUsesAwsScimShapeAndPersistsToIdentityStore() {
         String groupId = given()
                 .contentType("application/json")
