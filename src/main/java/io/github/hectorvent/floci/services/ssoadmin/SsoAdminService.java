@@ -380,6 +380,32 @@ public class SsoAdminService implements Resettable {
         resourceTagOverrides.put(resourceArn, updated);
     }
 
+    public synchronized void untagResource(JsonNode request) {
+        String instanceArn = optionalInstanceArn(request);
+        String resourceArn = required(request, "ResourceArn");
+        TaggableResource resource = resolveTaggableResource(resourceArn);
+        validateResourceInstance(instanceArn, resource.instanceArn());
+        JsonNode tagKeysNode = request == null ? null : request.get("TagKeys");
+        if (tagKeysNode == null || !tagKeysNode.isArray() || tagKeysNode.size() < 1 || tagKeysNode.size() > 75) {
+            throw validation("TagKeys must contain between 1 and 75 entries.");
+        }
+        List<String> tagKeys = new ArrayList<>();
+        for (JsonNode keyNode : tagKeysNode) {
+            if (!keyNode.isTextual()) {
+                throw validation("TagKeys values must be strings.");
+            }
+            String key = keyNode.textValue();
+            if (key.isEmpty() || key.length() > 128 || !TAG_VALUE.matcher(key).matches()) {
+                throw validation("Tag key is invalid.");
+            }
+            tagKeys.add(key);
+        }
+        Map<String, String> updated = new LinkedHashMap<>(resourceTagOverrides.get(resourceArn)
+                .orElseGet(resource::tags));
+        tagKeys.forEach(updated::remove);
+        resourceTagOverrides.put(resourceArn, updated);
+    }
+
     private TaggableResource resolveTaggableResource(String resourceArn) {
         if (resourceArn == null || resourceArn.length() < 10 || resourceArn.length() > 2048) {
             throw validation("ResourceArn is invalid.");

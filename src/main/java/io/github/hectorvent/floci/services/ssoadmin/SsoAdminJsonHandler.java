@@ -45,6 +45,7 @@ public class SsoAdminJsonHandler {
             case "ListRegions" -> listRegions(request);
             case "ListTagsForResource" -> listTagsForResource(request);
             case "TagResource" -> tagResource(request);
+            case "UntagResource" -> untagResource(request);
             case "CreateApplication" -> createApplication(request, callerAccountId, region);
             case "DescribeApplication" -> describeApplication(request);
             case "ListApplications" -> listApplications(request, callerAccountId);
@@ -277,6 +278,11 @@ public class SsoAdminJsonHandler {
 
     private Response tagResource(JsonNode request) {
         service.tagResource(request);
+        return Response.ok().build();
+    }
+
+    private Response untagResource(JsonNode request) {
+        service.untagResource(request);
         return Response.ok().build();
     }
 
