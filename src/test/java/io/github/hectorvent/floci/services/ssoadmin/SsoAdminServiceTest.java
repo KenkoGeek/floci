@@ -203,6 +203,38 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void updateInstanceAccessControlAttributeConfigurationReplacesMappings() {
+        ObjectNode create = mapper.createObjectNode();
+        create.put("InstanceArn", service.getInstanceArn());
+        create.putObject("InstanceAccessControlAttributeConfiguration")
+                .putArray("AccessControlAttributes")
+                .addObject().put("Key", "Department").putObject("Value").putArray("Source")
+                .add("${path:enterprise.department}");
+        service.createInstanceAccessControlAttributeConfiguration(create);
+
+        ObjectNode update = mapper.createObjectNode();
+        update.put("InstanceArn", service.getInstanceArn());
+        update.putObject("InstanceAccessControlAttributeConfiguration")
+                .putArray("AccessControlAttributes")
+                .addObject().put("Key", "CostCenter").putObject("Value").putArray("Source")
+                .add("${path:enterprise.costCenter}");
+        InstanceAccessControlAttributeConfiguration updated =
+                service.updateInstanceAccessControlAttributeConfiguration(update);
+        assertEquals(1, updated.accessControlAttributes().size());
+        assertEquals("CostCenter", updated.accessControlAttributes().get(0).key());
+        assertEquals("ENABLED", updated.status());
+
+        ObjectNode empty = mapper.createObjectNode();
+        empty.put("InstanceArn", service.getInstanceArn());
+        empty.putObject("InstanceAccessControlAttributeConfiguration").putArray("AccessControlAttributes");
+        assertTrue(service.updateInstanceAccessControlAttributeConfiguration(empty).accessControlAttributes().isEmpty());
+
+        service.deleteInstanceAccessControlAttributeConfiguration(mapper.createObjectNode().put("InstanceArn", service.getInstanceArn()));
+        assertError("ResourceNotFoundException",
+                () -> service.updateInstanceAccessControlAttributeConfiguration(update));
+    }
+
+    @Test
     void deleteInstanceAccessControlAttributeConfigurationRemovesAbacConfiguration() {
         ObjectNode create = mapper.createObjectNode();
         create.put("InstanceArn", service.getInstanceArn());

@@ -488,42 +488,21 @@ public class SsoAdminService implements Resettable {
         if (accessControlAttributeConfigurations.get(instanceArn).isPresent()) {
             throw conflict("An instance access control attribute configuration already exists for this IAM Identity Center instance.");
         }
-        JsonNode configurationNode = request == null ? null : request.get("InstanceAccessControlAttributeConfiguration");
-        if (configurationNode == null || !configurationNode.isObject()) {
-            throw validation("InstanceAccessControlAttributeConfiguration must be an object.");
-        }
-        JsonNode attributesNode = configurationNode.get("AccessControlAttributes");
-        if (attributesNode == null || !attributesNode.isArray()) {
-            throw validation("AccessControlAttributes must be an array.");
-        }
-        if (attributesNode.size() > 50) {
-            throw validation("AccessControlAttributes can contain at most 50 attributes.");
-        }
-        List<AccessControlAttribute> attributes = new ArrayList<>();
-        for (JsonNode attributeNode : attributesNode) {
-            if (!attributeNode.isObject()) {
-                throw validation("Each access control attribute must be an object.");
-            }
-            String key = required(attributeNode, "Key");
-            if (key.length() > 128 || !ACCESS_CONTROL_ATTRIBUTE_KEY.matcher(key).matches()) {
-                throw validation("Access control attribute Key is invalid.");
-            }
-            JsonNode valueNode = attributeNode.get("Value");
-            if (valueNode == null || !valueNode.isObject()) {
-                throw validation("Access control attribute Value must be an object.");
-            }
-            JsonNode sourceNode = valueNode.get("Source");
-            if (sourceNode == null || !sourceNode.isArray() || sourceNode.size() != 1 || !sourceNode.get(0).isTextual()) {
-                throw validation("Access control attribute Source must contain exactly one string.");
-            }
-            String source = sourceNode.get(0).textValue();
-            if (source.length() > 256 || !ACCESS_CONTROL_ATTRIBUTE_SOURCE.matcher(source).matches()) {
-                throw validation("Access control attribute Source is invalid.");
-            }
-            attributes.add(new AccessControlAttribute(key, source));
-        }
+        List<AccessControlAttribute> attributes = parseAccessControlAttributes(request);
         InstanceAccessControlAttributeConfiguration configuration = new InstanceAccessControlAttributeConfiguration(
                 instanceArn, attributes, "ENABLED", null);
+        accessControlAttributeConfigurations.put(instanceArn, configuration);
+        return configuration;
+    }
+
+    public synchronized InstanceAccessControlAttributeConfiguration updateInstanceAccessControlAttributeConfiguration(JsonNode request) {
+        String instanceArn = required(request, "InstanceArn");
+        requireInstance(instanceArn);
+        if (accessControlAttributeConfigurations.get(instanceArn).isEmpty()) {
+            throw notFound("Instance access control attribute configuration not found for: " + instanceArn);
+        }
+        InstanceAccessControlAttributeConfiguration configuration = new InstanceAccessControlAttributeConfiguration(
+                instanceArn, parseAccessControlAttributes(request), "ENABLED", null);
         accessControlAttributeConfigurations.put(instanceArn, configuration);
         return configuration;
     }
@@ -2062,6 +2041,44 @@ public class SsoAdminService implements Resettable {
                 && java.util.Objects.equals(application.portalOptions(), portalOptions)
                 && java.util.Objects.equals(application.status(), status)
                 && java.util.Objects.equals(application.tags(), tags);
+    }
+
+    private static List<AccessControlAttribute> parseAccessControlAttributes(JsonNode request) {
+        JsonNode configurationNode = request == null ? null : request.get("InstanceAccessControlAttributeConfiguration");
+        if (configurationNode == null || !configurationNode.isObject()) {
+            throw validation("InstanceAccessControlAttributeConfiguration must be an object.");
+        }
+        JsonNode attributesNode = configurationNode.get("AccessControlAttributes");
+        if (attributesNode == null || !attributesNode.isArray()) {
+            throw validation("AccessControlAttributes must be an array.");
+        }
+        if (attributesNode.size() > 50) {
+            throw validation("AccessControlAttributes can contain at most 50 attributes.");
+        }
+        List<AccessControlAttribute> attributes = new ArrayList<>();
+        for (JsonNode attributeNode : attributesNode) {
+            if (!attributeNode.isObject()) {
+                throw validation("Each access control attribute must be an object.");
+            }
+            String key = required(attributeNode, "Key");
+            if (key.length() > 128 || !ACCESS_CONTROL_ATTRIBUTE_KEY.matcher(key).matches()) {
+                throw validation("Access control attribute Key is invalid.");
+            }
+            JsonNode valueNode = attributeNode.get("Value");
+            if (valueNode == null || !valueNode.isObject()) {
+                throw validation("Access control attribute Value must be an object.");
+            }
+            JsonNode sourceNode = valueNode.get("Source");
+            if (sourceNode == null || !sourceNode.isArray() || sourceNode.size() != 1 || !sourceNode.get(0).isTextual()) {
+                throw validation("Access control attribute Source must contain exactly one string.");
+            }
+            String source = sourceNode.get(0).textValue();
+            if (source.length() > 256 || !ACCESS_CONTROL_ATTRIBUTE_SOURCE.matcher(source).matches()) {
+                throw validation("Access control attribute Source is invalid.");
+            }
+            attributes.add(new AccessControlAttribute(key, source));
+        }
+        return attributes;
     }
 
     private static ApplicationPortalOptions parseUpdatePortalOptions(JsonNode node, ApplicationPortalOptions current) {
