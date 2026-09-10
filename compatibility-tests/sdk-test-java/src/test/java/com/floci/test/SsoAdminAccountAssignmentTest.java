@@ -381,6 +381,12 @@ class SsoAdminAccountAssignmentTest {
             var sessionConfiguration = sso.getApplicationSessionConfiguration(request -> request
                     .applicationArn(applicationArn));
             assertThat(sessionConfiguration.userBackgroundSessionApplicationStatusAsString()).isEqualTo("DISABLED");
+            var putSessionConfiguration = sso.putApplicationSessionConfiguration(request -> request
+                    .applicationArn(applicationArn)
+                    .userBackgroundSessionApplicationStatus("ENABLED"));
+            assertThat(putSessionConfiguration.sdkHttpResponse().isSuccessful()).isTrue();
+            assertThat(sso.getApplicationSessionConfiguration(request -> request.applicationArn(applicationArn))
+                    .userBackgroundSessionApplicationStatusAsString()).isEqualTo("ENABLED");
 
             var putGrant = sso.putApplicationGrant(request -> request
                     .applicationArn(applicationArn)
