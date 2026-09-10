@@ -465,6 +465,7 @@ public class RdsContainerManager {
     private void initializeEngine(String containerName, String containerId, DatabaseEngine engine, String masterUsername) {
         if (engine == DatabaseEngine.POSTGRES) {
             initializePostgresIamRole(containerName, containerId, masterUsername);
+            waitForPostgresTcpReady(containerName, containerId, masterUsername);
         }
     }
 
@@ -490,6 +491,18 @@ public class RdsContainerManager {
                 "-c", postgresIamRoleInitSql()
         };
         execUntilSuccess(containerName, containerId, cmd, "PostgreSQL IAM role");
+    }
+
+    private void waitForPostgresTcpReady(String containerName, String containerId, String masterUsername) {
+        execUntilSuccess(containerName, containerId,
+                postgresTcpReadinessCommand(masterUsername), "PostgreSQL TCP readiness");
+    }
+
+    static String[] postgresTcpReadinessCommand(String masterUsername) {
+        String effectiveUser = (masterUsername != null && !masterUsername.isBlank()) ? masterUsername : "postgres";
+        String command = "test \"$(head -n 1 \"$PGDATA/postmaster.pid\" 2>/dev/null)\" = \"1\""
+                + " && pg_isready -h 127.0.0.1 -p 5432 -U " + effectiveUser + " -d postgres";
+        return new String[] {"sh", "-c", command};
     }
 
     /**

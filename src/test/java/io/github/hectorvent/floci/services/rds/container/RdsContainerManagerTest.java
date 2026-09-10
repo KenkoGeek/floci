@@ -27,6 +27,7 @@ import com.github.dockerjava.api.command.CopyArchiveToContainerCmd;
 import com.github.dockerjava.api.model.Bind;
 import io.github.hectorvent.floci.services.rds.model.DatabaseEngine;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -109,6 +110,20 @@ class RdsContainerManagerTest {
         // break out of the string literal in SQL executed as root.
         assertEquals("GRANT ALL PRIVILEGES ON *.* TO 'we\\'ird\\\\'@'%' WITH GRANT OPTION;",
                 RdsContainerManager.mysqlMasterGrantSql("we'ird\\"));
+    }
+
+    @Test
+    void postgresReadinessProbeRequiresFinalPidOneServerAndTcp() {
+        assertArrayEquals(
+                new String[] {"sh", "-c",
+                        "test \"$(head -n 1 \"$PGDATA/postmaster.pid\" 2>/dev/null)\" = \"1\""
+                                + " && pg_isready -h 127.0.0.1 -p 5432 -U admin -d postgres"},
+                RdsContainerManager.postgresTcpReadinessCommand("admin"));
+        assertArrayEquals(
+                new String[] {"sh", "-c",
+                        "test \"$(head -n 1 \"$PGDATA/postmaster.pid\" 2>/dev/null)\" = \"1\""
+                                + " && pg_isready -h 127.0.0.1 -p 5432 -U postgres -d postgres"},
+                RdsContainerManager.postgresTcpReadinessCommand(null));
     }
 
     @Test
