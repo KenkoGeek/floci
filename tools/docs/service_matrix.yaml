@@ -26,6 +26,7 @@ aliases:
   mq: amazonmq                          # Amazon MQ's SigV4 signing name is "mq"
   signin: iam                           # AWS Sign-In facet, at iam.md#aws-sign-in-login-credentials
   sso: iam                              # Identity Center ListInstances facet on the IAM page
+  sso-oidc: ssooidc                     # IAM Identity Center OIDC REST API
   events: eventbridge
   servicediscovery: cloudmap            # Cloud Map's SigV4 signing name
   elasticmapreduce: emr                 # EMR's SigV4 signing name
