@@ -9,9 +9,11 @@ public record PermissionSet(String arn, String name, String description, String 
                             Map<String, String> managedPolicies,
                             Map<String, CustomerManagedPolicyReference> customerManagedPolicies,
                             String inlinePolicy,
-                            PermissionsBoundary permissionsBoundary) {
+                            PermissionsBoundary permissionsBoundary,
+                            Map<String, String> tags) {
     public PermissionSet {
         managedPolicies = managedPolicies == null ? new java.util.LinkedHashMap<>() : managedPolicies;
         customerManagedPolicies = customerManagedPolicies == null ? new java.util.LinkedHashMap<>() : customerManagedPolicies;
+        tags = tags == null ? new java.util.LinkedHashMap<>() : tags;
     }
 }

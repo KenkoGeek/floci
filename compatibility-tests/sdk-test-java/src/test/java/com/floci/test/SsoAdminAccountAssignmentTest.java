@@ -140,6 +140,14 @@ class SsoAdminAccountAssignmentTest {
                     .tags(tag -> tag.key("Environment").value("test")));
             assertThat(replay.applicationArn()).isEqualTo(created.applicationArn());
 
+            var tags = sso.listTagsForResource(request -> request
+                    .instanceArn(instanceArn)
+                    .resourceArn(created.applicationArn()));
+            assertThat(tags.tags()).singleElement().satisfies(tag -> {
+                assertThat(tag.key()).isEqualTo("Environment");
+                assertThat(tag.value()).isEqualTo("test");
+            });
+
             var described = sso.describeApplication(request -> request.applicationArn(created.applicationArn()));
             assertThat(described.applicationArn()).isEqualTo(created.applicationArn());
             assertThat(described.instanceArn()).isEqualTo(instanceArn);

@@ -66,6 +66,7 @@ public class SsoAdminService implements Resettable {
     private static final Pattern CLIENT_TOKEN = Pattern.compile("[!-~]+");
     private static final Pattern APPLICATION_URL = Pattern.compile("http(s)?://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#/%?=~_|]");
     private static final Pattern TAG_VALUE = Pattern.compile("[\\p{L}\\p{Z}\\p{N}_.:/=+\\-@]*");
+    private static final Pattern NEXT_TOKEN = Pattern.compile("[-a-zA-Z0-9+=/_]*");
     private static final Pattern INSTANCE_NAME = Pattern.compile("[\\w+=,.@-]+");
     private static final Pattern ACCESS_CONTROL_ATTRIBUTE_KEY = Pattern.compile("[\\p{L}\\p{Z}\\p{N}_.:/=+\\-@]+");
     private static final Pattern ACCESS_CONTROL_ATTRIBUTE_SOURCE = Pattern.compile("[\\p{L}\\p{Z}\\p{N}_.:/=+\\-@\\[\\]\\{\\}$\\\\\"]*");
@@ -339,6 +340,45 @@ public class SsoAdminService implements Resettable {
                 .toList();
         return Pagination.paginate(matching, TrustedTokenIssuer::trustedTokenIssuerArn,
                 optionalMaxResults(request), text(request, "NextToken"), 100, 100, "ValidationException");
+    }
+
+    public PaginatedResult<Map.Entry<String, String>> listTagsForResource(JsonNode request) {
+        String instanceArn = optionalInstanceArn(request);
+        String resourceArn = required(request, "ResourceArn");
+        if (resourceArn.length() > 2048) {
+            throw validation("ResourceArn is invalid.");
+        }
+        Map<String, String> tags;
+        String resourceInstanceArn;
+        if (INSTANCE_ARN_PATTERN.matcher(resourceArn).matches()) {
+            SsoInstance instance = requireInstance(resourceArn);
+            tags = instance.tags();
+            resourceInstanceArn = instance.instanceArn();
+        } else if (PERMISSION_SET_ARN.matcher(resourceArn).matches()) {
+            PermissionSet permissionSet = permissionSets.get(resourceArn)
+                    .orElseThrow(() -> notFound("Permission set not found: " + resourceArn));
+            tags = permissionSet.tags();
+            resourceInstanceArn = instanceArnForPermissionSet(resourceArn);
+        } else if (APPLICATION_ARN.matcher(resourceArn).matches()) {
+            SsoApplication application = getApplication(resourceArn);
+            tags = application.tags();
+            resourceInstanceArn = application.instanceArn();
+        } else if (TRUSTED_TOKEN_ISSUER_ARN.matcher(resourceArn).matches()) {
+            TrustedTokenIssuer issuer = getTrustedTokenIssuer(resourceArn);
+            tags = issuer.tags();
+            resourceInstanceArn = issuer.instanceArn();
+        } else {
+            throw validation("ResourceArn is invalid.");
+        }
+        if (instanceArn != null && !instanceArn.equals(resourceInstanceArn)) {
+            throw notFound("Resource not found under the specified IAM Identity Center instance.");
+        }
+        List<Map.Entry<String, String>> entries = tags.entrySet().stream()
+                .map(entry -> Map.entry(entry.getKey(), entry.getValue()))
+                .sorted(Map.Entry.comparingByKey())
+                .toList();
+        return Pagination.paginate(entries, Map.Entry::getKey, null,
+                optionalNextToken(request), 75, 75, "ValidationException");
     }
 
     public TrustedTokenIssuer getTrustedTokenIssuer(String trustedTokenIssuerArn) {
@@ -1091,6 +1131,7 @@ public class SsoAdminService implements Resettable {
         String name = validateName(required(request, "Name"));
         String description = optionalDescription(request);
         String sessionDuration = validateSession(valueOr(request, "SessionDuration", "PT1H"));
+        Map<String, String> tags = parseTags(request.get("Tags"));
         if (permissionSets.scan(key -> true).stream().anyMatch(p -> name.equals(p.name()))) {
             throw conflict("Permission set already exists: " + name);
         }
@@ -1099,7 +1140,7 @@ public class SsoAdminService implements Resettable {
         }
         String arn = "arn:aws:sso:::permissionSet/ssoins-7223b02a5d9f7c8e/ps-" + shortId();
         PermissionSet permissionSet = new PermissionSet(arn, name, description, sessionDuration,
-                new LinkedHashMap<>(), new LinkedHashMap<>(), null, null);
+                new LinkedHashMap<>(), new LinkedHashMap<>(), null, null, tags);
         permissionSets.put(arn, permissionSet);
         return permissionSet;
     }
@@ -1138,7 +1179,8 @@ public class SsoAdminService implements Resettable {
                 ? validateSession(required(request, "SessionDuration")) : current.sessionDuration();
         PermissionSet updated = new PermissionSet(current.arn(), current.name(), description, session,
                 new LinkedHashMap<>(current.managedPolicies()),
-                new LinkedHashMap<>(current.customerManagedPolicies()), current.inlinePolicy(), current.permissionsBoundary());
+                new LinkedHashMap<>(current.customerManagedPolicies()), current.inlinePolicy(), current.permissionsBoundary(),
+                new LinkedHashMap<>(current.tags()));
         permissionSets.put(updated.arn(), updated);
         markPermissionSetProvisioningStale(updated.arn());
         return updated;
@@ -1236,7 +1278,8 @@ public class SsoAdminService implements Resettable {
         validateInlinePolicy(policy);
         permissionSets.put(arn, new PermissionSet(current.arn(), current.name(), current.description(),
                 current.sessionDuration(), new LinkedHashMap<>(current.managedPolicies()),
-                new LinkedHashMap<>(current.customerManagedPolicies()), policy, current.permissionsBoundary()));
+                new LinkedHashMap<>(current.customerManagedPolicies()), policy, current.permissionsBoundary(),
+                new LinkedHashMap<>(current.tags())));
         markPermissionSetProvisioningStale(arn);
     }
 
@@ -1244,7 +1287,8 @@ public class SsoAdminService implements Resettable {
         PermissionSet current = getPermissionSet(instanceArn, arn);
         permissionSets.put(arn, new PermissionSet(current.arn(), current.name(), current.description(),
                 current.sessionDuration(), new LinkedHashMap<>(current.managedPolicies()),
-                new LinkedHashMap<>(current.customerManagedPolicies()), null, current.permissionsBoundary()));
+                new LinkedHashMap<>(current.customerManagedPolicies()), null, current.permissionsBoundary(),
+                new LinkedHashMap<>(current.tags())));
         markPermissionSetProvisioningStale(arn);
     }
 
@@ -1263,7 +1307,8 @@ public class SsoAdminService implements Resettable {
         }
         permissionSets.put(permissionSetArn, new PermissionSet(current.arn(), current.name(), current.description(),
                 current.sessionDuration(), new LinkedHashMap<>(current.managedPolicies()),
-                new LinkedHashMap<>(current.customerManagedPolicies()), current.inlinePolicy(), null));
+                new LinkedHashMap<>(current.customerManagedPolicies()), current.inlinePolicy(), null,
+                new LinkedHashMap<>(current.tags())));
         markPermissionSetProvisioningStale(permissionSetArn);
     }
 
@@ -1306,7 +1351,8 @@ public class SsoAdminService implements Resettable {
 
         permissionSets.put(permissionSetArn, new PermissionSet(current.arn(), current.name(), current.description(),
                 current.sessionDuration(), new LinkedHashMap<>(current.managedPolicies()),
-                new LinkedHashMap<>(current.customerManagedPolicies()), current.inlinePolicy(), boundary));
+                new LinkedHashMap<>(current.customerManagedPolicies()), current.inlinePolicy(), boundary,
+                new LinkedHashMap<>(current.tags())));
         markPermissionSetProvisioningStale(permissionSetArn);
     }
 
@@ -1645,6 +1691,32 @@ public class SsoAdminService implements Resettable {
         return node.intValue();
     }
 
+    private String optionalInstanceArn(JsonNode request) {
+        if (request == null || !request.has("InstanceArn") || request.get("InstanceArn").isNull()) {
+            return null;
+        }
+        JsonNode node = request.get("InstanceArn");
+        if (!node.isTextual()) {
+            throw validation("InstanceArn is invalid.");
+        }
+        return requireInstance(node.textValue()).instanceArn();
+    }
+
+    private static String optionalNextToken(JsonNode request) {
+        if (request == null || !request.has("NextToken") || request.get("NextToken").isNull()) {
+            return null;
+        }
+        JsonNode node = request.get("NextToken");
+        if (!node.isTextual()) {
+            throw validation("NextToken is invalid.");
+        }
+        String token = node.textValue();
+        if (token.length() > 2048 || !NEXT_TOKEN.matcher(token).matches()) {
+            throw validation("NextToken is invalid.");
+        }
+        return token;
+    }
+
     private static String validateName(String name) {
         if (name.length() > 32 || !PERMISSION_SET_NAME.matcher(name).matches()) {
             throw validation("Name must be 1-32 characters and match [\\w+=,.@-]+.");
@@ -1875,6 +1947,14 @@ public class SsoAdminService implements Resettable {
 
     private static String customerManagedPolicyKey(String name, String path) {
         return name.toLowerCase(java.util.Locale.ROOT) + "\n" + path;
+    }
+
+    private static String instanceArnForPermissionSet(String permissionSetArn) {
+        int serviceIndex = permissionSetArn.indexOf(":sso::");
+        int instanceStart = permissionSetArn.indexOf("permissionSet/") + "permissionSet/".length();
+        int instanceEnd = permissionSetArn.indexOf('/', instanceStart);
+        return permissionSetArn.substring(0, serviceIndex) + ":sso:::instance/"
+                + permissionSetArn.substring(instanceStart, instanceEnd);
     }
 
     static String applicationAccessScopeKey(String applicationArn, String scope) {

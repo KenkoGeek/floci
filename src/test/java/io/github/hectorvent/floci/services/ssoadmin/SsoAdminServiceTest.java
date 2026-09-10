@@ -1051,6 +1051,38 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void listTagsForResourceReturnsPermissionSetTagsAndValidatesContext() {
+        ObjectNode create = mapper.createObjectNode();
+        create.put("InstanceArn", service.getInstanceArn());
+        create.put("Name", "TaggedAdmins");
+        var tags = create.putArray("Tags");
+        tags.addObject().put("Key", "Environment").put("Value", "test");
+        tags.addObject().put("Key", "Owner").put("Value", "platform");
+        PermissionSet permissionSet = service.createPermissionSet(create);
+
+        ObjectNode request = mapper.createObjectNode();
+        request.put("ResourceArn", permissionSet.arn());
+        request.put("InstanceArn", service.getInstanceArn());
+        var page = service.listTagsForResource(request);
+        assertEquals(2, page.items().size());
+        assertEquals("Environment", page.items().get(0).getKey());
+        assertEquals("test", page.items().get(0).getValue());
+        assertEquals("Owner", page.items().get(1).getKey());
+        assertNull(page.nextToken());
+
+        ObjectNode invalidToken = request.deepCopy();
+        invalidToken.put("NextToken", "bad%token");
+        assertError("ValidationException", () -> service.listTagsForResource(invalidToken));
+
+        ObjectNode wrongInstance = request.deepCopy();
+        wrongInstance.put("InstanceArn", "arn:aws:sso:::instance/ssoins-1111111111111111");
+        assertError("ResourceNotFoundException", () -> service.listTagsForResource(wrongInstance));
+
+        ObjectNode invalidResource = mapper.createObjectNode().put("ResourceArn", "arn:aws:s3:::bucket");
+        assertError("ValidationException", () -> service.listTagsForResource(invalidResource));
+    }
+
+    @Test
     void attachesCustomerManagedPolicyReferencesWithAwsValidationRules() {
         PermissionSet permissionSet = createPermissionSet("CustomerPolicyAdmins");
         ObjectNode request = mapper.createObjectNode();
