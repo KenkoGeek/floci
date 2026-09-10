@@ -364,6 +364,14 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void createInstanceUsesThePartitionForItsPrimaryRegion() {
+        SsoAdminService emptyService = emptyService();
+        SsoInstance instance = emptyService.createInstance(mapper.createObjectNode(), ACCOUNT_ID, "cn-north-1");
+
+        assertTrue(instance.instanceArn().startsWith("arn:aws-cn:sso:::instance/"));
+    }
+
+    @Test
     void createInstancePersistsMetadataAndSupportsIdempotentReplay() {
         SsoAdminService emptyService = emptyService();
         ObjectNode request = mapper.createObjectNode();

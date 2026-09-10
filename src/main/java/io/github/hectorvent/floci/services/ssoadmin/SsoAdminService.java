@@ -3,7 +3,9 @@ package io.github.hectorvent.floci.services.ssoadmin;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.github.hectorvent.floci.config.EmulatorConfig;
+import io.github.hectorvent.floci.core.common.AwsArnUtils;
 import io.github.hectorvent.floci.core.common.AwsException;
+import io.github.hectorvent.floci.core.common.AwsRegions;
 import io.github.hectorvent.floci.core.common.PaginatedResult;
 import io.github.hectorvent.floci.core.common.Pagination;
 import io.github.hectorvent.floci.core.common.Resettable;
@@ -49,7 +51,7 @@ import java.util.regex.Pattern;
 
 @ApplicationScoped
 public class SsoAdminService implements Resettable {
-    private static final String INSTANCE_ARN = "arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e";
+    private static final String INSTANCE_ARN = globalArn("sso", "us-east-1", "", "instance/ssoins-7223b02a5d9f7c8e");
     private static final String IDENTITY_STORE_ID = "d-9067f2a3c1";
     private static final String PRIMARY_REGION = "us-east-1";
     private static final Pattern INSTANCE_ARN_PATTERN = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:sso:::instance/(?:sso)?ins-[a-zA-Z0-9-.]{16}");
@@ -76,7 +78,6 @@ public class SsoAdminService implements Resettable {
     private static final Pattern OIDC_IDENTITY_STORE_ATTRIBUTE_PATH = Pattern.compile("\\p{L}+(?:\\.\\p{L}+){0,2}");
     private static final Pattern OIDC_ISSUER_URL = Pattern.compile("https?://[-a-zA-Z0-9+&@/%=~_|!:,.;]*[-a-zA-Z0-9+&@/%=~_|]");
     private static final Pattern KMS_KEY_ARN = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:kms:([a-z]{2,}(-[a-z0-9]+)+):[0-9]{12}:key/(?:mrk-[a-f0-9]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})");
-    private static final String CUSTOM_APPLICATION_PROVIDER_ARN = "arn:aws:sso::aws:applicationProvider/custom";
     private static final int PERMISSION_SET_QUOTA = 3500;
     private static final int REGION_QUOTA = 6;
     private static final int MANAGED_POLICY_QUOTA = 25;
@@ -344,8 +345,8 @@ public class SsoAdminService implements Resettable {
         }
         String instanceId = instanceArn.substring(instanceArn.lastIndexOf('/') + 1);
         String ownerAccountId = instance.ownerAccountId() == null ? callerAccountId : instance.ownerAccountId();
-        String issuerArn = "arn:aws:sso::" + ownerAccountId + ":trustedTokenIssuer/"
-                + instanceId + "/tti-" + UUID.randomUUID();
+        String issuerArn = globalArn("sso", instance.primaryRegion(), ownerAccountId,
+                "trustedTokenIssuer/" + instanceId + "/tti-" + UUID.randomUUID());
         TrustedTokenIssuer issuer = new TrustedTokenIssuer(
                 issuerArn, instanceArn, name, issuerType, oidcConfiguration, tags);
         trustedTokenIssuers.put(issuerArn, issuer);
@@ -634,7 +635,7 @@ public class SsoAdminService implements Resettable {
         if (instances.get(callerAccountId).isPresent()) {
             throw quota("Only one IAM Identity Center instance can exist in an AWS account.");
         }
-        String instanceArn = "arn:aws:sso:::instance/ssoins-" + shortId();
+        String instanceArn = globalArn("sso", region, "", "instance/ssoins-" + shortId());
         String identityStoreId = "d-" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         SsoInstance instance = new SsoInstance(instanceArn, identityStoreId, name, callerAccountId, region,
                 System.currentTimeMillis(), "ACTIVE", null, true, tags);
@@ -1025,7 +1026,7 @@ public class SsoAdminService implements Resettable {
         if (applicationProviderArn.length() > 1224 || !APPLICATION_PROVIDER_ARN.matcher(applicationProviderArn).matches()) {
             throw validation("ApplicationProviderArn is invalid.");
         }
-        if (!CUSTOM_APPLICATION_PROVIDER_ARN.equals(applicationProviderArn)) {
+        if (!customApplicationProviderArn().equals(applicationProviderArn)) {
             throw notFound("Application provider not found: " + applicationProviderArn);
         }
         return applicationProviderArn;
@@ -1036,7 +1037,7 @@ public class SsoAdminService implements Resettable {
         if (requested != null && requested > 100) {
             throw validation("MaxResults must be between 1 and 100.");
         }
-        return Pagination.paginate(java.util.List.of(CUSTOM_APPLICATION_PROVIDER_ARN), value -> value,
+        return Pagination.paginate(java.util.List.of(customApplicationProviderArn()), value -> value,
                 requested, text(request, "NextToken"), 50, 100, "ValidationException");
     }
 
@@ -1339,7 +1340,8 @@ public class SsoAdminService implements Resettable {
         if (providerArn.length() > 1224 || !APPLICATION_PROVIDER_ARN.matcher(providerArn).matches()) {
             throw validation("ApplicationProviderArn is invalid.");
         }
-        if (!CUSTOM_APPLICATION_PROVIDER_ARN.equals(providerArn)) {
+        String customProviderArn = globalArn("sso", region, "aws", "applicationProvider/custom");
+        if (!customProviderArn.equals(providerArn)) {
             throw notFound("Application provider not found: " + providerArn);
         }
         String name = required(request, "Name");
@@ -1377,10 +1379,10 @@ public class SsoAdminService implements Resettable {
 
         String instanceId = instanceArn.substring(instanceArn.lastIndexOf('/') + 1);
         String ownerAccountId = instance.ownerAccountId() == null ? callerAccountId : instance.ownerAccountId();
-        String applicationArn = "arn:aws:sso::" + ownerAccountId
-                + ":application/" + instanceId + "/apl-" + shortId();
-        String identityStoreArn = "arn:aws:identitystore::" + ownerAccountId
-                + ":identitystore/" + instance.identityStoreId();
+        String applicationArn = globalArn("sso", region, ownerAccountId,
+                "application/" + instanceId + "/apl-" + shortId());
+        String identityStoreArn = globalArn("identitystore", region, ownerAccountId,
+                "identitystore/" + instance.identityStoreId());
         SsoApplication application = new SsoApplication(ownerAccountId, applicationArn, providerArn,
                 System.currentTimeMillis(), region, description, identityStoreArn, instanceArn, name,
                 portalOptions, status, tags);
@@ -1490,7 +1492,7 @@ public class SsoAdminService implements Resettable {
     }
 
     public synchronized PermissionSet createPermissionSet(JsonNode request) {
-        requireInstance(required(request, "InstanceArn"));
+        SsoInstance instance = requireInstance(required(request, "InstanceArn"));
         String name = validateName(required(request, "Name"));
         String description = optionalDescription(request);
         String sessionDuration = validateSession(valueOr(request, "SessionDuration", "PT1H"));
@@ -1501,7 +1503,9 @@ public class SsoAdminService implements Resettable {
         if (permissionSets.scan(key -> true).size() >= PERMISSION_SET_QUOTA) {
             throw quota("The IAM Identity Center permission set quota has been exceeded.");
         }
-        String arn = "arn:aws:sso:::permissionSet/ssoins-7223b02a5d9f7c8e/ps-" + shortId();
+        String instanceId = instance.instanceArn().substring(instance.instanceArn().lastIndexOf('/') + 1);
+        String arn = globalArn("sso", instance.primaryRegion(), "",
+                "permissionSet/" + instanceId + "/ps-" + shortId());
         PermissionSet permissionSet = new PermissionSet(arn, name, description, sessionDuration,
                 new LinkedHashMap<>(), new LinkedHashMap<>(), null, null, tags);
         permissionSets.put(arn, permissionSet);
@@ -1748,26 +1752,25 @@ public class SsoAdminService implements Resettable {
         Set<String> invalidIdentityStores = new java.util.HashSet<>();
         return assignments.scan(key -> true).stream()
                 .filter(assignment -> {
-                    SsoInstance instance = requireInstance(instanceArnForPermissionSet(assignment.permissionSetArn()));
-                    String storeId = instance.identityStoreId();
-                    if (invalidIdentityStores.contains(storeId)) {
-                        return false;
-                    }
-                    Set<String> groupIds;
-                    try {
-                        groupIds = groupsByIdentityStore.computeIfAbsent(storeId,
-                                id -> identityStoreService.groupIdsForUser(id, userId));
-                    } catch (AwsException e) {
-                        invalidIdentityStores.add(storeId);
-                        return false;
-                    }
                     if ("USER".equals(assignment.principalType())) {
                         return userId.equals(assignment.principalId());
                     }
                     if (!"GROUP".equals(assignment.principalType())) {
                         return false;
                     }
-                    return groupIds.contains(assignment.principalId());
+                    SsoInstance instance = requireInstance(instanceArnForPermissionSet(assignment.permissionSetArn()));
+                    String storeId = instance.identityStoreId();
+                    if (invalidIdentityStores.contains(storeId)) {
+                        return false;
+                    }
+                    try {
+                        Set<String> groupIds = groupsByIdentityStore.computeIfAbsent(storeId,
+                                id -> identityStoreService.groupIdsForUser(id, userId));
+                        return groupIds.contains(assignment.principalId());
+                    } catch (AwsException e) {
+                        invalidIdentityStores.add(storeId);
+                        return false;
+                    }
                 })
                 .sorted(Comparator.comparing(Assignment::accountId)
                         .thenComparing(Assignment::permissionSetArn)
@@ -2484,6 +2487,14 @@ public class SsoAdminService implements Resettable {
         String value = text(request, field);
         return value == null || value.isBlank() ? fallback : value;
     }
+    private String customApplicationProviderArn() {
+        return globalArn("sso", defaultRegion, "aws", "applicationProvider/custom");
+    }
+
+    private static String globalArn(String service, String region, String accountId, String resource) {
+        return new AwsArnUtils.Arn(AwsRegions.partitionFor(region), service, "", accountId, resource).toString();
+    }
+
     private static String shortId() { return UUID.randomUUID().toString().replace("-", "").substring(0, 16); }
     private static AwsException notFound(String message) { return new AwsException("ResourceNotFoundException", message, 400); }
     private static AwsException validation(String message) { return new AwsException("ValidationException", message, 400); }

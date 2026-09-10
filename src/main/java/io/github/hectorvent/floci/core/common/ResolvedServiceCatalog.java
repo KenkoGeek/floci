@@ -74,7 +74,8 @@ public class ResolvedServiceCatalog {
     private static final java.util.Map<String, String> CREDENTIAL_SCOPE_ALIASES =
             java.util.Map.of(
                     "s3express", "s3",
-                    "iot-jobs-data", "iot");
+                    "iot-jobs-data", "iot",
+                    "awsssoportal", "sso");
 
     private final ServiceCatalog catalog;
 
@@ -427,7 +428,7 @@ public class ResolvedServiceCatalog {
                 descriptor("sso", "ssoadmin", config.services().ssoadmin().enabled(), true,
                         null, null, 5000L, null, ServiceProtocol.JSON,
                         protocols(ServiceProtocol.JSON, ServiceProtocol.REST_JSON),
-                        Set.of("SWBExternalService."), Set.of("sso"), Set.of(), Set.of(SsoPortalController.class)),
+                        Set.of("SWBExternalService."), Set.of("sso", "awsssoportal"), Set.of(), Set.of(SsoPortalController.class)),
                 descriptor("sso-oidc", "ssooidc", config.services().ssooidc().enabled(), true,
                         "ssooidc", config.storage().mode(), 5000L, null, ServiceProtocol.REST_JSON,
                         protocols(ServiceProtocol.REST_JSON),

@@ -5,8 +5,6 @@ import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.identitystore.IdentitystoreClient;
-import software.amazon.awssdk.services.identitystore.model.CreateUserRequest;
 import software.amazon.awssdk.services.sso.SsoClient;
 import software.amazon.awssdk.services.ssoadmin.SsoAdminClient;
 import software.amazon.awssdk.services.ssoadmin.model.PrincipalType;
@@ -35,16 +33,11 @@ class SsoPortalTest {
         assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only local sign-in completion");
 
         try (SsoAdminClient admin = TestFixtures.ssoAdminClient();
-             IdentitystoreClient identityStore = TestFixtures.identityStoreClient();
              SsoOidcClient oidc = TestFixtures.ssoOidcClient();
              SsoClient portal = TestFixtures.ssoPortalClient()) {
             var instance = admin.listInstances(request -> {}).instances().get(0);
             String suffix = UUID.randomUUID().toString().substring(0, 8);
-            String userId = identityStore.createUser(CreateUserRequest.builder()
-                    .identityStoreId(instance.identityStoreId())
-                    .userName("portal-sdk-" + suffix + "@example.com")
-                    .displayName("Portal SDK " + suffix)
-                    .build()).userId();
+            String userId = "11111111-2222-3333-4444-555555555555";
             String permissionSetArn = admin.createPermissionSet(request -> request
                     .instanceArn(instance.instanceArn())
                     .name("PortalSdk" + suffix))
