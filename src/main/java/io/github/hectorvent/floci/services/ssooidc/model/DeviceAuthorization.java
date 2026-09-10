@@ -7,5 +7,6 @@ public record DeviceAuthorization(
         String startUrl,
         long expiresAtEpochSeconds,
         int intervalSeconds,
-        boolean authorized
+        boolean authorized,
+        long lastPollAtEpochMillis
 ) {}
