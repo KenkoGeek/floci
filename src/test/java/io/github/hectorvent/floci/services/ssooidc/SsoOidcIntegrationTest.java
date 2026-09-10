@@ -1,6 +1,9 @@
 package io.github.hectorvent.floci.services.ssooidc;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.hectorvent.floci.services.ssoadmin.SsoAdminService;
 import io.quarkus.test.junit.QuarkusTest;
+import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
 import static io.restassured.RestAssured.given;
@@ -10,6 +13,17 @@ import static org.hamcrest.Matchers.matchesPattern;
 
 @QuarkusTest
 class SsoOidcIntegrationTest {
+    private static final String AUTH_HEADER =
+            "AWS4-HMAC-SHA256 Credential=AKID/20260101/us-east-1/sso-oauth/aws4_request";
+
+    @Inject
+    SsoAdminService ssoAdminService;
+
+    @Inject
+    SsoOidcService ssoOidcService;
+
+    @Inject
+    ObjectMapper mapper;
 
     @Test
     void registerClientReturnsAwsOidcShapeWithoutSigV4() {
@@ -106,6 +120,65 @@ class SsoOidcIntegrationTest {
             .when().post("/token")
             .then().statusCode(200)
                 .body("tokenType", equalTo("Bearer"));
+    }
+
+    @Test
+    void createTokenWithIamRequiresSigV4AndUsesApplicationPolicy() {
+        String instanceArn = ssoAdminService.getInstanceArn();
+        var create = mapper.createObjectNode();
+        create.put("InstanceArn", instanceArn);
+        create.put("ApplicationProviderArn", "arn:aws:sso::aws:applicationProvider/custom");
+        create.put("Name", "IAM OIDC Integration");
+        String applicationArn = ssoAdminService.createApplication(create, "000000000000", "us-east-1").applicationArn();
+
+        var authentication = mapper.createObjectNode();
+        authentication.put("ApplicationArn", applicationArn);
+        authentication.put("AuthenticationMethodType", "IAM");
+        var policy = authentication.putObject("AuthenticationMethod").putObject("Iam").putObject("ActorPolicy");
+        policy.put("Version", "2012-10-17");
+        var statement = policy.putArray("Statement").addObject();
+        statement.put("Effect", "Allow");
+        statement.put("Principal", "*");
+        statement.put("Action", "sso-oauth:CreateTokenWithIAM");
+        statement.put("Resource", "*");
+        ssoAdminService.putApplicationAuthenticationMethod(authentication);
+
+        String redirectUri = "http://127.0.0.1:8400/iam-callback";
+        var grant = mapper.createObjectNode();
+        grant.put("ApplicationArn", applicationArn);
+        grant.put("GrantType", "authorization_code");
+        grant.putObject("Grant").putObject("AuthorizationCode").putArray("RedirectUris").add(redirectUri);
+        ssoAdminService.putApplicationGrant(grant);
+
+        String verifier = "01234567890123456789012345678901234567890123456789";
+        String challenge = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(sha256(verifier));
+        String code = ssoOidcService.createIamAuthorizationCode(applicationArn, redirectUri, challenge,
+                java.util.List.of(redirectUri)).code();
+        String body = "{\"clientId\":\"" + applicationArn + "\",\"grantType\":\"authorization_code\","
+                + "\"code\":\"" + code + "\",\"codeVerifier\":\"" + verifier + "\","
+                + "\"redirectUri\":\"" + redirectUri + "\",\"scope\":[\"openid\"]}";
+
+        given().contentType("application/json").body(body)
+            .when().post("/token?aws_iam=t")
+            .then().statusCode(400).body("error", equalTo("access_denied"));
+
+        given().contentType("application/json").header("Authorization", AUTH_HEADER).body(body)
+            .when().post("/token?aws_iam=t")
+            .then().statusCode(200)
+                .body("tokenType", equalTo("Bearer"))
+                .body("scope[0]", equalTo("openid"))
+                .body("accessToken", matchesPattern("[0-9a-f]{64}"))
+                .body("idToken", org.hamcrest.Matchers.not(org.hamcrest.Matchers.blankOrNullString()))
+                .body("awsAdditionalDetails.identityContext", org.hamcrest.Matchers.not(org.hamcrest.Matchers.blankOrNullString()));
+    }
+
+    private static byte[] sha256(String value) {
+        try {
+            return java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     @Test

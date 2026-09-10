@@ -179,7 +179,17 @@ public class SsoOidcService implements Resettable {
         if (!client.grantTypes().isEmpty() && !client.grantTypes().contains("authorization_code")) {
             throw new SsoOidcException("unauthorized_client", "Client is not registered for authorization code", 400);
         }
-        if (redirectUri == null || redirectUri.isBlank() || !client.redirectUris().contains(redirectUri)) {
+        return createAuthorizationCode(clientId, redirectUri, codeChallenge, client.redirectUris());
+    }
+
+    public synchronized AuthorizationCode createIamAuthorizationCode(
+            String applicationArn, String redirectUri, String codeChallenge, List<String> allowedRedirectUris) {
+        return createAuthorizationCode(applicationArn, redirectUri, codeChallenge, allowedRedirectUris);
+    }
+
+    private AuthorizationCode createAuthorizationCode(
+            String clientId, String redirectUri, String codeChallenge, List<String> allowedRedirectUris) {
+        if (redirectUri == null || redirectUri.isBlank() || !allowedRedirectUris.contains(redirectUri)) {
             throw new SsoOidcException("invalid_redirect_uri", "Redirect URI is not registered", 400);
         }
         if (codeChallenge == null || codeChallenge.isBlank()) {
@@ -273,14 +283,114 @@ public class SsoOidcService implements Resettable {
     }
 
     private TokenSession issueToken(RegisteredClient client) {
+        return issueToken(client.clientId(), client.scopes(), true);
+    }
+
+    public synchronized TokenSession createIamToken(JsonNode request, String applicationArn, List<String> grantedScopes) {
+        String grantType = requiredText(request, "grantType");
+        return switch (grantType) {
+            case "authorization_code" -> createIamTokenFromAuthorizationCode(request, applicationArn, grantedScopes);
+            case "refresh_token" -> createIamTokenFromRefreshToken(request, applicationArn, grantedScopes);
+            case "urn:ietf:params:oauth:grant-type:jwt-bearer" -> {
+                requiredText(request, "assertion");
+                yield issueToken(applicationArn, grantedScopes, true);
+            }
+            case "urn:ietf:params:oauth:grant-type:token-exchange" ->
+                    createIamTokenFromExchange(request, applicationArn, grantedScopes);
+            default -> throw new SsoOidcException("unsupported_grant_type", "Unsupported grant type: " + grantType, 400);
+        };
+    }
+
+    private TokenSession createIamTokenFromAuthorizationCode(
+            JsonNode request, String applicationArn, List<String> grantedScopes) {
+        String code = requiredText(request, "code");
+        String codeVerifier = requiredText(request, "codeVerifier");
+        String redirectUri = requiredText(request, "redirectUri");
+        AuthorizationCode authorizationCode = authorizationCodes.get(code)
+                .orElseThrow(() -> new SsoOidcException("invalid_grant", "Authorization code is invalid", 400));
+        if (authorizationCode.expiresAtEpochSeconds() <= System.currentTimeMillis() / 1000L) {
+            authorizationCodes.delete(code);
+            throw new SsoOidcException("expired_token", "Authorization code has expired", 400);
+        }
+        if (!applicationArn.equals(authorizationCode.clientId())
+                || !redirectUri.equals(authorizationCode.redirectUri())
+                || !pkceChallenge(codeVerifier).equals(authorizationCode.codeChallenge())) {
+            throw new SsoOidcException("invalid_grant", "Authorization code validation failed", 400);
+        }
+        authorizationCodes.delete(code);
+        return issueToken(applicationArn, grantedScopes, true);
+    }
+
+    private TokenSession createIamTokenFromRefreshToken(
+            JsonNode request, String applicationArn, List<String> grantedScopes) {
+        String refreshToken = requiredText(request, "refreshToken");
+        TokenSession prior = requireRefreshToken(applicationArn, refreshToken);
+        if (!prior.scopes().containsAll(grantedScopes)) {
+            throw new SsoOidcException("invalid_scope", "Requested scopes exceed the refresh token scopes", 400);
+        }
+        return issueToken(applicationArn, grantedScopes, true);
+    }
+
+    private TokenSession createIamTokenFromExchange(
+            JsonNode request, String applicationArn, List<String> grantedScopes) {
+        String subjectToken = requiredText(request, "subjectToken");
+        String subjectTokenType = requiredText(request, "subjectTokenType");
+        if (!"urn:ietf:params:oauth:token-type:access_token".equals(subjectTokenType)) {
+            throw new SsoOidcException("invalid_request", "subjectTokenType must be access_token", 400);
+        }
+        String requestedTokenType = optionalText(request, "requestedTokenType");
+        if (requestedTokenType != null
+                && !Set.of("urn:ietf:params:oauth:token-type:access_token",
+                        "urn:ietf:params:oauth:token-type:refresh_token").contains(requestedTokenType)) {
+            throw new SsoOidcException("invalid_request", "requestedTokenType is invalid", 400);
+        }
+        TokenSession subject = requireAccessToken(subjectToken);
+        if (applicationArn.equals(subject.clientId())) {
+            throw new SsoOidcException("invalid_grant", "Subject token must be issued to a different application", 400);
+        }
+        return issueToken(applicationArn, grantedScopes,
+                !"urn:ietf:params:oauth:token-type:access_token".equals(requestedTokenType));
+    }
+
+    public TokenSession requireRefreshToken(String applicationArn, String refreshToken) {
+        TokenSession prior = tokenSessions.get("refresh:" + refreshToken)
+                .orElseThrow(() -> new SsoOidcException("invalid_grant", "Refresh token is invalid", 400));
+        if (!applicationArn.equals(prior.clientId())) {
+            throw new SsoOidcException("invalid_grant", "Refresh token belongs to another application", 400);
+        }
+        if (prior.refreshTokenExpiresAtEpochSeconds() <= System.currentTimeMillis() / 1000L) {
+            tokenSessions.delete("refresh:" + refreshToken);
+            throw new SsoOidcException("expired_token", "Refresh token has expired", 400);
+        }
+        return prior;
+    }
+
+    public TokenSession requireAccessToken(String accessToken) {
+        TokenSession session = tokenSessions.get("access:" + accessToken)
+                .orElseThrow(() -> new SsoOidcException("invalid_grant", "Access token is invalid", 400));
+        if (session.accessTokenExpiresAtEpochSeconds() <= System.currentTimeMillis() / 1000L) {
+            tokenSessions.delete("access:" + accessToken);
+            throw new SsoOidcException("expired_token", "Access token has expired", 400);
+        }
+        return session;
+    }
+
+    public TokenSession issueIamToken(String applicationArn, List<String> scopes, boolean issueRefreshToken) {
+        return issueToken(applicationArn, scopes, issueRefreshToken);
+    }
+
+    private TokenSession issueToken(String clientId, List<String> scopes, boolean issueRefreshToken) {
         long now = System.currentTimeMillis() / 1000L;
         String accessToken = randomToken();
-        String refreshToken = randomToken();
+        String refreshToken = issueRefreshToken ? randomToken() : null;
         TokenSession session = new TokenSession(
-                accessToken, refreshToken, client.clientId(), client.scopes(),
-                now + ACCESS_TOKEN_LIFETIME_SECONDS, now + REFRESH_TOKEN_LIFETIME_SECONDS);
+                accessToken, refreshToken, clientId, scopes,
+                now + ACCESS_TOKEN_LIFETIME_SECONDS,
+                issueRefreshToken ? now + REFRESH_TOKEN_LIFETIME_SECONDS : 0L);
         tokenSessions.put("access:" + accessToken, session);
-        tokenSessions.put("refresh:" + refreshToken, session);
+        if (refreshToken != null) {
+            tokenSessions.put("refresh:" + refreshToken, session);
+        }
         return session;
     }
 
@@ -342,7 +452,7 @@ public class SsoOidcService implements Resettable {
         return value;
     }
 
-    private static String optionalText(JsonNode request, String field) {
+    static String optionalText(JsonNode request, String field) {
         if (request == null || !request.has(field) || request.get(field).isNull()) {
             return null;
         }

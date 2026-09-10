@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -135,6 +136,38 @@ class SsoOidcServiceTest {
         assertOidcError("invalid_grant", () -> service.createToken(token));
     }
 
+    @Test
+    void createIamTokenSupportsRefreshJwtBearerAndTokenExchangeBranches() {
+        String sourceApplication = "arn:aws:sso::123456789012:application/ssoins-7223b02a5d9f7c8e/apl-1111111111111111";
+        String targetApplication = "arn:aws:sso::123456789012:application/ssoins-7223b02a5d9f7c8e/apl-2222222222222222";
+        var source = service.issueIamToken(sourceApplication, java.util.List.of("api:read"), true);
+
+        ObjectNode refresh = mapper.createObjectNode();
+        refresh.put("grantType", "refresh_token");
+        refresh.put("refreshToken", source.refreshToken());
+        assertEquals(sourceApplication,
+                service.createIamToken(refresh, sourceApplication, java.util.List.of("api:read")).clientId());
+        assertOidcError("invalid_scope",
+                () -> service.createIamToken(refresh, sourceApplication, java.util.List.of("api:write")));
+
+        ObjectNode jwt = mapper.createObjectNode();
+        jwt.put("grantType", "urn:ietf:params:oauth:grant-type:jwt-bearer");
+        jwt.put("assertion", "header.payload.signature");
+        assertEquals(targetApplication,
+                service.createIamToken(jwt, targetApplication, java.util.List.of("openid")).clientId());
+
+        ObjectNode exchange = mapper.createObjectNode();
+        exchange.put("grantType", "urn:ietf:params:oauth:grant-type:token-exchange");
+        exchange.put("subjectToken", source.accessToken());
+        exchange.put("subjectTokenType", "urn:ietf:params:oauth:token-type:access_token");
+        exchange.put("requestedTokenType", "urn:ietf:params:oauth:token-type:access_token");
+        var exchanged = service.createIamToken(exchange, targetApplication, java.util.List.of("openid"));
+        assertEquals(targetApplication, exchanged.clientId());
+        assertNull(exchanged.refreshToken());
+
+        assertOidcError("invalid_grant",
+                () -> service.createIamToken(exchange, sourceApplication, java.util.List.of("openid")));
+    }
     private static byte[] sha256(String value) {
         try {
             return java.security.MessageDigest.getInstance("SHA-256")
