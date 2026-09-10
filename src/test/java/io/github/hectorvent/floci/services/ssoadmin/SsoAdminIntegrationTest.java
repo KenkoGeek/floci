@@ -601,6 +601,39 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void putAndGetApplicationGrantRoundTripsAuthorizationCodeGrant() {
+        String applicationArn = given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.CreateApplication")
+            .body("{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
+                    + "\"ApplicationProviderArn\":\"arn:aws:sso::aws:applicationProvider/custom\","
+                    + "\"Name\":\"Put Grant Integration\"}")
+        .when().post("/")
+        .then().statusCode(200)
+            .extract().path("ApplicationArn");
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.PutApplicationGrant")
+            .body("{\"ApplicationArn\":\"" + applicationArn + "\","
+                    + "\"GrantType\":\"authorization_code\","
+                    + "\"Grant\":{\"AuthorizationCode\":{\"RedirectUris\":[\"https://example.com/callback\"]}}}")
+        .when().post("/")
+        .then().statusCode(200).body(org.hamcrest.Matchers.emptyOrNullString());
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.GetApplicationGrant")
+            .body("{\"ApplicationArn\":\"" + applicationArn + "\",\"GrantType\":\"authorization_code\"}")
+        .when().post("/")
+        .then().statusCode(200)
+            .body("Grant.AuthorizationCode.RedirectUris[0]", equalTo("https://example.com/callback"));
+    }
+
+    @Test
     void getApplicationGrantReturnsNotFoundWhenGrantIsAbsent() {
         String applicationArn = given()
             .contentType("application/x-amz-json-1.1")

@@ -832,6 +832,76 @@ public class SsoAdminService implements Resettable {
                 .orElseThrow(() -> notFound("Application grant not found: " + grantType));
     }
 
+    public synchronized void putApplicationGrant(JsonNode request) {
+        String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
+        getApplication(applicationArn);
+        String grantType = required(request, "GrantType");
+        if (!APPLICATION_GRANT_TYPES.contains(grantType)) {
+            throw validation("GrantType is invalid.");
+        }
+        JsonNode grant = request == null ? null : request.get("Grant");
+        if (grant == null || !grant.isObject() || grant.size() != 1) {
+            throw validation("Grant must contain exactly one grant configuration.");
+        }
+        String expectedMember = switch (grantType) {
+            case "authorization_code" -> "AuthorizationCode";
+            case "refresh_token" -> "RefreshToken";
+            case "urn:ietf:params:oauth:grant-type:jwt-bearer" -> "JwtBearer";
+            case "urn:ietf:params:oauth:grant-type:token-exchange" -> "TokenExchange";
+            default -> throw validation("GrantType is invalid.");
+        };
+        if (!grant.has(expectedMember) || !grant.get(expectedMember).isObject()) {
+            throw validation("Grant configuration must match GrantType.");
+        }
+        validateApplicationGrant(expectedMember, grant.get(expectedMember));
+        applicationGrants.put(applicationGrantKey(applicationArn, grantType),
+                new ApplicationGrant(applicationArn, grantType, grant.deepCopy()));
+    }
+
+    private static void validateApplicationGrant(String member, JsonNode configuration) {
+        if ("AuthorizationCode".equals(member)) {
+            JsonNode redirectUris = configuration.get("RedirectUris");
+            if (redirectUris == null || !redirectUris.isArray() || redirectUris.size() < 1 || redirectUris.size() > 10) {
+                throw validation("AuthorizationCode.RedirectUris must contain between 1 and 10 values.");
+            }
+            for (JsonNode uri : redirectUris) {
+                if (!uri.isTextual()) {
+                    throw validation("AuthorizationCode.RedirectUris values must be strings.");
+                }
+            }
+            return;
+        }
+        if ("JwtBearer".equals(member)) {
+            JsonNode issuers = configuration.get("AuthorizedTokenIssuers");
+            if (issuers == null || !issuers.isArray() || issuers.size() < 1 || issuers.size() > 10) {
+                throw validation("JwtBearer.AuthorizedTokenIssuers must contain between 1 and 10 values.");
+            }
+            for (JsonNode issuer : issuers) {
+                if (!issuer.isObject()) {
+                    throw validation("AuthorizedTokenIssuers values must be objects.");
+                }
+                JsonNode issuerArn = issuer.get("TrustedTokenIssuerArn");
+                if (issuerArn != null && !issuerArn.isNull()) {
+                    if (!issuerArn.isTextual()) {
+                        throw validation("TrustedTokenIssuerArn must be a string.");
+                    }
+                    validateTrustedTokenIssuerArn(issuerArn.textValue());
+                }
+                JsonNode audiences = issuer.get("AuthorizedAudiences");
+                if (audiences != null && !audiences.isNull()) {
+                    if (!audiences.isArray() || audiences.size() < 1 || audiences.size() > 10) {
+                        throw validation("AuthorizedAudiences must contain between 1 and 10 values.");
+                    }
+                    for (JsonNode audience : audiences) {
+                        if (!audience.isTextual() || audience.textValue().isEmpty() || audience.textValue().length() > 512) {
+                            throw validation("AuthorizedAudiences values must be strings between 1 and 512 characters.");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     public synchronized void deleteApplicationGrant(JsonNode request) {
         String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
         getApplication(applicationArn);

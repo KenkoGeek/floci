@@ -622,6 +622,53 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void putApplicationGrantValidatesUnionAndPersistsSupportedGrantTypes() {
+        SsoApplication application = createApplication("Put Grant App", "put-grant-app-token");
+        ObjectNode request = mapper.createObjectNode();
+        request.put("ApplicationArn", application.applicationArn());
+        request.put("GrantType", "authorization_code");
+        request.putObject("Grant").putObject("AuthorizationCode")
+                .putArray("RedirectUris").add("https://example.com/callback");
+
+        service.putApplicationGrant(request);
+        assertEquals("https://example.com/callback", service.getApplicationGrant(request)
+                .grant().path("AuthorizationCode").path("RedirectUris").get(0).asText());
+
+        ObjectNode refresh = mapper.createObjectNode();
+        refresh.put("ApplicationArn", application.applicationArn());
+        refresh.put("GrantType", "refresh_token");
+        refresh.putObject("Grant").putObject("RefreshToken");
+        service.putApplicationGrant(refresh);
+        assertTrue(service.getApplicationGrant(refresh).grant().has("RefreshToken"));
+
+        ObjectNode tokenExchange = mapper.createObjectNode();
+        tokenExchange.put("ApplicationArn", application.applicationArn());
+        tokenExchange.put("GrantType", "urn:ietf:params:oauth:grant-type:token-exchange");
+        tokenExchange.putObject("Grant").putObject("TokenExchange");
+        service.putApplicationGrant(tokenExchange);
+        assertTrue(service.getApplicationGrant(tokenExchange).grant().has("TokenExchange"));
+
+        ObjectNode jwt = mapper.createObjectNode();
+        jwt.put("ApplicationArn", application.applicationArn());
+        jwt.put("GrantType", "urn:ietf:params:oauth:grant-type:jwt-bearer");
+        ObjectNode issuer = jwt.putObject("Grant").putObject("JwtBearer")
+                .putArray("AuthorizedTokenIssuers").addObject();
+        issuer.put("TrustedTokenIssuerArn",
+                "arn:aws:sso::123456789012:trustedTokenIssuer/ssoins-7223b02a5d9f7c8e/tti-11111111-2222-3333-4444-555555555555");
+        issuer.putArray("AuthorizedAudiences").add("api://example");
+        service.putApplicationGrant(jwt);
+        assertTrue(service.getApplicationGrant(jwt).grant().has("JwtBearer"));
+
+        ObjectNode mismatched = request.deepCopy();
+        mismatched.set("Grant", mapper.createObjectNode().set("RefreshToken", mapper.createObjectNode()));
+        assertError("ValidationException", () -> service.putApplicationGrant(mismatched));
+
+        ObjectNode missingRedirects = request.deepCopy();
+        missingRedirects.set("Grant", mapper.createObjectNode().set("AuthorizationCode", mapper.createObjectNode()));
+        assertError("ValidationException", () -> service.putApplicationGrant(missingRedirects));
+    }
+
+    @Test
     void getApplicationGrantReturnsStoredGrantAndValidatesType() {
         SsoApplication application = createApplication("Get Grant App", "get-grant-app-token");
         String grantType = "authorization_code";

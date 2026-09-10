@@ -378,6 +378,20 @@ class SsoAdminAccountAssignmentTest {
                     .name("SDK Delete Grant"))
                     .applicationArn();
 
+            var putGrant = sso.putApplicationGrant(request -> request
+                    .applicationArn(applicationArn)
+                    .grantType("authorization_code")
+                    .grant(grant -> grant.authorizationCode(code -> code
+                            .redirectUris("https://example.com/callback"))));
+            assertThat(putGrant.sdkHttpResponse().isSuccessful()).isTrue();
+            var fetchedGrant = sso.getApplicationGrant(request -> request
+                    .applicationArn(applicationArn)
+                    .grantType("authorization_code"));
+            assertThat(fetchedGrant.grant().authorizationCode().redirectUris())
+                    .containsExactly("https://example.com/callback");
+            sso.deleteApplicationGrant(request -> request
+                    .applicationArn(applicationArn)
+                    .grantType("authorization_code"));
             assertThatThrownBy(() -> sso.getApplicationGrant(request -> request
                     .applicationArn(applicationArn)
                     .grantType("authorization_code")))
