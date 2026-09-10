@@ -621,6 +621,24 @@ class SsoAdminIntegrationTest {
         .when().post("/")
         .then().statusCode(200)
             .body("UserBackgroundSessionApplicationStatus", equalTo("DISABLED"));
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.PutApplicationSessionConfiguration")
+            .body("{\"ApplicationArn\":\"" + applicationArn + "\","
+                    + "\"UserBackgroundSessionApplicationStatus\":\"ENABLED\"}")
+        .when().post("/")
+        .then().statusCode(200).body(org.hamcrest.Matchers.emptyOrNullString());
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.GetApplicationSessionConfiguration")
+            .body("{\"ApplicationArn\":\"" + applicationArn + "\"}")
+        .when().post("/")
+        .then().statusCode(200)
+            .body("UserBackgroundSessionApplicationStatus", equalTo("ENABLED"));
     }
 
     @Test

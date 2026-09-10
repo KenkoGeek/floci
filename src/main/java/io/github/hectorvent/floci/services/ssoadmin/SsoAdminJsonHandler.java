@@ -67,6 +67,7 @@ public class SsoAdminJsonHandler {
             case "GetApplicationGrant" -> getApplicationGrant(request);
             case "ListApplicationGrants" -> listApplicationGrants(request);
             case "GetApplicationSessionConfiguration" -> getApplicationSessionConfiguration(request);
+            case "PutApplicationSessionConfiguration" -> putApplicationSessionConfiguration(request);
             case "PutApplicationGrant" -> putApplicationGrant(request);
             case "DeleteApplicationGrant" -> deleteApplicationGrant(request);
             case "ListPermissionSets" -> listPermissionSets(request);
@@ -430,6 +431,11 @@ public class SsoAdminJsonHandler {
     private Response getApplicationSessionConfiguration(JsonNode request) {
         return Response.ok(mapper.createObjectNode().put("UserBackgroundSessionApplicationStatus",
                 service.getApplicationSessionConfiguration(request))).build();
+    }
+
+    private Response putApplicationSessionConfiguration(JsonNode request) {
+        service.putApplicationSessionConfiguration(request);
+        return Response.ok().build();
     }
 
     private Response putApplicationGrant(JsonNode request) {

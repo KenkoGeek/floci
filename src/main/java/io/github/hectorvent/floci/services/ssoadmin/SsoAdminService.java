@@ -832,6 +832,19 @@ public class SsoAdminService implements Resettable {
         return applicationSessionConfigurations.get(applicationArn).orElse("DISABLED");
     }
 
+    public synchronized void putApplicationSessionConfiguration(JsonNode request) {
+        String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
+        getApplication(applicationArn);
+        JsonNode status = request == null ? null : request.get("UserBackgroundSessionApplicationStatus");
+        if (status == null || status.isNull()) {
+            return;
+        }
+        if (!status.isTextual() || !("ENABLED".equals(status.textValue()) || "DISABLED".equals(status.textValue()))) {
+            throw validation("UserBackgroundSessionApplicationStatus must be ENABLED or DISABLED.");
+        }
+        applicationSessionConfigurations.put(applicationArn, status.textValue());
+    }
+
     public ApplicationGrant getApplicationGrant(JsonNode request) {
         String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
         getApplication(applicationArn);

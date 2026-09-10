@@ -623,6 +623,27 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void putApplicationSessionConfigurationUpdatesBackgroundSessionStatus() {
+        SsoApplication application = createApplication("Put Session Config App", "put-session-config-token");
+        ObjectNode request = mapper.createObjectNode().put("ApplicationArn", application.applicationArn());
+        request.put("UserBackgroundSessionApplicationStatus", "ENABLED");
+
+        service.putApplicationSessionConfiguration(request);
+        assertEquals("ENABLED", service.getApplicationSessionConfiguration(request));
+
+        request.put("UserBackgroundSessionApplicationStatus", "DISABLED");
+        service.putApplicationSessionConfiguration(request);
+        assertEquals("DISABLED", service.getApplicationSessionConfiguration(request));
+
+        ObjectNode omitted = mapper.createObjectNode().put("ApplicationArn", application.applicationArn());
+        service.putApplicationSessionConfiguration(omitted);
+        assertEquals("DISABLED", service.getApplicationSessionConfiguration(omitted));
+
+        ObjectNode invalid = request.deepCopy().put("UserBackgroundSessionApplicationStatus", "UNKNOWN");
+        assertError("ValidationException", () -> service.putApplicationSessionConfiguration(invalid));
+    }
+
+    @Test
     void getApplicationSessionConfigurationDefaultsCustomApplicationsToDisabled() {
         SsoApplication application = createApplication("Session Config App", "session-config-app-token");
         ObjectNode request = mapper.createObjectNode().put("ApplicationArn", application.applicationArn());
