@@ -378,6 +378,15 @@ class SsoAdminAccountAssignmentTest {
                     .name("SDK Delete Grant"))
                     .applicationArn();
 
+            assertThatThrownBy(() -> sso.getApplicationGrant(request -> request
+                    .applicationArn(applicationArn)
+                    .grantType("authorization_code")))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ResourceNotFoundException.class);
+            assertThatThrownBy(() -> sso.getApplicationGrant(request -> request
+                    .applicationArn(applicationArn)
+                    .grantType("client_credentials")))
+                    .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ValidationException.class);
+
             assertThatThrownBy(() -> sso.deleteApplicationGrant(request -> request
                     .applicationArn(applicationArn)
                     .grantType("authorization_code")))
