@@ -13,11 +13,14 @@ Floci emulates the IAM Identity Center access portal API used by authenticated w
 | --- | --- |
 | `ListAccounts` | Lists the AWS accounts effectively assigned to the user represented by the OIDC access token, including assignments inherited through Identity Store groups. |
 | `ListAccountRoles` | Lists permission-set role names effectively assigned to the authenticated user for a specified AWS account. |
+| `GetRoleCredentials` | Returns registered Floci IAM temporary credentials for an account role assigned to the authenticated user. |
 <!-- floci:actions:end -->
 
 `ListAccounts` accepts the bearer token in the AWS-compatible `x-amz-sso_bearer_token` header and supports the documented `max_result` and `next_token` query parameters. The access token must have been completed through Floci's local OIDC authorization flow with a user principal. Direct user assignments and group assignments are resolved from SSO Admin and Identity Store state. Account names and email addresses are populated from Organizations when that account exists in the owning organization; these fields are optional in the AWS `AccountInfo` model.
 
 `ListAccountRoles` accepts `account_id`, `max_result`, and `next_token` exactly as the AWS Portal API documents. Each effective SSO Admin permission-set assignment is exposed using the permission set's friendly name as `roleName`, with duplicate direct/group paths collapsed.
+
+`GetRoleCredentials` validates that the requested permission-set name is effectively assigned to the authenticated user for the requested account. It returns AWS-shaped `ASIA...` temporary credentials, registers the session with Floci IAM so those credentials route subsequent signed requests to the target account, and uses the permission set session duration for the expiration timestamp. AWS returns this expiration as Unix epoch milliseconds.
 
 Portal errors use the AWS service exception names such as `UnauthorizedException` and `InvalidRequestException`, rather than the OAuth error envelope used by the OIDC API.
 

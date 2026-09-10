@@ -77,6 +77,25 @@ class SsoPortalIntegrationTest {
                 .body("__type", containsString("InvalidRequestException"));
 
         given()
+                .header("x-amz-sso_bearer_token", accessToken)
+                .queryParam("account_id", "111111111111")
+                .queryParam("role_name", "PortalDirect" + suffix)
+            .when().get("/federation/credentials")
+            .then().statusCode(200)
+                .body("roleCredentials.accessKeyId", org.hamcrest.Matchers.startsWith("ASIA"))
+                .body("roleCredentials.secretAccessKey", org.hamcrest.Matchers.not(org.hamcrest.Matchers.emptyString()))
+                .body("roleCredentials.sessionToken", org.hamcrest.Matchers.not(org.hamcrest.Matchers.emptyString()))
+                .body("roleCredentials.expiration", org.hamcrest.Matchers.greaterThan(System.currentTimeMillis()));
+
+        given()
+                .header("x-amz-sso_bearer_token", accessToken)
+                .queryParam("account_id", "111111111111")
+                .queryParam("role_name", "NotAssigned")
+            .when().get("/federation/credentials")
+            .then().statusCode(404)
+                .body("__type", containsString("ResourceNotFoundException"));
+
+        given()
             .when().get("/assignment/accounts")
             .then().statusCode(401)
                 .body("__type", containsString("UnauthorizedException"));
