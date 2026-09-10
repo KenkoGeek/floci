@@ -21,6 +21,7 @@ import io.github.hectorvent.floci.services.ssoadmin.model.ApplicationSignInOptio
 import io.github.hectorvent.floci.services.ssoadmin.model.AccessControlAttribute;
 import io.github.hectorvent.floci.services.ssoadmin.model.CustomerManagedPolicyReference;
 import io.github.hectorvent.floci.services.ssoadmin.model.InstanceAccessControlAttributeConfiguration;
+import io.github.hectorvent.floci.services.ssoadmin.model.InstanceUpdateState;
 import io.github.hectorvent.floci.services.ssoadmin.model.OidcJwtIssuerConfiguration;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionSet;
 import io.github.hectorvent.floci.services.ssoadmin.model.PermissionsBoundary;
@@ -73,6 +74,7 @@ public class SsoAdminService implements Resettable {
     private static final Pattern OIDC_CLAIM_ATTRIBUTE_PATH = Pattern.compile("\\p{L}+(?:(\\.|_)\\p{L}+){0,2}");
     private static final Pattern OIDC_IDENTITY_STORE_ATTRIBUTE_PATH = Pattern.compile("\\p{L}+(?:\\.\\p{L}+){0,2}");
     private static final Pattern OIDC_ISSUER_URL = Pattern.compile("https?://[-a-zA-Z0-9+&@/%=~_|!:,.;]*[-a-zA-Z0-9+&@/%=~_|]");
+    private static final Pattern KMS_KEY_ARN = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:kms:([a-z]{2,}(-[a-z0-9]+)+):[0-9]{12}:key/(?:mrk-[a-f0-9]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})");
     private static final String CUSTOM_APPLICATION_PROVIDER_ARN = "arn:aws:sso::aws:applicationProvider/custom";
     private static final int PERMISSION_SET_QUOTA = 3500;
     private static final int REGION_QUOTA = 6;
@@ -105,6 +107,7 @@ public class SsoAdminService implements Resettable {
     private final StorageBackend<String, String> applicationSessionConfigurations;
     private final StorageBackend<String, Map<String, String>> resourceTagOverrides;
     private final StorageBackend<String, SsoInstance> instances;
+    private final StorageBackend<String, InstanceUpdateState> instanceUpdateStates;
     private final StorageBackend<String, String> instanceClientTokens;
     private final StorageBackend<String, Boolean> instanceDeletionMarkers;
     private final StorageBackend<String, InstanceAccessControlAttributeConfiguration> accessControlAttributeConfigurations;
@@ -137,6 +140,7 @@ public class SsoAdminService implements Resettable {
                 storageFactory.create("ssoadmin", "ssoadmin-application-session-configurations.json", new TypeReference<Map<String, String>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-resource-tag-overrides.json", new TypeReference<Map<String, Map<String, String>>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instances.json", new TypeReference<Map<String, SsoInstance>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-instance-update-states.json", new TypeReference<Map<String, InstanceUpdateState>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instance-client-tokens.json", new TypeReference<Map<String, String>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instance-deletion-markers.json", new TypeReference<Map<String, Boolean>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-access-control-attribute-configurations.json", new TypeReference<Map<String, InstanceAccessControlAttributeConfiguration>>() {}),
@@ -166,6 +170,7 @@ public class SsoAdminService implements Resettable {
                     StorageBackend<String, String> applicationSessionConfigurations,
                     StorageBackend<String, Map<String, String>> resourceTagOverrides,
                     StorageBackend<String, SsoInstance> instances,
+                    StorageBackend<String, InstanceUpdateState> instanceUpdateStates,
                     StorageBackend<String, String> instanceClientTokens,
                     StorageBackend<String, Boolean> instanceDeletionMarkers,
                     StorageBackend<String, InstanceAccessControlAttributeConfiguration> accessControlAttributeConfigurations,
@@ -193,6 +198,7 @@ public class SsoAdminService implements Resettable {
         this.applicationSessionConfigurations = applicationSessionConfigurations;
         this.resourceTagOverrides = resourceTagOverrides;
         this.instances = instances;
+        this.instanceUpdateStates = instanceUpdateStates;
         this.instanceClientTokens = instanceClientTokens;
         this.instanceDeletionMarkers = instanceDeletionMarkers;
         this.accessControlAttributeConfigurations = accessControlAttributeConfigurations;
@@ -589,6 +595,84 @@ public class SsoAdminService implements Resettable {
         return requireInstance(required(request, "InstanceArn"));
     }
 
+    public synchronized InstanceUpdateState updateInstance(JsonNode request, String callerAccountId) {
+        validateAccountId(callerAccountId);
+        String instanceArn = required(request, "InstanceArn");
+        SsoInstance instance = requireInstance(instanceArn);
+        if (!callerAccountId.equals(instance.ownerAccountId())) {
+            throw accessDenied("Only the owning AWS account can update this IAM Identity Center instance.");
+        }
+        InstanceUpdateState current = instanceUpdateState(instance);
+        boolean hasEncryption = request != null && request.has("EncryptionConfiguration")
+                && !request.get("EncryptionConfiguration").isNull();
+        boolean hasPermissionSets = request != null && request.has("PermissionSetsEnabled")
+                && !request.get("PermissionSetsEnabled").isNull();
+        if (hasEncryption && hasPermissionSets) {
+            throw validation("EncryptionConfiguration and PermissionSetsEnabled cannot be updated in the same request.");
+        }
+
+        String name = current.name();
+        if (request != null && request.has("Name") && !request.get("Name").isNull()) {
+            name = optionalInstanceName(request);
+        }
+        boolean permissionSetsEnabled = current.permissionSetsEnabled();
+        String keyType = current.keyType();
+        String kmsKeyArn = current.kmsKeyArn();
+        if (hasPermissionSets) {
+            JsonNode enabled = request.get("PermissionSetsEnabled");
+            if (!enabled.isBoolean() || !enabled.booleanValue()) {
+                throw validation("PermissionSetsEnabled only accepts true and cannot be disabled.");
+            }
+            permissionSetsEnabled = true;
+        }
+        if (hasEncryption) {
+            JsonNode encryption = request.get("EncryptionConfiguration");
+            if (!encryption.isObject()) {
+                throw validation("EncryptionConfiguration must be an object.");
+            }
+            keyType = required(encryption, "KeyType");
+            if (!Set.of("AWS_OWNED_KMS_KEY", "CUSTOMER_MANAGED_KEY").contains(keyType)) {
+                throw validation("EncryptionConfiguration.KeyType is invalid.");
+            }
+            JsonNode kmsArnNode = encryption.get("KmsKeyArn");
+            kmsKeyArn = kmsArnNode == null || kmsArnNode.isNull() ? null : text(encryption, "KmsKeyArn");
+            if ("CUSTOMER_MANAGED_KEY".equals(keyType)) {
+                if (instance.accountInstance()) {
+                    throw validation("Customer managed KMS keys are supported only for organization instances.");
+                }
+                if (kmsKeyArn == null || kmsKeyArn.length() < 20 || kmsKeyArn.length() > 2048
+                        || !KMS_KEY_ARN.matcher(kmsKeyArn).matches()) {
+                    throw validation("EncryptionConfiguration.KmsKeyArn is required and must be a valid KMS key ARN.");
+                }
+                java.util.regex.Matcher kmsArnMatcher = KMS_KEY_ARN.matcher(kmsKeyArn);
+                if (!kmsArnMatcher.matches() || !instance.primaryRegion().equals(kmsArnMatcher.group(1))) {
+                    throw validation("The customer managed KMS key must be in the IAM Identity Center primary Region.");
+                }
+                String kmsAccountId = kmsKeyArn.split(":", 6)[4];
+                if (!instance.ownerAccountId().equals(kmsAccountId)) {
+                    throw validation("The customer managed KMS key must be owned by the IAM Identity Center instance account.");
+                }
+                String keyId = kmsKeyArn.substring(kmsKeyArn.indexOf(":key/") + 5);
+                if (!regions.scan(key -> true).isEmpty() && !keyId.startsWith("mrk-")) {
+                    throw validation("A multi-Region IAM Identity Center instance requires a multi-Region KMS key.");
+                }
+            } else if (kmsKeyArn != null) {
+                throw validation("KmsKeyArn cannot be specified with AWS_OWNED_KMS_KEY.");
+            } else if (!regions.scan(key -> true).isEmpty()) {
+                throw validation("AWS owned KMS keys are not supported for multi-Region IAM Identity Center instances.");
+            }
+        }
+        InstanceUpdateState updated = new InstanceUpdateState(
+                name, permissionSetsEnabled, keyType, kmsKeyArn, "ENABLED", null);
+        instanceUpdateStates.put(instanceArn, updated);
+        return updated;
+    }
+
+    public InstanceUpdateState instanceUpdateState(SsoInstance instance) {
+        return instanceUpdateStates.get(instance.instanceArn()).orElseGet(() -> new InstanceUpdateState(
+                instance.name(), !instance.accountInstance(), "AWS_OWNED_KMS_KEY", null, "ENABLED", null));
+    }
+
     public synchronized void deleteInstance(JsonNode request, String callerAccountId) {
         validateAccountId(callerAccountId);
         String instanceArn = required(request, "InstanceArn");
@@ -640,6 +724,7 @@ public class SsoAdminService implements Resettable {
         }
         identityStoreService.deleteIdentityStore(instance.identityStoreId());
         instances.delete(callerAccountId);
+        instanceUpdateStates.delete(instanceArn);
         resourceTagOverrides.delete(instanceArn);
         instanceDeletionMarkers.put(callerAccountId, true);
     }
@@ -2190,6 +2275,7 @@ public class SsoAdminService implements Resettable {
         applicationSessionConfigurations.clear();
         resourceTagOverrides.clear();
         instances.clear();
+        instanceUpdateStates.clear();
         instanceClientTokens.clear();
         instanceDeletionMarkers.clear();
         accessControlAttributeConfigurations.clear();

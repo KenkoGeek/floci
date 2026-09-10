@@ -51,6 +51,31 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void updateInstancePersistsNameAndEncryptionConfiguration() {
+        String instanceArn = "arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e";
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.UpdateInstance")
+            .body("{\"InstanceArn\":\"" + instanceArn + "\",\"Name\":\"UpdatedInstance\","
+                    + "\"EncryptionConfiguration\":{\"KeyType\":\"CUSTOMER_MANAGED_KEY\","
+                    + "\"KmsKeyArn\":\"arn:aws:kms:us-east-1:000000000000:key/12345678-1234-1234-1234-1234567890ab\"}}")
+        .when().post("/")
+        .then().statusCode(200).body(org.hamcrest.Matchers.emptyOrNullString());
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.DescribeInstance")
+            .body("{\"InstanceArn\":\"" + instanceArn + "\"}")
+        .when().post("/")
+        .then().statusCode(200)
+            .body("Name", equalTo("UpdatedInstance"))
+            .body("EncryptionConfigurationDetails.KeyType", equalTo("CUSTOMER_MANAGED_KEY"))
+            .body("EncryptionConfigurationDetails.EncryptionStatus", equalTo("ENABLED"));
+    }
+
+    @Test
     void addRegionReturnsAddingAndRejectsDuplicate() {
         String request = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\",\"RegionName\":\"eu-west-2\"}";
         given()
