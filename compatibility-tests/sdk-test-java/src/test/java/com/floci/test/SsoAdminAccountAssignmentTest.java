@@ -170,6 +170,10 @@ class SsoAdminAccountAssignmentTest {
             assertThat(applications.applications()).anySatisfy(application ->
                     assertThat(application.applicationArn()).isEqualTo(created.applicationArn()));
 
+            var assignmentConfiguration = sso.getApplicationAssignmentConfiguration(request -> request
+                    .applicationArn(created.applicationArn()));
+            assertThat(assignmentConfiguration.assignmentRequired()).isTrue();
+
             var putScope = sso.putApplicationAccessScope(request -> request
                     .applicationArn(created.applicationArn())
                     .scope("api:read")
