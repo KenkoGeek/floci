@@ -113,6 +113,24 @@ class SsoPortalIntegrationTest {
             .when().get("/assignment/accounts")
             .then().statusCode(400)
                 .body("__type", containsString("InvalidRequestException"));
+
+        given()
+                .header("x-amz-sso_bearer_token", accessToken)
+            .when().post("/logout")
+            .then().statusCode(200)
+                .body(org.hamcrest.Matchers.emptyOrNullString());
+
+        given()
+                .header("x-amz-sso_bearer_token", accessToken)
+            .when().get("/assignment/accounts")
+            .then().statusCode(401)
+                .body("__type", containsString("UnauthorizedException"));
+
+        given()
+                .header("x-amz-sso_bearer_token", accessToken)
+            .when().post("/logout")
+            .then().statusCode(401)
+                .body("__type", containsString("UnauthorizedException"));
     }
 
     private String createPermissionSet(String instanceArn, String name) {

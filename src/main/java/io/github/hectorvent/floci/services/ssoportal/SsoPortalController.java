@@ -9,6 +9,7 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
@@ -25,6 +26,13 @@ public class SsoPortalController {
     public SsoPortalController(SsoPortalService service, ObjectMapper objectMapper) {
         this.service = service;
         this.objectMapper = objectMapper;
+    }
+
+    @POST
+    @Path("/logout")
+    public Response logout(@HeaderParam("x-amz-sso_bearer_token") String accessToken) {
+        service.logout(accessToken);
+        return Response.ok().build();
     }
 
     @GET

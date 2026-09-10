@@ -115,6 +115,19 @@ class SsoPortalTest {
                     .roleName("NotAssigned")))
                     .isInstanceOf(software.amazon.awssdk.services.sso.model.ResourceNotFoundException.class);
 
+            portal.logout(request -> request.accessToken(accessToken));
+            assertThatThrownBy(() -> portal.listAccounts(request -> request.accessToken(accessToken)))
+                    .isInstanceOf(software.amazon.awssdk.services.sso.model.UnauthorizedException.class);
+
+            try (StsClient sts = StsClient.builder()
+                    .endpointOverride(TestFixtures.endpoint())
+                    .region(Region.US_EAST_1)
+                    .credentialsProvider(StaticCredentialsProvider.create(AwsSessionCredentials.create(
+                            credentials.accessKeyId(), credentials.secretAccessKey(), credentials.sessionToken())))
+                    .build()) {
+                assertThat(sts.getCallerIdentity().account()).isEqualTo(accountId);
+            }
+
             assertThatThrownBy(() -> portal.listAccounts(request -> request.accessToken("invalid")))
                     .isInstanceOf(software.amazon.awssdk.services.sso.model.UnauthorizedException.class);
         }
