@@ -103,6 +103,32 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void listTagsForResourceReturnsPermissionSetCreationTags() {
+        String instanceArn = "arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e";
+        String permissionSetArn = given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.CreatePermissionSet")
+                .body("{\"InstanceArn\":\"" + instanceArn + "\",\"Name\":\"TaggedIntegration\","
+                        + "\"Tags\":[{\"Key\":\"Environment\",\"Value\":\"test\"}]}")
+            .when().post("/")
+            .then().statusCode(200)
+                .extract().path("PermissionSet.PermissionSetArn");
+
+        given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.ListTagsForResource")
+                .body("{\"InstanceArn\":\"" + instanceArn + "\",\"ResourceArn\":\"" + permissionSetArn + "\"}")
+            .when().post("/")
+            .then()
+                .statusCode(200)
+                .body("Tags.size()", equalTo(1))
+                .body("Tags[0].Key", equalTo("Environment"))
+                .body("Tags[0].Value", equalTo("test"));
+    }
+
+    @Test
     void attachCustomerManagedPolicyReferenceReturnsAnEmptyAwsResponse() {
         String permissionSetArn = given()
                 .contentType("application/x-amz-json-1.1")
