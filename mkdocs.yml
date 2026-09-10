@@ -122,6 +122,8 @@ nav:
     - AWS Account Management: services/account.md
     - IAM Access Analyzer: services/access-analyzer.md
     - IAM Identity Center (SSO Admin): services/ssoadmin.md
+    - IAM Identity Center (OIDC): services/ssooidc.md
+    - IAM Identity Center (Access Portal): services/ssoportal.md
     - Identity Store: services/identitystore.md
     - AWS Budgets: services/budgets.md
     - Amazon Macie: services/macie2.md
