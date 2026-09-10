@@ -145,10 +145,10 @@ class SsoOidcServiceTest {
         ObjectNode refresh = mapper.createObjectNode();
         refresh.put("grantType", "refresh_token");
         refresh.put("refreshToken", source.refreshToken());
-        assertEquals(sourceApplication,
-                service.createIamToken(refresh, sourceApplication, java.util.List.of("api:read")).clientId());
         assertOidcError("invalid_scope",
                 () -> service.createIamToken(refresh, sourceApplication, java.util.List.of("api:write")));
+        assertEquals(sourceApplication,
+                service.createIamToken(refresh, sourceApplication, java.util.List.of("api:read")).clientId());
 
         ObjectNode jwt = mapper.createObjectNode();
         jwt.put("grantType", "urn:ietf:params:oauth:grant-type:jwt-bearer");

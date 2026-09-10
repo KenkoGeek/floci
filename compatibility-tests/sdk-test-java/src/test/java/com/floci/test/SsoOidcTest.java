@@ -153,7 +153,7 @@ class SsoOidcTest {
                 throw new RuntimeException(e);
             }
 
-            var response = oidc.createTokenWithIam(request -> request
+            var response = oidc.createTokenWithIAM(request -> request
                     .clientId(applicationArn)
                     .grantType("authorization_code")
                     .code(code)

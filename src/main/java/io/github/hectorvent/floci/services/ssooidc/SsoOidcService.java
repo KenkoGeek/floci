@@ -288,7 +288,7 @@ public class SsoOidcService implements Resettable {
             revokeTokenPair(prior);
             throw new SsoOidcException("expired_token", "Refresh token has expired", 400);
         }
-        revokeTokenPair(prior);
+        rotateRefreshToken(prior);
         return issueToken(client, prior.principalId());
     }
 
@@ -338,7 +338,7 @@ public class SsoOidcService implements Resettable {
         if (!prior.scopes().containsAll(grantedScopes)) {
             throw new SsoOidcException("invalid_scope", "Requested scopes exceed the refresh token scopes", 400);
         }
-        revokeTokenPair(prior);
+        rotateRefreshToken(prior);
         return issueToken(applicationArn, grantedScopes, true, prior.principalId());
     }
 
@@ -391,11 +391,15 @@ public class SsoOidcService implements Resettable {
         revokeTokenPair(session);
     }
 
-    private void revokeTokenPair(TokenSession session) {
-        tokenSessions.delete("access:" + session.accessToken());
+    private void rotateRefreshToken(TokenSession session) {
         if (session.refreshToken() != null) {
             tokenSessions.delete("refresh:" + session.refreshToken());
         }
+    }
+
+    private void revokeTokenPair(TokenSession session) {
+        tokenSessions.delete("access:" + session.accessToken());
+        rotateRefreshToken(session);
     }
 
     public TokenSession issueIamToken(String applicationArn, List<String> scopes, boolean issueRefreshToken) {

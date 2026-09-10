@@ -7,6 +7,7 @@ import io.github.hectorvent.floci.core.common.AwsException;
 import io.github.hectorvent.floci.core.common.PaginatedResult;
 import io.github.hectorvent.floci.core.common.Pagination;
 import io.github.hectorvent.floci.core.common.Resettable;
+import io.github.hectorvent.floci.core.storage.AccountAwareStorageBackend;
 import io.github.hectorvent.floci.core.storage.StorageBackend;
 import io.github.hectorvent.floci.core.storage.StorageFactory;
 import io.github.hectorvent.floci.services.ssoadmin.model.Assignment;
@@ -222,8 +223,17 @@ public class SsoAdminService implements Resettable {
         if (identityStoreId == null) {
             return false;
         }
-        return instances.scan(key -> true).stream()
-                .anyMatch(instance -> identityStoreId.equals(instance.identityStoreId()));
+        if (instances.scan(key -> true).stream()
+                .anyMatch(instance -> identityStoreId.equals(instance.identityStoreId()))) {
+            return true;
+        }
+        if (instances instanceof AccountAwareStorageBackend<?> accountAware) {
+            return accountAware.scanAllAccounts().stream()
+                    .filter(SsoInstance.class::isInstance)
+                    .map(SsoInstance.class::cast)
+                    .anyMatch(instance -> identityStoreId.equals(instance.identityStoreId()));
+        }
+        return false;
     }
 
     void ensureBootstrapInstance(String ownerAccountId, String region) {

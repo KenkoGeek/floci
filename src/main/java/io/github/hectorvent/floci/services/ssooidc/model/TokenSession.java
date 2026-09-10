@@ -1,7 +1,10 @@
 package io.github.hectorvent.floci.services.ssooidc.model;
 
+import io.quarkus.runtime.annotations.RegisterForReflection;
+
 import java.util.List;
 
+@RegisterForReflection
 public record TokenSession(
         String accessToken,
         String refreshToken,

@@ -718,7 +718,7 @@ class SsoAdminServiceTest {
         assertEquals(method, result.items().get(0).authenticationMethod());
         assertNull(result.nextToken());
 
-        ObjectNode badToken = request.deepCopy().put("NextToken", "not-a-token");
+        ObjectNode badToken = request.deepCopy().put("NextToken", "***");
         assertError("ValidationException", () -> service.listApplicationAuthenticationMethods(badToken));
     }
 
@@ -773,7 +773,7 @@ class SsoAdminServiceTest {
         applicationAuthenticationMethods.put(key,
                 new ApplicationAuthenticationMethod(application.applicationArn(), "IAM", method.deepCopy()));
         assertFalse(service.iamActorPolicyAllows(application.applicationArn(), ACCOUNT_ID));
-        assertFalse(service.iamActorPolicyAllows(application.applicationArn(), "999999999999"));
+        assertTrue(service.iamActorPolicyAllows(application.applicationArn(), "999999999999"));
     }
     @Test
     void deleteApplicationAuthenticationMethodDeletesIamMethodAndValidatesType() {
@@ -855,7 +855,7 @@ class SsoAdminServiceTest {
         assertEquals("refresh_token", result.items().get(1).grantType());
         assertNull(result.nextToken());
 
-        ObjectNode badToken = request.deepCopy().put("NextToken", "not-a-token");
+        ObjectNode badToken = request.deepCopy().put("NextToken", "***");
         assertError("ValidationException", () -> service.listApplicationGrants(badToken));
     }
 

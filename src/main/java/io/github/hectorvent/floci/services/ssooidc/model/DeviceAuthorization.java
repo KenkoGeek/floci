@@ -1,5 +1,8 @@
 package io.github.hectorvent.floci.services.ssooidc.model;
 
+import io.quarkus.runtime.annotations.RegisterForReflection;
+
+@RegisterForReflection
 public record DeviceAuthorization(
         String deviceCode,
         String userCode,
