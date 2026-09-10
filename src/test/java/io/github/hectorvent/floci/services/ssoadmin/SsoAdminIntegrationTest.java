@@ -304,6 +304,49 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void updateApplicationChangesMutableFieldsAndDescribeReturnsThem() {
+        String createRequest = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
+                + "\"ApplicationProviderArn\":\"arn:aws:sso::aws:applicationProvider/custom\","
+                + "\"Name\":\"Update Integration\",\"ClientToken\":\"update-integration-token\"}";
+        String applicationArn = given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.CreateApplication")
+            .body(createRequest)
+        .when().post("/")
+        .then().statusCode(200)
+            .extract().path("ApplicationArn");
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.UpdateApplication")
+            .body("{\"ApplicationArn\":\"" + applicationArn + "\",\"Name\":\"Updated Integration\","
+                    + "\"Description\":\"Updated application\",\"Status\":\"DISABLED\"}")
+        .when().post("/")
+        .then().statusCode(200).body(org.hamcrest.Matchers.emptyOrNullString());
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.DescribeApplication")
+            .body("{\"ApplicationArn\":\"" + applicationArn + "\"}")
+        .when().post("/")
+        .then().statusCode(200)
+            .body("Name", equalTo("Updated Integration"))
+            .body("Description", equalTo("Updated application"))
+            .body("Status", equalTo("DISABLED"));
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.CreateApplication")
+            .body(createRequest)
+        .when().post("/")
+        .then().statusCode(200).body("ApplicationArn", equalTo(applicationArn));
+    }
+
+    @Test
     void createApplicationAssignmentGrantsDirectAccessWithEmptyResponse() {
         String appRequest = "{\"InstanceArn\":\"arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e\","
                 + "\"ApplicationProviderArn\":\"arn:aws:sso::aws:applicationProvider/custom\","

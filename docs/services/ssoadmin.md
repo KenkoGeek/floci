@@ -29,6 +29,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | `TagResource` | Adds or overwrites tags on IAM Identity Center resources while preserving creation-time idempotency state and enforcing the current 75-tag API quota. |
 | `UntagResource` | Removes one or more tag keys from IAM Identity Center resources with AWS-compatible validation and idempotent removal semantics. |
 | `CreateApplication` | Creates a customer managed OAuth 2.0 application with AWS-compatible idempotency, portal options, status, and tags. |
+| `UpdateApplication` | Updates the mutable name, description, status, and sign-in options of an IAM Identity Center application while preserving creation-time idempotency state. |
 | `DescribeApplication` | Returns the full persisted IAM Identity Center application metadata, including portal options, status, creation Region, and identity store ARN. |
 | `ListApplications` | Lists applications for an IAM Identity Center instance with AWS-compatible account/provider filters, member-account access rules, pagination, and full application metadata. |
 | `CreateApplicationAssignment` | Grants direct application access to a user or group. |

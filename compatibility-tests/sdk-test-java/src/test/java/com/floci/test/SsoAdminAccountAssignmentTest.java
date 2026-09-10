@@ -187,8 +187,20 @@ class SsoAdminAccountAssignmentTest {
                     .tags(tag -> tag.key("Environment").value("test")));
             assertThat(replayAfterTagging.applicationArn()).isEqualTo(created.applicationArn());
 
+            var updatedApplication = sso.updateApplication(request -> request
+                    .applicationArn(created.applicationArn())
+                    .name("Floci OAuth SDK Updated")
+                    .description("Updated through SDK")
+                    .status("ENABLED")
+                    .portalOptions(options -> options.signInOptions(signIn -> signIn
+                            .origin("IDENTITY_CENTER"))));
+            assertThat(updatedApplication.sdkHttpResponse().isSuccessful()).isTrue();
+
             var described = sso.describeApplication(request -> request.applicationArn(created.applicationArn()));
             assertThat(described.applicationArn()).isEqualTo(created.applicationArn());
+            assertThat(described.name()).isEqualTo("Floci OAuth SDK Updated");
+            assertThat(described.description()).isEqualTo("Updated through SDK");
+            assertThat(described.statusAsString()).isEqualTo("ENABLED");
             assertThat(described.instanceArn()).isEqualTo(instanceArn);
             assertThat(described.applicationAccount()).isEqualTo("000000000000");
             assertThat(described.applicationProviderArn()).isEqualTo("arn:aws:sso::aws:applicationProvider/custom");
