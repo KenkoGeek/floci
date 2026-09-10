@@ -528,6 +528,28 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void getApplicationAuthenticationMethodReturnsStoredIamMethod() {
+        SsoApplication application = createApplication("Get Authentication App", "get-authentication-app-token");
+        String key = SsoAdminService.applicationAuthenticationMethodKey(application.applicationArn(), "IAM");
+        ObjectNode method = mapper.createObjectNode();
+        method.putObject("Iam").putObject("ActorPolicy").put("Version", "2012-10-17");
+        applicationAuthenticationMethods.put(key, new ApplicationAuthenticationMethod(
+                application.applicationArn(), "IAM", method));
+
+        ObjectNode request = mapper.createObjectNode();
+        request.put("ApplicationArn", application.applicationArn());
+        request.put("AuthenticationMethodType", "IAM");
+        assertEquals(method, service.getApplicationAuthenticationMethod(request).authenticationMethod());
+
+        ObjectNode invalidType = request.deepCopy();
+        invalidType.put("AuthenticationMethodType", "SAML");
+        assertError("ValidationException", () -> service.getApplicationAuthenticationMethod(invalidType));
+
+        applicationAuthenticationMethods.delete(key);
+        assertError("ResourceNotFoundException", () -> service.getApplicationAuthenticationMethod(request));
+    }
+
+    @Test
     void deleteApplicationAuthenticationMethodDeletesIamMethodAndValidatesType() {
         SsoApplication application = createApplication("Authentication App", "authentication-app-token");
         String key = SsoAdminService.applicationAuthenticationMethodKey(application.applicationArn(), "IAM");

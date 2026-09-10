@@ -762,6 +762,19 @@ public class SsoAdminService implements Resettable {
         applicationAssignments.delete(key);
     }
 
+    public ApplicationAuthenticationMethod getApplicationAuthenticationMethod(JsonNode request) {
+        String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
+        getApplication(applicationArn);
+        String authenticationMethodType = required(request, "AuthenticationMethodType");
+        if (!"IAM".equals(authenticationMethodType)) {
+            throw validation("AuthenticationMethodType must be IAM.");
+        }
+        return applicationAuthenticationMethods.get(
+                        applicationAuthenticationMethodKey(applicationArn, authenticationMethodType))
+                .orElseThrow(() -> notFound(
+                        "Application authentication method not found: " + authenticationMethodType));
+    }
+
     public synchronized void deleteApplicationAuthenticationMethod(JsonNode request) {
         String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
         getApplication(applicationArn);
