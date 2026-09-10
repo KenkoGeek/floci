@@ -1169,6 +1169,27 @@ public class SsoAdminService implements Resettable {
         return response;
     }
 
+    public synchronized RegionMetadata removeRegion(JsonNode request, String requestRegion) {
+        SsoInstance instance = requireInstance(required(request, "InstanceArn"));
+        String regionName = validateRegionName(required(request, "RegionName"));
+        if (!instance.primaryRegion().equals(requestRegion)) {
+            throw accessDenied("RemoveRegion must be called from the primary IAM Identity Center Region.");
+        }
+        if (instance.primaryRegion().equals(regionName)) {
+            throw conflict("The primary IAM Identity Center Region cannot be removed.");
+        }
+        RegionMetadata current = regions.get(regionName)
+                .orElseThrow(() -> notFound("IAM Identity Center Region not found: " + regionName));
+        boolean workflowInProgress = regions.scan(key -> true).stream()
+                .anyMatch(region -> "ADDING".equals(region.status()) || "REMOVING".equals(region.status()));
+        if (workflowInProgress) {
+            throw conflict("Another IAM Identity Center Region add or remove workflow is already in progress.");
+        }
+        RegionMetadata response = new RegionMetadata(regionName, "REMOVING", current.addedDate(), false);
+        regions.delete(regionName);
+        return response;
+    }
+
     public PaginatedResult<PermissionSet> listPermissionSets(JsonNode request) {
         requireInstance(required(request, "InstanceArn"));
         return Pagination.paginate(permissionSets.scan(key -> true), PermissionSet::arn,

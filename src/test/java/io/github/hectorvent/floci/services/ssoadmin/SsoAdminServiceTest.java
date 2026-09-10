@@ -1037,6 +1037,30 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void removeRegionReturnsRemovingAndDeletesAdditionalRegion() {
+        ObjectNode request = mapper.createObjectNode();
+        request.put("InstanceArn", service.getInstanceArn());
+        request.put("RegionName", "us-west-2");
+        service.addRegion(request);
+
+        RegionMetadata removing = service.removeRegion(request, "us-east-1");
+        assertEquals("us-west-2", removing.regionName());
+        assertEquals("REMOVING", removing.status());
+        assertFalse(removing.primaryRegion());
+        assertError("ResourceNotFoundException", () -> service.describeRegion(request));
+
+        ObjectNode primary = request.deepCopy().put("RegionName", "us-east-1");
+        assertError("ConflictException", () -> service.removeRegion(primary, "us-east-1"));
+
+        ObjectNode missing = request.deepCopy().put("RegionName", "eu-west-3");
+        assertError("ResourceNotFoundException", () -> service.removeRegion(missing, "us-east-1"));
+
+        ObjectNode wrongRegion = request.deepCopy().put("RegionName", "eu-west-1");
+        service.addRegion(wrongRegion);
+        assertError("AccessDeniedException", () -> service.removeRegion(wrongRegion, "us-west-2"));
+    }
+
+    @Test
     void addRegionEnforcesTheDocumentedSixRegionQuotaIncludingPrimary() {
         for (String region : java.util.List.of("us-west-1", "us-west-2", "eu-west-1", "eu-central-1", "ap-south-1")) {
             ObjectNode request = mapper.createObjectNode();

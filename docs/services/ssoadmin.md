@@ -22,6 +22,7 @@ Floci supports the SSO Admin operations used to manage IAM Identity Center permi
 | `ListTrustedTokenIssuers` | Lists trusted token issuer metadata for an IAM Identity Center instance with AWS-compatible pagination. |
 | `DeleteTrustedTokenIssuer` | Deletes a trusted token issuer, validates its AWS ARN, and clears local idempotency mappings. |
 | `AddRegion` | Adds a Region to the local IAM Identity Center instance and reports the initial `ADDING` status. |
+| `RemoveRegion` | Removes an additional IAM Identity Center Region from the primary Region, reports `REMOVING`, and completes the local asynchronous workflow immediately. |
 | `DescribeRegion` | Returns the enabled Region name, status, added date, and primary-Region flag for an IAM Identity Center instance. |
 | `ListRegions` | Lists all enabled IAM Identity Center Regions, including primary and in-progress lifecycle states, with AWS-compatible pagination. |
 | `ListTagsForResource` | Lists tags for IAM Identity Center instances, permission sets, applications, and trusted token issuers with AWS-compatible resource validation. |
