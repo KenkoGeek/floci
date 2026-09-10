@@ -1009,26 +1009,26 @@ class SsoAdminServiceTest {
     void describeApplicationProviderReturnsCustomOauthProviderAndValidatesArn() {
         ObjectNode request = mapper.createObjectNode();
         request.put("ApplicationProviderArn", "arn:aws:sso::aws:applicationProvider/custom");
-        assertEquals("arn:aws:sso::aws:applicationProvider/custom", service.describeApplicationProvider(request));
+        assertEquals("arn:aws:sso::aws:applicationProvider/custom", service.describeApplicationProvider(request, "us-east-1"));
 
         ObjectNode missing = mapper.createObjectNode();
         missing.put("ApplicationProviderArn", "arn:aws:sso::aws:applicationProvider/example");
-        assertError("ResourceNotFoundException", () -> service.describeApplicationProvider(missing));
+        assertError("ResourceNotFoundException", () -> service.describeApplicationProvider(missing, "us-east-1"));
 
         ObjectNode malformed = mapper.createObjectNode();
         malformed.put("ApplicationProviderArn", "not-an-arn");
-        assertError("ValidationException", () -> service.describeApplicationProvider(malformed));
+        assertError("ValidationException", () -> service.describeApplicationProvider(malformed, "us-east-1"));
     }
 
     @Test
     void listApplicationProvidersReturnsCustomProviderAndValidatesPagination() {
         ObjectNode request = mapper.createObjectNode();
-        var page = service.listApplicationProviders(request);
+        var page = service.listApplicationProviders(request, "us-east-1");
         assertEquals(java.util.List.of("arn:aws:sso::aws:applicationProvider/custom"), page.items());
         assertEquals(null, page.nextToken());
 
         ObjectNode invalidMaxResults = mapper.createObjectNode().put("MaxResults", 101);
-        assertError("ValidationException", () -> service.listApplicationProviders(invalidMaxResults));
+        assertError("ValidationException", () -> service.listApplicationProviders(invalidMaxResults, "us-east-1"));
     }
 
     @Test

@@ -1021,23 +1021,23 @@ public class SsoAdminService implements Resettable {
                 .orElseThrow(() -> notFound("Application assignment not found for the specified principal."));
     }
 
-    public String describeApplicationProvider(JsonNode request) {
+    public String describeApplicationProvider(JsonNode request, String region) {
         String applicationProviderArn = required(request, "ApplicationProviderArn");
         if (applicationProviderArn.length() > 1224 || !APPLICATION_PROVIDER_ARN.matcher(applicationProviderArn).matches()) {
             throw validation("ApplicationProviderArn is invalid.");
         }
-        if (!customApplicationProviderArn().equals(applicationProviderArn)) {
+        if (!customApplicationProviderArn(region).equals(applicationProviderArn)) {
             throw notFound("Application provider not found: " + applicationProviderArn);
         }
         return applicationProviderArn;
     }
 
-    public PaginatedResult<String> listApplicationProviders(JsonNode request) {
+    public PaginatedResult<String> listApplicationProviders(JsonNode request, String region) {
         Integer requested = optionalMaxResults(request);
         if (requested != null && requested > 100) {
             throw validation("MaxResults must be between 1 and 100.");
         }
-        return Pagination.paginate(java.util.List.of(customApplicationProviderArn()), value -> value,
+        return Pagination.paginate(java.util.List.of(customApplicationProviderArn(region)), value -> value,
                 requested, text(request, "NextToken"), 50, 100, "ValidationException");
     }
 
@@ -2487,8 +2487,8 @@ public class SsoAdminService implements Resettable {
         String value = text(request, field);
         return value == null || value.isBlank() ? fallback : value;
     }
-    private String customApplicationProviderArn() {
-        return globalArn("sso", defaultRegion, "aws", "applicationProvider/custom");
+    private static String customApplicationProviderArn(String region) {
+        return globalArn("sso", region, "aws", "applicationProvider/custom");
     }
 
     private static String globalArn(String service, String region, String accountId, String resource) {

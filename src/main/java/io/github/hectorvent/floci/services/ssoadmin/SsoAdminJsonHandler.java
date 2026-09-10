@@ -56,8 +56,8 @@ public class SsoAdminJsonHandler {
             case "ListApplications" -> listApplications(request, callerAccountId);
             case "CreateApplicationAssignment" -> createApplicationAssignment(request);
             case "DescribeApplicationAssignment" -> describeApplicationAssignment(request);
-            case "DescribeApplicationProvider" -> describeApplicationProvider(request);
-            case "ListApplicationProviders" -> listApplicationProviders(request);
+            case "DescribeApplicationProvider" -> describeApplicationProvider(request, region);
+            case "ListApplicationProviders" -> listApplicationProviders(request, region);
             case "ListApplicationAssignments" -> listApplicationAssignments(request);
             case "ListApplicationAssignmentsForPrincipal" -> listApplicationAssignmentsForPrincipal(request, callerAccountId);
             case "DeleteApplication" -> deleteApplication(request);
@@ -386,12 +386,12 @@ public class SsoAdminJsonHandler {
         return Response.ok(response).build();
     }
 
-    private Response describeApplicationProvider(JsonNode request) {
-        return Response.ok(applicationProviderNode(service.describeApplicationProvider(request))).build();
+    private Response describeApplicationProvider(JsonNode request, String region) {
+        return Response.ok(applicationProviderNode(service.describeApplicationProvider(request, region))).build();
     }
 
-    private Response listApplicationProviders(JsonNode request) {
-        var page = service.listApplicationProviders(request);
+    private Response listApplicationProviders(JsonNode request, String region) {
+        var page = service.listApplicationProviders(request, region);
         ObjectNode response = mapper.createObjectNode();
         ArrayNode providers = response.putArray("ApplicationProviders");
         page.items().forEach(provider -> providers.add(applicationProviderNode(provider)));
