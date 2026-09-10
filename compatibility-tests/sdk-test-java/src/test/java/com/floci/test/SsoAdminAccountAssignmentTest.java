@@ -576,6 +576,17 @@ class SsoAdminAccountAssignmentTest {
                                     .value(value -> value.source("${path:enterprise.department}"))))))
                     .isInstanceOf(software.amazon.awssdk.services.ssoadmin.model.ConflictException.class);
 
+            var updateResponse = sso.updateInstanceAccessControlAttributeConfiguration(request -> request
+                    .instanceArn(instanceArn)
+                    .instanceAccessControlAttributeConfiguration(configuration -> configuration
+                            .accessControlAttributes(attribute -> attribute
+                                    .key("CostCenter")
+                                    .value(value -> value.source("${path:enterprise.costCenter}")))));
+            assertThat(updateResponse.sdkHttpResponse().isSuccessful()).isTrue();
+            assertThat(sso.describeInstanceAccessControlAttributeConfiguration(request -> request.instanceArn(instanceArn))
+                    .instanceAccessControlAttributeConfiguration().accessControlAttributes())
+                    .singleElement().satisfies(attribute -> assertThat(attribute.key()).isEqualTo("CostCenter"));
+
             var deleteResponse = sso.deleteInstanceAccessControlAttributeConfiguration(request -> request
                     .instanceArn(instanceArn));
             assertThat(deleteResponse.sdkHttpResponse().isSuccessful()).isTrue();

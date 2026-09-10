@@ -51,6 +51,39 @@ class SsoAdminIntegrationTest {
     }
 
     @Test
+    void updateInstanceAccessControlAttributeConfigurationReplacesAbacMappings() {
+        String instanceArn = "arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e";
+        String createBody = "{\"InstanceArn\":\"" + instanceArn + "\","
+                + "\"InstanceAccessControlAttributeConfiguration\":{\"AccessControlAttributes\":[]}}";
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.CreateInstanceAccessControlAttributeConfiguration")
+            .body(createBody)
+        .when().post("/")
+        .then().statusCode(200);
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.UpdateInstanceAccessControlAttributeConfiguration")
+            .body("{\"InstanceArn\":\"" + instanceArn + "\","
+                    + "\"InstanceAccessControlAttributeConfiguration\":{\"AccessControlAttributes\":[{"
+                    + "\"Key\":\"Department\",\"Value\":{\"Source\":[\"${path:enterprise.department}\"]}}]}}")
+        .when().post("/")
+        .then().statusCode(200).body(org.hamcrest.Matchers.emptyOrNullString());
+
+        given()
+            .contentType("application/x-amz-json-1.1")
+            .header("Authorization", AUTH_HEADER)
+            .header("X-Amz-Target", "SWBExternalService.DescribeInstanceAccessControlAttributeConfiguration")
+            .body("{\"InstanceArn\":\"" + instanceArn + "\"}")
+        .when().post("/")
+        .then().statusCode(200)
+            .body("InstanceAccessControlAttributeConfiguration.AccessControlAttributes[0].Key", equalTo("Department"));
+    }
+
+    @Test
     void updateInstancePersistsNameAndEncryptionConfiguration() {
         String instanceArn = "arn:aws:sso:::instance/ssoins-7223b02a5d9f7c8e";
         given()
