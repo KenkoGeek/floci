@@ -77,6 +77,7 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, Boolean>(),
                 new InMemoryStorage<String, InstanceAccessControlAttributeConfiguration>(),
                 new InMemoryStorage<String, TrustedTokenIssuer>(),
+                new InMemoryStorage<String, TrustedTokenIssuer>(),
                 new InMemoryStorage<String, String>(),
                 identityStoreService,
                 organizationsService,
@@ -106,6 +107,28 @@ class SsoAdminServiceTest {
         mismatch.put("Name", "IssuerTwo");
         assertError("IdempotentParameterMismatch",
                 () -> service.createTrustedTokenIssuer(mismatch, ACCOUNT_ID));
+    }
+
+    @Test
+    void updateTrustedTokenIssuerChangesMutableFieldsAndPreservesCreateIdempotency() {
+        ObjectNode create = trustedTokenIssuerRequest("OriginalIssuer", "update-tti-token");
+        TrustedTokenIssuer created = service.createTrustedTokenIssuer(create, ACCOUNT_ID);
+        ObjectNode update = mapper.createObjectNode();
+        update.put("TrustedTokenIssuerArn", created.trustedTokenIssuerArn());
+        update.put("Name", "UpdatedIssuer");
+        update.putObject("TrustedTokenIssuerConfiguration").putObject("OidcJwtConfiguration")
+                .put("ClaimAttributePath", "email")
+                .put("IdentityStoreAttributePath", "emails.value")
+                .put("JwksRetrievalOption", "OPEN_ID_DISCOVERY");
+        TrustedTokenIssuer updated = service.updateTrustedTokenIssuer(update);
+        assertEquals("UpdatedIssuer", updated.name());
+        assertEquals("email", updated.oidcJwtConfiguration().claimAttributePath());
+        assertEquals(created.oidcJwtConfiguration().issuerUrl(), updated.oidcJwtConfiguration().issuerUrl());
+        assertEquals(created.trustedTokenIssuerArn(), service.createTrustedTokenIssuer(create, ACCOUNT_ID).trustedTokenIssuerArn());
+        ObjectNode invalid = update.deepCopy();
+        invalid.withObject("TrustedTokenIssuerConfiguration").withObject("OidcJwtConfiguration")
+                .put("IssuerUrl", "https://other.example.com");
+        assertError("ValidationException", () -> service.updateTrustedTokenIssuer(invalid));
     }
 
     @Test
@@ -1698,6 +1721,7 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, Boolean>(),
                 new InMemoryStorage<String, InstanceAccessControlAttributeConfiguration>(),
+                new InMemoryStorage<String, TrustedTokenIssuer>(),
                 new InMemoryStorage<String, TrustedTokenIssuer>(),
                 new InMemoryStorage<String, String>(),
                 identityStoreService,

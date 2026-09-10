@@ -112,6 +112,7 @@ public class SsoAdminService implements Resettable {
     private final StorageBackend<String, Boolean> instanceDeletionMarkers;
     private final StorageBackend<String, InstanceAccessControlAttributeConfiguration> accessControlAttributeConfigurations;
     private final StorageBackend<String, TrustedTokenIssuer> trustedTokenIssuers;
+    private final StorageBackend<String, TrustedTokenIssuer> trustedTokenIssuerUpdateOverrides;
     private final StorageBackend<String, String> trustedTokenIssuerClientTokens;
     private final IdentityStoreService identityStoreService;
     private final OrganizationsService organizationsService;
@@ -145,6 +146,7 @@ public class SsoAdminService implements Resettable {
                 storageFactory.create("ssoadmin", "ssoadmin-instance-deletion-markers.json", new TypeReference<Map<String, Boolean>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-access-control-attribute-configurations.json", new TypeReference<Map<String, InstanceAccessControlAttributeConfiguration>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-trusted-token-issuers.json", new TypeReference<Map<String, TrustedTokenIssuer>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-trusted-token-issuer-update-overrides.json", new TypeReference<Map<String, TrustedTokenIssuer>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-trusted-token-issuer-client-tokens.json", new TypeReference<Map<String, String>>() {}),
                 identityStoreService,
                 organizationsService,
@@ -175,6 +177,7 @@ public class SsoAdminService implements Resettable {
                     StorageBackend<String, Boolean> instanceDeletionMarkers,
                     StorageBackend<String, InstanceAccessControlAttributeConfiguration> accessControlAttributeConfigurations,
                     StorageBackend<String, TrustedTokenIssuer> trustedTokenIssuers,
+                    StorageBackend<String, TrustedTokenIssuer> trustedTokenIssuerUpdateOverrides,
                     StorageBackend<String, String> trustedTokenIssuerClientTokens,
                     IdentityStoreService identityStoreService,
                     OrganizationsService organizationsService,
@@ -203,6 +206,7 @@ public class SsoAdminService implements Resettable {
         this.instanceDeletionMarkers = instanceDeletionMarkers;
         this.accessControlAttributeConfigurations = accessControlAttributeConfigurations;
         this.trustedTokenIssuers = trustedTokenIssuers;
+        this.trustedTokenIssuerUpdateOverrides = trustedTokenIssuerUpdateOverrides;
         this.trustedTokenIssuerClientTokens = trustedTokenIssuerClientTokens;
         this.identityStoreService = identityStoreService;
         this.organizationsService = organizationsService;
@@ -349,6 +353,7 @@ public class SsoAdminService implements Resettable {
         String instanceArn = required(request, "InstanceArn");
         requireInstance(instanceArn);
         List<TrustedTokenIssuer> matching = trustedTokenIssuers.scan(key -> true).stream()
+                .map(issuer -> trustedTokenIssuerUpdateOverrides.get(issuer.trustedTokenIssuerArn()).orElse(issuer))
                 .filter(issuer -> instanceArn.equals(issuer.instanceArn()))
                 .sorted(Comparator.comparing(TrustedTokenIssuer::trustedTokenIssuerArn))
                 .toList();
@@ -450,14 +455,73 @@ public class SsoAdminService implements Resettable {
 
     public TrustedTokenIssuer getTrustedTokenIssuer(String trustedTokenIssuerArn) {
         validateTrustedTokenIssuerArn(trustedTokenIssuerArn);
-        return trustedTokenIssuers.get(trustedTokenIssuerArn)
+        TrustedTokenIssuer base = trustedTokenIssuers.get(trustedTokenIssuerArn)
                 .orElseThrow(() -> notFound("Trusted token issuer not found: " + trustedTokenIssuerArn));
+        return trustedTokenIssuerUpdateOverrides.get(trustedTokenIssuerArn).orElse(base);
+    }
+
+    public synchronized TrustedTokenIssuer updateTrustedTokenIssuer(JsonNode request) {
+        String trustedTokenIssuerArn = required(request, "TrustedTokenIssuerArn");
+        TrustedTokenIssuer current = getTrustedTokenIssuer(trustedTokenIssuerArn);
+        String name = current.name();
+        if (request != null && request.has("Name") && !request.get("Name").isNull()) {
+            name = text(request, "Name");
+            if (name == null || name.isEmpty() || name.length() > 255 || !INSTANCE_NAME.matcher(name).matches()) {
+                throw validation("Name must be 1-255 characters and match [\\w+=,.@-]+.");
+            }
+        }
+        OidcJwtIssuerConfiguration oidc = current.oidcJwtConfiguration();
+        if (request != null && request.has("TrustedTokenIssuerConfiguration")
+                && !request.get("TrustedTokenIssuerConfiguration").isNull()) {
+            JsonNode configuration = request.get("TrustedTokenIssuerConfiguration");
+            if (!configuration.isObject() || configuration.size() != 1
+                    || !configuration.has("OidcJwtConfiguration")
+                    || !configuration.get("OidcJwtConfiguration").isObject()) {
+                throw validation("TrustedTokenIssuerConfiguration must contain exactly one OidcJwtConfiguration.");
+            }
+            JsonNode update = configuration.get("OidcJwtConfiguration");
+            if (update.has("IssuerUrl")) {
+                throw validation("IssuerUrl cannot be updated.");
+            }
+            String claimAttributePath = oidc.claimAttributePath();
+            if (update.has("ClaimAttributePath") && !update.get("ClaimAttributePath").isNull()) {
+                claimAttributePath = text(update, "ClaimAttributePath");
+                if (claimAttributePath == null || claimAttributePath.isEmpty() || claimAttributePath.length() > 255
+                        || !OIDC_CLAIM_ATTRIBUTE_PATH.matcher(claimAttributePath).matches()) {
+                    throw validation("ClaimAttributePath is invalid.");
+                }
+            }
+            String identityStoreAttributePath = oidc.identityStoreAttributePath();
+            if (update.has("IdentityStoreAttributePath") && !update.get("IdentityStoreAttributePath").isNull()) {
+                identityStoreAttributePath = text(update, "IdentityStoreAttributePath");
+                if (identityStoreAttributePath == null || identityStoreAttributePath.isEmpty()
+                        || identityStoreAttributePath.length() > 255
+                        || !OIDC_IDENTITY_STORE_ATTRIBUTE_PATH.matcher(identityStoreAttributePath).matches()) {
+                    throw validation("IdentityStoreAttributePath is invalid.");
+                }
+            }
+            String jwksRetrievalOption = oidc.jwksRetrievalOption();
+            if (update.has("JwksRetrievalOption") && !update.get("JwksRetrievalOption").isNull()) {
+                jwksRetrievalOption = text(update, "JwksRetrievalOption");
+                if (!"OPEN_ID_DISCOVERY".equals(jwksRetrievalOption)) {
+                    throw validation("JwksRetrievalOption must be OPEN_ID_DISCOVERY.");
+                }
+            }
+            oidc = new OidcJwtIssuerConfiguration(claimAttributePath, identityStoreAttributePath,
+                    oidc.issuerUrl(), jwksRetrievalOption);
+        }
+        TrustedTokenIssuer updated = new TrustedTokenIssuer(
+                current.trustedTokenIssuerArn(), current.instanceArn(), name, current.trustedTokenIssuerType(),
+                oidc, current.tags());
+        trustedTokenIssuerUpdateOverrides.put(trustedTokenIssuerArn, updated);
+        return updated;
     }
 
     public synchronized void deleteTrustedTokenIssuer(JsonNode request) {
         String trustedTokenIssuerArn = required(request, "TrustedTokenIssuerArn");
         getTrustedTokenIssuer(trustedTokenIssuerArn);
         trustedTokenIssuers.delete(trustedTokenIssuerArn);
+        trustedTokenIssuerUpdateOverrides.delete(trustedTokenIssuerArn);
         resourceTagOverrides.delete(trustedTokenIssuerArn);
         for (String key : new ArrayList<>(trustedTokenIssuerClientTokens.keys())) {
             if (trustedTokenIssuerArn.equals(trustedTokenIssuerClientTokens.get(key).orElse(null))) {
@@ -687,6 +751,7 @@ public class SsoAdminService implements Resettable {
             TrustedTokenIssuer issuer = trustedTokenIssuers.get(key).orElse(null);
             if (issuer != null && instanceArn.equals(issuer.instanceArn())) {
                 trustedTokenIssuers.delete(key);
+                trustedTokenIssuerUpdateOverrides.delete(key);
                 resourceTagOverrides.delete(key);
             }
         }
@@ -2297,6 +2362,7 @@ public class SsoAdminService implements Resettable {
         instanceDeletionMarkers.clear();
         accessControlAttributeConfigurations.clear();
         trustedTokenIssuers.clear();
+        trustedTokenIssuerUpdateOverrides.clear();
         trustedTokenIssuerClientTokens.clear();
         ensureBootstrapInstance(defaultAccountId, defaultRegion);
     }
