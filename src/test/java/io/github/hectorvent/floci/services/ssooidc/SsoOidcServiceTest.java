@@ -96,7 +96,7 @@ class SsoOidcServiceTest {
         assertOidcError("slow_down", () -> service.createToken(token));
 
         var approvedAuthorization = service.startDeviceAuthorization(start);
-        service.authorizeDevice(approvedAuthorization.userCode());
+        service.authorizeDevice(approvedAuthorization.userCode(), "11111111-1111-1111-1111-111111111111");
         token.put("deviceCode", approvedAuthorization.deviceCode());
         var session = service.createToken(token);
         assertEquals("Token Client", client.clientName());

@@ -33,6 +33,7 @@ import software.amazon.awssdk.services.redshiftdata.RedshiftDataClient;
 import software.amazon.awssdk.services.guardduty.GuardDutyClient;
 import software.amazon.awssdk.services.fis.FisClient;
 import software.amazon.awssdk.services.organizations.OrganizationsClient;
+import software.amazon.awssdk.services.sso.SsoClient;
 import software.amazon.awssdk.services.ssoadmin.SsoAdminClient;
 import software.amazon.awssdk.services.ssooidc.SsoOidcClient;
 import software.amazon.awssdk.services.identitystore.IdentitystoreClient;
@@ -328,6 +329,14 @@ public final class TestFixtures {
 
     public static SsoOidcClient ssoOidcClient() {
         return SsoOidcClient.builder()
+                .endpointOverride(ENDPOINT)
+                .region(REGION)
+                .credentialsProvider(CREDENTIALS)
+                .build();
+    }
+
+    public static SsoClient ssoPortalClient() {
+        return SsoClient.builder()
                 .endpointOverride(ENDPOINT)
                 .region(REGION)
                 .credentialsProvider(CREDENTIALS)

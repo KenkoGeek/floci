@@ -41,6 +41,7 @@ import io.github.hectorvent.floci.services.accessanalyzer.AccessAnalyzerControll
 import io.github.hectorvent.floci.services.inspector2.Inspector2Controller;
 import io.github.hectorvent.floci.services.securityhub.SecurityHubController;
 import io.github.hectorvent.floci.services.ssooidc.SsoOidcController;
+import io.github.hectorvent.floci.services.ssoportal.SsoPortalController;
 import io.github.hectorvent.floci.services.detective.DetectiveController;
 import io.github.hectorvent.floci.services.aps.ApsController;
 import io.github.hectorvent.floci.services.controlcatalog.ControlCatalogController;
@@ -425,8 +426,8 @@ public class ResolvedServiceCatalog {
                 // StarlingDoveService above).
                 descriptor("sso", "ssoadmin", config.services().ssoadmin().enabled(), true,
                         null, null, 5000L, null, ServiceProtocol.JSON,
-                        protocols(ServiceProtocol.JSON),
-                        Set.of("SWBExternalService."), Set.of("sso"), Set.of(), Set.of()),
+                        protocols(ServiceProtocol.JSON, ServiceProtocol.REST_JSON),
+                        Set.of("SWBExternalService."), Set.of("sso"), Set.of(), Set.of(SsoPortalController.class)),
                 descriptor("sso-oidc", "ssooidc", config.services().ssooidc().enabled(), true,
                         "ssooidc", config.storage().mode(), 5000L, null, ServiceProtocol.REST_JSON,
                         protocols(ServiceProtocol.REST_JSON),

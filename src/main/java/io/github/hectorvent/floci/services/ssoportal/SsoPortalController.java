@@ -1,0 +1,52 @@
+package io.github.hectorvent.floci.services.ssoportal;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.hectorvent.floci.services.ssoportal.model.PortalAccountInfo;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.HeaderParam;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+
+@ApplicationScoped
+@Path("/")
+@Produces(MediaType.APPLICATION_JSON)
+public class SsoPortalController {
+    private final SsoPortalService service;
+    private final ObjectMapper objectMapper;
+
+    @Inject
+    public SsoPortalController(SsoPortalService service, ObjectMapper objectMapper) {
+        this.service = service;
+        this.objectMapper = objectMapper;
+    }
+
+    @GET
+    @Path("/assignment/accounts")
+    public Response listAccounts(
+            @HeaderParam("x-amz-sso_bearer_token") String accessToken,
+            @QueryParam("max_result") String maxResults,
+            @QueryParam("next_token") String nextToken) {
+        var page = service.listAccounts(accessToken, maxResults, nextToken);
+        var response = objectMapper.createObjectNode();
+        var accounts = response.putArray("accountList");
+        for (PortalAccountInfo account : page.items()) {
+            var item = accounts.addObject();
+            item.put("accountId", account.accountId());
+            if (account.accountName() != null) {
+                item.put("accountName", account.accountName());
+            }
+            if (account.emailAddress() != null) {
+                item.put("emailAddress", account.emailAddress());
+            }
+        }
+        if (page.nextToken() != null) {
+            response.put("nextToken", page.nextToken());
+        }
+        return Response.ok(response).build();
+    }
+}

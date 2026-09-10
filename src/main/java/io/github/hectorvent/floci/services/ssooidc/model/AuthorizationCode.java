@@ -5,5 +5,6 @@ public record AuthorizationCode(
         String clientId,
         String redirectUri,
         String codeChallenge,
-        long expiresAtEpochSeconds
+        long expiresAtEpochSeconds,
+        String principalId
 ) {}
