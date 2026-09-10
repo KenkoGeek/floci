@@ -6,6 +6,7 @@ import io.github.hectorvent.floci.config.EmulatorConfig;
 import io.github.hectorvent.floci.core.common.Resettable;
 import io.github.hectorvent.floci.core.storage.StorageBackend;
 import io.github.hectorvent.floci.core.storage.StorageFactory;
+import io.github.hectorvent.floci.services.ssooidc.model.DeviceAuthorization;
 import io.github.hectorvent.floci.services.ssooidc.model.RegisteredClient;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -21,6 +22,8 @@ import java.util.regex.Pattern;
 @ApplicationScoped
 public class SsoOidcService implements Resettable {
     private static final long CLIENT_SECRET_LIFETIME_SECONDS = 90L * 24L * 60L * 60L;
+    private static final int DEVICE_CODE_LIFETIME_SECONDS = 600;
+    private static final int DEVICE_POLL_INTERVAL_SECONDS = 5;
     private static final Set<String> SUPPORTED_GRANT_TYPES = Set.of(
             "authorization_code",
             "urn:ietf:params:oauth:grant-type:device_code",
@@ -29,17 +32,23 @@ public class SsoOidcService implements Resettable {
             "arn:aws(?:-[a-z]{1,5}){0,3}:sso::[0-9]{12}:application/(?:sso)?ins-[a-zA-Z0-9-.]{16}/apl-[a-zA-Z0-9]{16}");
 
     private final StorageBackend<String, RegisteredClient> clients;
+    private final StorageBackend<String, DeviceAuthorization> deviceAuthorizations;
     private final String baseUrl;
 
     @Inject
     public SsoOidcService(StorageFactory storageFactory, EmulatorConfig config) {
         this(storageFactory.create("ssooidc", "ssooidc-registered-clients.json",
                         new TypeReference<Map<String, RegisteredClient>>() {}),
+                storageFactory.create("ssooidc", "ssooidc-device-authorizations.json",
+                        new TypeReference<Map<String, DeviceAuthorization>>() {}),
                 trimTrailingSlash(config.effectiveBaseUrl()));
     }
 
-    SsoOidcService(StorageBackend<String, RegisteredClient> clients, String baseUrl) {
+    SsoOidcService(StorageBackend<String, RegisteredClient> clients,
+                   StorageBackend<String, DeviceAuthorization> deviceAuthorizations,
+                   String baseUrl) {
         this.clients = clients;
+        this.deviceAuthorizations = deviceAuthorizations;
         this.baseUrl = trimTrailingSlash(baseUrl);
     }
 
@@ -92,12 +101,71 @@ public class SsoOidcService implements Resettable {
         return client;
     }
 
+    public synchronized DeviceAuthorization startDeviceAuthorization(JsonNode request) {
+        String clientId = requiredText(request, "clientId");
+        String clientSecret = requiredText(request, "clientSecret");
+        String startUrl = requiredText(request, "startUrl");
+        if (startUrl.isBlank()) {
+            throw new SsoOidcException("invalid_request", "startUrl must not be empty", 400);
+        }
+        RegisteredClient client = requireClientCredentials(clientId, clientSecret);
+        if (!"public".equals(client.clientType())) {
+            throw new SsoOidcException("unauthorized_client", "Client is not a public client", 400);
+        }
+        String deviceGrant = "urn:ietf:params:oauth:grant-type:device_code";
+        if (!client.grantTypes().isEmpty() && !client.grantTypes().contains(deviceGrant)) {
+            throw new SsoOidcException("unauthorized_client", "Client is not registered for the device code grant", 400);
+        }
+
+        long now = System.currentTimeMillis() / 1000L;
+        String deviceCode = UUID.randomUUID().toString().replace("-", "")
+                + UUID.randomUUID().toString().replace("-", "");
+        String rawUserCode = UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
+        String userCode = rawUserCode.substring(0, 4) + "-" + rawUserCode.substring(4);
+        DeviceAuthorization authorization = new DeviceAuthorization(
+                deviceCode,
+                userCode,
+                clientId,
+                startUrl,
+                now + DEVICE_CODE_LIFETIME_SECONDS,
+                DEVICE_POLL_INTERVAL_SECONDS,
+                false);
+        deviceAuthorizations.put(deviceCode, authorization);
+        return authorization;
+    }
+
     public RegisteredClient requireClient(String clientId) {
         if (clientId == null || clientId.isBlank()) {
             throw new SsoOidcException("invalid_client", "clientId is required", 400);
         }
         return clients.get(clientId)
                 .orElseThrow(() -> new SsoOidcException("invalid_client", "Client not found", 401));
+    }
+
+    public RegisteredClient requireClientCredentials(String clientId, String clientSecret) {
+        RegisteredClient client = requireClient(clientId);
+        long now = System.currentTimeMillis() / 1000L;
+        if (clientSecret == null || !client.clientSecret().equals(clientSecret)
+                || client.clientSecretExpiresAt() <= now) {
+            throw new SsoOidcException("invalid_client", "Client credentials are invalid or expired", 401);
+        }
+        return client;
+    }
+
+    public DeviceAuthorization requireDeviceAuthorization(String deviceCode) {
+        if (deviceCode == null || deviceCode.isBlank()) {
+            throw new SsoOidcException("invalid_request", "deviceCode is required", 400);
+        }
+        return deviceAuthorizations.get(deviceCode)
+                .orElseThrow(() -> new SsoOidcException("invalid_grant", "Device code is invalid", 400));
+    }
+
+    public String verificationUri() {
+        return baseUrl + "/device";
+    }
+
+    public String verificationUriComplete(DeviceAuthorization authorization) {
+        return verificationUri() + "?user_code=" + authorization.userCode();
     }
 
     public String authorizationEndpoint() {
@@ -111,6 +179,7 @@ public class SsoOidcService implements Resettable {
     @Override
     public void clear() {
         clients.clear();
+        deviceAuthorizations.clear();
     }
 
     private static String requiredText(JsonNode request, String field) {

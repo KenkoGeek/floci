@@ -31,4 +31,28 @@ class SsoOidcTest {
             assertThat(response.tokenEndpoint()).endsWith("/token");
         }
     }
+
+    @Test
+    @DisplayName("starts device authorization through the AWS SDK")
+    void startDeviceAuthorizationUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses emulator-only device authorization");
+
+        try (SsoOidcClient oidc = TestFixtures.ssoOidcClient()) {
+            var client = oidc.registerClient(request -> request
+                    .clientName("Floci Device SDK")
+                    .clientType("public")
+                    .grantTypes("urn:ietf:params:oauth:grant-type:device_code"));
+            var response = oidc.startDeviceAuthorization(request -> request
+                    .clientId(client.clientId())
+                    .clientSecret(client.clientSecret())
+                    .startUrl("https://example.awsapps.com/start"));
+
+            assertThat(response.deviceCode()).matches("[0-9a-f]{64}");
+            assertThat(response.userCode()).matches("[0-9A-F]{4}-[0-9A-F]{4}");
+            assertThat(response.verificationUri()).endsWith("/device");
+            assertThat(response.verificationUriComplete()).contains("user_code=" + response.userCode());
+            assertThat(response.expiresIn()).isPositive();
+            assertThat(response.interval()).isEqualTo(5);
+        }
+    }
 }

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.hectorvent.floci.services.ssooidc.model.DeviceAuthorization;
 import io.github.hectorvent.floci.services.ssooidc.model.RegisteredClient;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -40,6 +41,28 @@ public class SsoOidcController {
             response.put("clientSecretExpiresAt", client.clientSecretExpiresAt());
             response.put("authorizationEndpoint", service.authorizationEndpoint());
             response.put("tokenEndpoint", service.tokenEndpoint());
+            return Response.ok(response).build();
+        } catch (SsoOidcException e) {
+            return oidcError(e.status(), e.error(), e.getMessage());
+        } catch (RuntimeException e) {
+            return oidcError(500, "server_error", "The request could not be processed");
+        }
+    }
+
+    @POST
+    @Path("/device_authorization")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response startDeviceAuthorization(String body) {
+        try {
+            DeviceAuthorization authorization = service.startDeviceAuthorization(readTree(body));
+            ObjectNode response = objectMapper.createObjectNode();
+            response.put("deviceCode", authorization.deviceCode());
+            response.put("userCode", authorization.userCode());
+            response.put("verificationUri", service.verificationUri());
+            response.put("verificationUriComplete", service.verificationUriComplete(authorization));
+            response.put("expiresIn", (int) (authorization.expiresAtEpochSeconds()
+                    - System.currentTimeMillis() / 1000L));
+            response.put("interval", authorization.intervalSeconds());
             return Response.ok(response).build();
         } catch (SsoOidcException e) {
             return oidcError(e.status(), e.error(), e.getMessage());
