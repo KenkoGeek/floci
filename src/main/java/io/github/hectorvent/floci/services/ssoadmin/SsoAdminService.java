@@ -864,6 +864,111 @@ public class SsoAdminService implements Resettable {
                 .orElseThrow(() -> notFound("Application access scope not found: " + scope));
     }
 
+    public SsoApplication applicationForOidc(String applicationArn) {
+        return getApplication(applicationArn);
+    }
+
+    public ApplicationGrant applicationGrantForOidc(String applicationArn, String grantType) {
+        validateApplicationArn(applicationArn);
+        getApplication(applicationArn);
+        return applicationGrants.get(applicationGrantKey(applicationArn, grantType))
+                .orElseThrow(() -> notFound("Application grant not found: " + grantType));
+    }
+
+    public List<ApplicationAccessScope> applicationAccessScopesForOidc(String applicationArn) {
+        validateApplicationArn(applicationArn);
+        getApplication(applicationArn);
+        return applicationAccessScopes.scan(key -> true).stream()
+                .filter(scope -> applicationArn.equals(scope.applicationArn()))
+                .sorted(Comparator.comparing(ApplicationAccessScope::scope))
+                .toList();
+    }
+
+    public boolean iamActorPolicyAllows(String applicationArn, String callerAccountId) {
+        validateApplicationArn(applicationArn);
+        getApplication(applicationArn);
+        ApplicationAuthenticationMethod method = applicationAuthenticationMethods.get(
+                        applicationAuthenticationMethodKey(applicationArn, "IAM"))
+                .orElse(null);
+        if (method == null || method.authenticationMethod() == null) {
+            return false;
+        }
+        JsonNode policy = method.authenticationMethod().path("Iam").path("ActorPolicy");
+        if (!policy.isObject() || !"2012-10-17".equals(policy.path("Version").asText())) {
+            return false;
+        }
+        JsonNode statements = policy.get("Statement");
+        if (statements == null) {
+            return false;
+        }
+        List<JsonNode> statementList = new ArrayList<>();
+        if (statements.isArray()) {
+            statements.forEach(statementList::add);
+        } else if (statements.isObject()) {
+            statementList.add(statements);
+        } else {
+            return false;
+        }
+        boolean allowed = false;
+        for (JsonNode statement : statementList) {
+            if (!statement.isObject() || !policyActionMatches(statement.get("Action"))
+                    || !policyResourceMatches(statement.get("Resource"))
+                    || !policyPrincipalMatches(statement.get("Principal"), callerAccountId)) {
+                continue;
+            }
+            if ("Deny".equals(statement.path("Effect").asText())) {
+                return false;
+            }
+            if ("Allow".equals(statement.path("Effect").asText())) {
+                allowed = true;
+            }
+        }
+        return allowed;
+    }
+
+    private static boolean policyActionMatches(JsonNode action) {
+        return policyStringOrArrayMatches(action, value -> "*".equals(value)
+                || "sso-oauth:*".equalsIgnoreCase(value)
+                || "sso-oauth:CreateTokenWithIAM".equalsIgnoreCase(value));
+    }
+
+    private static boolean policyResourceMatches(JsonNode resource) {
+        return policyStringOrArrayMatches(resource, "*"::equals);
+    }
+
+    private static boolean policyPrincipalMatches(JsonNode principal, String accountId) {
+        if (principal == null || accountId == null) {
+            return false;
+        }
+        if (principal.isTextual()) {
+            return "*".equals(principal.textValue());
+        }
+        if (!principal.isObject()) {
+            return false;
+        }
+        JsonNode aws = principal.get("AWS");
+        Pattern rootArn = Pattern.compile("arn:aws(?:-[a-z]{1,5}){0,3}:iam::" + accountId + ":root");
+        return policyStringOrArrayMatches(aws, value -> "*".equals(value)
+                || accountId.equals(value) || rootArn.matcher(value).matches());
+    }
+
+    private static boolean policyStringOrArrayMatches(JsonNode node, java.util.function.Predicate<String> predicate) {
+        if (node == null) {
+            return false;
+        }
+        if (node.isTextual()) {
+            return predicate.test(node.textValue());
+        }
+        if (node.isArray()) {
+            for (JsonNode value : node) {
+                if (value.isTextual() && predicate.test(value.textValue())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     public PaginatedResult<ApplicationAccessScope> listApplicationAccessScopes(JsonNode request) {
         String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
         getApplication(applicationArn);

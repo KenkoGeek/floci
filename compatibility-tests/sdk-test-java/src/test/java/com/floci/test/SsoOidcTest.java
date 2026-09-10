@@ -2,6 +2,8 @@ package com.floci.test;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.core.document.Document;
+import software.amazon.awssdk.services.ssoadmin.SsoAdminClient;
 import software.amazon.awssdk.services.ssooidc.SsoOidcClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -81,6 +83,100 @@ class SsoOidcTest {
                     .grantType("refresh_token")
                     .refreshToken(token.refreshToken()));
             assertThat(refreshed.accessToken()).isNotEqualTo(token.accessToken());
+        }
+    }
+
+    @Test
+    @DisplayName("creates IAM-authenticated tokens through the AWS SDK")
+    void createTokenWithIamUsesAwsSdk() {
+        assumeFalse(TestFixtures.isRealAws(), "Uses emulator IAM application configuration");
+
+        try (SsoAdminClient sso = TestFixtures.ssoAdminClient();
+             SsoOidcClient oidc = TestFixtures.ssoOidcClient()) {
+            String instanceArn = sso.listInstances(request -> {}).instances().get(0).instanceArn();
+            String applicationArn = sso.createApplication(request -> request
+                    .instanceArn(instanceArn)
+                    .applicationProviderArn("arn:aws:sso::aws:applicationProvider/custom")
+                    .name("Floci IAM OIDC SDK"))
+                    .applicationArn();
+
+            Document statement = Document.mapBuilder()
+                    .putString("Effect", "Allow")
+                    .putDocument("Principal", Document.fromString("*"))
+                    .putString("Action", "sso-oauth:CreateTokenWithIAM")
+                    .putString("Resource", "*")
+                    .build();
+            Document actorPolicy = Document.mapBuilder()
+                    .putString("Version", "2012-10-17")
+                    .putDocument("Statement", Document.fromList(java.util.List.of(statement)))
+                    .build();
+            sso.putApplicationAuthenticationMethod(request -> request
+                    .applicationArn(applicationArn)
+                    .authenticationMethodType("IAM")
+                    .authenticationMethod(method -> method.iam(iam -> iam.actorPolicy(actorPolicy))));
+            String redirectUri = "http://127.0.0.1:8400/callback";
+            sso.putApplicationGrant(request -> request
+                    .applicationArn(applicationArn)
+                    .grantType("authorization_code")
+                    .grant(grant -> grant.authorizationCode(code -> code.redirectUris(redirectUri))));
+            sso.putApplicationAccessScope(request -> request
+                    .applicationArn(applicationArn)
+                    .scope("api:read")
+                    .authorizedTargets(applicationArn));
+
+            String verifier = "01234567890123456789012345678901234567890123456789";
+            String challenge = pkceChallenge(verifier);
+            String authorizeUrl = TestFixtures.endpoint().toString()
+                    + "/authorize?response_type=code&client_id="
+                    + java.net.URLEncoder.encode(applicationArn, java.nio.charset.StandardCharsets.UTF_8)
+                    + "&redirect_uri=" + java.net.URLEncoder.encode(redirectUri, java.nio.charset.StandardCharsets.UTF_8)
+                    + "&code_challenge=" + java.net.URLEncoder.encode(challenge, java.nio.charset.StandardCharsets.UTF_8)
+                    + "&code_challenge_method=S256";
+            String code;
+            try {
+                var browserResponse = java.net.http.HttpClient.newBuilder()
+                        .followRedirects(java.net.http.HttpClient.Redirect.NEVER)
+                        .build()
+                        .send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(authorizeUrl)).GET().build(),
+                                java.net.http.HttpResponse.BodyHandlers.ofString());
+                assertThat(browserResponse.statusCode()).isEqualTo(303);
+                var params = java.net.URI.create(browserResponse.headers().firstValue("location").orElseThrow())
+                        .getRawQuery().split("&");
+                code = java.util.Arrays.stream(params)
+                        .filter(value -> value.startsWith("code="))
+                        .map(value -> java.net.URLDecoder.decode(value.substring(5), java.nio.charset.StandardCharsets.UTF_8))
+                        .findFirst().orElseThrow();
+            } catch (java.io.IOException e) {
+                throw new RuntimeException(e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
+            }
+
+            var response = oidc.createTokenWithIam(request -> request
+                    .clientId(applicationArn)
+                    .grantType("authorization_code")
+                    .code(code)
+                    .codeVerifier(verifier)
+                    .redirectUri(redirectUri)
+                    .scope("api:read"));
+
+            assertThat(response.tokenType()).isEqualTo("Bearer");
+            assertThat(response.accessToken()).isNotBlank();
+            assertThat(response.refreshToken()).isNotBlank();
+            assertThat(response.idToken()).isNotBlank();
+            assertThat(response.scope()).containsExactly("api:read");
+            assertThat(response.awsAdditionalDetails().identityContext()).isNotBlank();
+        }
+    }
+
+    private static String pkceChallenge(String verifier) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(verifier.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
         }
     }
 }

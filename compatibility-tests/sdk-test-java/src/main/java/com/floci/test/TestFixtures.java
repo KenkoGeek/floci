@@ -330,6 +330,7 @@ public final class TestFixtures {
         return SsoOidcClient.builder()
                 .endpointOverride(ENDPOINT)
                 .region(REGION)
+                .credentialsProvider(CREDENTIALS)
                 .build();
     }
 

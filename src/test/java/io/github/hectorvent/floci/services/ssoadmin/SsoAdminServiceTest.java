@@ -716,6 +716,32 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void iamActorPolicyAllowsWildcardAndAccountRootWithExplicitDenyPrecedence() {
+        SsoApplication application = createApplication("Actor Policy App", "actor-policy-app-token");
+        String key = SsoAdminService.applicationAuthenticationMethodKey(application.applicationArn(), "IAM");
+        ObjectNode method = mapper.createObjectNode();
+        ObjectNode policy = method.putObject("Iam").putObject("ActorPolicy");
+        policy.put("Version", "2012-10-17");
+        ObjectNode allow = policy.putArray("Statement").addObject();
+        allow.put("Effect", "Allow");
+        allow.put("Principal", "*");
+        allow.put("Action", "sso-oauth:CreateTokenWithIAM");
+        allow.put("Resource", "*");
+        applicationAuthenticationMethods.put(key,
+                new ApplicationAuthenticationMethod(application.applicationArn(), "IAM", method));
+        assertTrue(service.iamActorPolicyAllows(application.applicationArn(), ACCOUNT_ID));
+
+        ObjectNode deny = policy.withArray("Statement").addObject();
+        deny.put("Effect", "Deny");
+        deny.putObject("Principal").put("AWS", "arn:aws:iam::" + ACCOUNT_ID + ":root");
+        deny.put("Action", "sso-oauth:CreateTokenWithIAM");
+        deny.put("Resource", "*");
+        applicationAuthenticationMethods.put(key,
+                new ApplicationAuthenticationMethod(application.applicationArn(), "IAM", method.deepCopy()));
+        assertFalse(service.iamActorPolicyAllows(application.applicationArn(), ACCOUNT_ID));
+        assertFalse(service.iamActorPolicyAllows(application.applicationArn(), "999999999999"));
+    }
+    @Test
     void deleteApplicationAuthenticationMethodDeletesIamMethodAndValidatesType() {
         SsoApplication application = createApplication("Authentication App", "authentication-app-token");
         String key = SsoAdminService.applicationAuthenticationMethodKey(application.applicationArn(), "IAM");
