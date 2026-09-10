@@ -68,6 +68,7 @@ class SsoAdminServiceTest {
                 applicationAuthenticationMethods,
                 applicationGrants,
                 new InMemoryStorage<String, String>(),
+                new InMemoryStorage<String, Map<String, String>>(),
                 new InMemoryStorage<String, SsoInstance>(),
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, Boolean>(),
@@ -1070,6 +1071,31 @@ class SsoAdminServiceTest {
         assertEquals("Owner", page.items().get(1).getKey());
         assertNull(page.nextToken());
 
+        ObjectNode tag = mapper.createObjectNode();
+        tag.put("ResourceArn", permissionSet.arn());
+        tag.put("InstanceArn", service.getInstanceArn());
+        tag.putArray("Tags")
+                .addObject().put("Key", "Environment").put("Value", "prod");
+        service.tagResource(tag);
+        var updated = service.listTagsForResource(request);
+        assertEquals(2, updated.items().size());
+        assertEquals("prod", updated.items().get(0).getValue());
+
+        ObjectNode fillToQuota = mapper.createObjectNode();
+        fillToQuota.put("ResourceArn", permissionSet.arn());
+        var quotaTags = fillToQuota.putArray("Tags");
+        for (int i = 0; i < 73; i++) {
+            quotaTags.addObject().put("Key", "K" + i).put("Value", "v");
+        }
+        service.tagResource(fillToQuota);
+        ObjectNode exceedQuota = mapper.createObjectNode();
+        exceedQuota.put("ResourceArn", permissionSet.arn());
+        exceedQuota.putArray("Tags").addObject().put("Key", "K73").put("Value", "v");
+        assertError("ServiceQuotaExceededException", () -> service.tagResource(exceedQuota));
+
+        ObjectNode missingTags = mapper.createObjectNode().put("ResourceArn", permissionSet.arn());
+        assertError("ValidationException", () -> service.tagResource(missingTags));
+
         ObjectNode invalidToken = request.deepCopy();
         invalidToken.put("NextToken", "bad%token");
         assertError("ValidationException", () -> service.listTagsForResource(invalidToken));
@@ -1506,6 +1532,7 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, ApplicationAuthenticationMethod>(),
                 new InMemoryStorage<String, ApplicationGrant>(),
                 new InMemoryStorage<String, String>(),
+                new InMemoryStorage<String, Map<String, String>>(),
                 new InMemoryStorage<String, SsoInstance>(),
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, Boolean>(),
