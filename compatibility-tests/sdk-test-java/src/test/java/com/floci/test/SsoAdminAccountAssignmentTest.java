@@ -378,6 +378,10 @@ class SsoAdminAccountAssignmentTest {
                     .name("SDK Delete Grant"))
                     .applicationArn();
 
+            var sessionConfiguration = sso.getApplicationSessionConfiguration(request -> request
+                    .applicationArn(applicationArn));
+            assertThat(sessionConfiguration.userBackgroundSessionApplicationStatusAsString()).isEqualTo("DISABLED");
+
             var putGrant = sso.putApplicationGrant(request -> request
                     .applicationArn(applicationArn)
                     .grantType("authorization_code")

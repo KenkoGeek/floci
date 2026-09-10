@@ -100,6 +100,7 @@ public class SsoAdminService implements Resettable {
     private final StorageBackend<String, Boolean> applicationAssignmentConfigurations;
     private final StorageBackend<String, ApplicationAuthenticationMethod> applicationAuthenticationMethods;
     private final StorageBackend<String, ApplicationGrant> applicationGrants;
+    private final StorageBackend<String, String> applicationSessionConfigurations;
     private final StorageBackend<String, SsoInstance> instances;
     private final StorageBackend<String, String> instanceClientTokens;
     private final StorageBackend<String, Boolean> instanceDeletionMarkers;
@@ -129,6 +130,7 @@ public class SsoAdminService implements Resettable {
                 storageFactory.create("ssoadmin", "ssoadmin-application-assignment-configurations.json", new TypeReference<Map<String, Boolean>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-application-authentication-methods.json", new TypeReference<Map<String, ApplicationAuthenticationMethod>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-application-grants.json", new TypeReference<Map<String, ApplicationGrant>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-application-session-configurations.json", new TypeReference<Map<String, String>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instances.json", new TypeReference<Map<String, SsoInstance>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instance-client-tokens.json", new TypeReference<Map<String, String>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instance-deletion-markers.json", new TypeReference<Map<String, Boolean>>() {}),
@@ -155,6 +157,7 @@ public class SsoAdminService implements Resettable {
                     StorageBackend<String, Boolean> applicationAssignmentConfigurations,
                     StorageBackend<String, ApplicationAuthenticationMethod> applicationAuthenticationMethods,
                     StorageBackend<String, ApplicationGrant> applicationGrants,
+                    StorageBackend<String, String> applicationSessionConfigurations,
                     StorageBackend<String, SsoInstance> instances,
                     StorageBackend<String, String> instanceClientTokens,
                     StorageBackend<String, Boolean> instanceDeletionMarkers,
@@ -179,6 +182,7 @@ public class SsoAdminService implements Resettable {
         this.applicationAssignmentConfigurations = applicationAssignmentConfigurations;
         this.applicationAuthenticationMethods = applicationAuthenticationMethods;
         this.applicationGrants = applicationGrants;
+        this.applicationSessionConfigurations = applicationSessionConfigurations;
         this.instances = instances;
         this.instanceClientTokens = instanceClientTokens;
         this.instanceDeletionMarkers = instanceDeletionMarkers;
@@ -566,6 +570,7 @@ public class SsoAdminService implements Resettable {
                 applicationGrants.delete(key);
             }
         }
+        applicationSessionConfigurations.delete(applicationArn);
     }
 
     public boolean getApplicationAssignmentConfiguration(JsonNode request) {
@@ -819,6 +824,12 @@ public class SsoAdminService implements Resettable {
             throw notFound("Application authentication method not found: " + authenticationMethodType);
         }
         applicationAuthenticationMethods.delete(key);
+    }
+
+    public String getApplicationSessionConfiguration(JsonNode request) {
+        String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
+        getApplication(applicationArn);
+        return applicationSessionConfigurations.get(applicationArn).orElse("DISABLED");
     }
 
     public ApplicationGrant getApplicationGrant(JsonNode request) {
@@ -1933,6 +1944,7 @@ public class SsoAdminService implements Resettable {
         applicationAssignmentConfigurations.clear();
         applicationAuthenticationMethods.clear();
         applicationGrants.clear();
+        applicationSessionConfigurations.clear();
         instances.clear();
         instanceClientTokens.clear();
         instanceDeletionMarkers.clear();
