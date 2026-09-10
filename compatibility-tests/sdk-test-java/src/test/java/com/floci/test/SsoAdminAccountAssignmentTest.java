@@ -173,6 +173,12 @@ class SsoAdminAccountAssignmentTest {
             var assignmentConfiguration = sso.getApplicationAssignmentConfiguration(request -> request
                     .applicationArn(created.applicationArn()));
             assertThat(assignmentConfiguration.assignmentRequired()).isTrue();
+            var putAssignmentConfiguration = sso.putApplicationAssignmentConfiguration(request -> request
+                    .applicationArn(created.applicationArn())
+                    .assignmentRequired(false));
+            assertThat(putAssignmentConfiguration.sdkHttpResponse().isSuccessful()).isTrue();
+            assertThat(sso.getApplicationAssignmentConfiguration(request -> request
+                    .applicationArn(created.applicationArn())).assignmentRequired()).isFalse();
 
             var putScope = sso.putApplicationAccessScope(request -> request
                     .applicationArn(created.applicationArn())

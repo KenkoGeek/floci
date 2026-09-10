@@ -574,6 +574,16 @@ public class SsoAdminService implements Resettable {
         return applicationAssignmentConfigurations.get(applicationArn).orElse(true);
     }
 
+    public synchronized void putApplicationAssignmentConfiguration(JsonNode request) {
+        String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
+        getApplication(applicationArn);
+        JsonNode assignmentRequired = request == null ? null : request.get("AssignmentRequired");
+        if (assignmentRequired == null || assignmentRequired.isNull() || !assignmentRequired.isBoolean()) {
+            throw validation("AssignmentRequired must be a boolean.");
+        }
+        applicationAssignmentConfigurations.put(applicationArn, assignmentRequired.booleanValue());
+    }
+
     public synchronized ApplicationAccessScope putApplicationAccessScope(JsonNode request) {
         String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
         getApplication(applicationArn);

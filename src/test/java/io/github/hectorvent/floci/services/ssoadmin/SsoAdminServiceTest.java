@@ -420,6 +420,29 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void putApplicationAssignmentConfigurationPersistsExplicitAccessRequirement() {
+        SsoApplication application = createApplication("Put Assignment Config App", "put-assignment-config-token");
+        ObjectNode request = mapper.createObjectNode();
+        request.put("ApplicationArn", application.applicationArn());
+        request.put("AssignmentRequired", false);
+
+        service.putApplicationAssignmentConfiguration(request);
+        assertFalse(service.getApplicationAssignmentConfiguration(request));
+
+        request.put("AssignmentRequired", true);
+        service.putApplicationAssignmentConfiguration(request);
+        assertTrue(service.getApplicationAssignmentConfiguration(request));
+
+        ObjectNode missingValue = mapper.createObjectNode().put("ApplicationArn", application.applicationArn());
+        assertError("ValidationException", () -> service.putApplicationAssignmentConfiguration(missingValue));
+
+        ObjectNode wrongType = mapper.createObjectNode();
+        wrongType.put("ApplicationArn", application.applicationArn());
+        wrongType.put("AssignmentRequired", "false");
+        assertError("ValidationException", () -> service.putApplicationAssignmentConfiguration(wrongType));
+    }
+
+    @Test
     void putApplicationAccessScopeCreatesAndUpdatesAuthorizedTargets() {
         SsoApplication application = createApplication("Put Scope App", "put-scope-app-token");
         ObjectNode request = mapper.createObjectNode();
