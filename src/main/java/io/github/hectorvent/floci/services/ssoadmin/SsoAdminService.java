@@ -821,6 +821,17 @@ public class SsoAdminService implements Resettable {
         applicationAuthenticationMethods.delete(key);
     }
 
+    public ApplicationGrant getApplicationGrant(JsonNode request) {
+        String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
+        getApplication(applicationArn);
+        String grantType = required(request, "GrantType");
+        if (!APPLICATION_GRANT_TYPES.contains(grantType)) {
+            throw validation("GrantType is invalid.");
+        }
+        return applicationGrants.get(applicationGrantKey(applicationArn, grantType))
+                .orElseThrow(() -> notFound("Application grant not found: " + grantType));
+    }
+
     public synchronized void deleteApplicationGrant(JsonNode request) {
         String applicationArn = validateApplicationArn(required(request, "ApplicationArn"));
         getApplication(applicationArn);

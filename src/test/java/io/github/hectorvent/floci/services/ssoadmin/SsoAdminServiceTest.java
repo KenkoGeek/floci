@@ -622,6 +622,28 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void getApplicationGrantReturnsStoredGrantAndValidatesType() {
+        SsoApplication application = createApplication("Get Grant App", "get-grant-app-token");
+        String grantType = "authorization_code";
+        String key = SsoAdminService.applicationGrantKey(application.applicationArn(), grantType);
+        ObjectNode grant = mapper.createObjectNode();
+        grant.putObject("AuthorizationCode").putArray("RedirectUris").add("https://example.com/callback");
+        applicationGrants.put(key, new ApplicationGrant(application.applicationArn(), grantType, grant));
+
+        ObjectNode request = mapper.createObjectNode();
+        request.put("ApplicationArn", application.applicationArn());
+        request.put("GrantType", grantType);
+        assertEquals(grant, service.getApplicationGrant(request).grant());
+
+        ObjectNode invalidType = request.deepCopy();
+        invalidType.put("GrantType", "client_credentials");
+        assertError("ValidationException", () -> service.getApplicationGrant(invalidType));
+
+        applicationGrants.delete(key);
+        assertError("ResourceNotFoundException", () -> service.getApplicationGrant(request));
+    }
+
+    @Test
     void deleteApplicationGrantDeletesConfiguredGrantAndValidatesGrantType() {
         SsoApplication application = createApplication("Grant App", "grant-app-token");
         String grantType = "authorization_code";
