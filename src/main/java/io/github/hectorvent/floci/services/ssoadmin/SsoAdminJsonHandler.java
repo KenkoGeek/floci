@@ -48,6 +48,7 @@ public class SsoAdminJsonHandler {
             case "TagResource" -> tagResource(request);
             case "UntagResource" -> untagResource(request);
             case "CreateApplication" -> createApplication(request, callerAccountId, region);
+            case "UpdateApplication" -> updateApplication(request);
             case "DescribeApplication" -> describeApplication(request);
             case "ListApplications" -> listApplications(request, callerAccountId);
             case "CreateApplicationAssignment" -> createApplicationAssignment(request);
@@ -487,6 +488,11 @@ public class SsoAdminJsonHandler {
         response.put("IdentityStoreArn", application.identityStoreArn());
         response.put("InstanceArn", application.instanceArn());
         return Response.ok(response).build();
+    }
+
+    private Response updateApplication(JsonNode request) {
+        service.updateApplication(request);
+        return Response.ok().build();
     }
 
     private Response describeApplication(JsonNode request) {

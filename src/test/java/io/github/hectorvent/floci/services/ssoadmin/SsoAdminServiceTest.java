@@ -61,6 +61,7 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, PermissionSetProvisioningOperation>(),
                 new InMemoryStorage<String, RegionMetadata>(),
                 new InMemoryStorage<String, SsoApplication>(),
+                new InMemoryStorage<String, SsoApplication>(),
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, ApplicationAssignment>(),
                 applicationAccessScopes,
@@ -973,6 +974,41 @@ class SsoAdminServiceTest {
     }
 
     @Test
+    void updateApplicationChangesOnlyDocumentedMutableFieldsAndPreservesCreateIdempotency() {
+        ObjectNode create = mapper.createObjectNode();
+        create.put("InstanceArn", service.getInstanceArn());
+        create.put("ApplicationProviderArn", "arn:aws:sso::aws:applicationProvider/custom");
+        create.put("Name", "Original App");
+        create.put("Description", "Original description");
+        create.put("ClientToken", "update-app-token");
+        create.put("Status", "ENABLED");
+        create.putObject("PortalOptions").put("Visibility", "ENABLED")
+                .putObject("SignInOptions").put("Origin", "IDENTITY_CENTER");
+        SsoApplication created = service.createApplication(create, ACCOUNT_ID, "us-east-1");
+
+        ObjectNode update = mapper.createObjectNode();
+        update.put("ApplicationArn", created.applicationArn());
+        update.put("Name", "Updated App");
+        update.put("Description", "Updated description");
+        update.put("Status", "DISABLED");
+        update.putObject("PortalOptions").putObject("SignInOptions")
+                .put("Origin", "APPLICATION").put("ApplicationUrl", "https://example.com/new-login");
+        SsoApplication updated = service.updateApplication(update);
+        assertEquals("Updated App", updated.name());
+        assertEquals("Updated description", updated.description());
+        assertEquals("DISABLED", updated.status());
+        assertEquals("ENABLED", updated.portalOptions().visibility());
+        assertEquals("APPLICATION", updated.portalOptions().signInOptions().origin());
+        assertEquals("https://example.com/new-login", updated.portalOptions().signInOptions().applicationUrl());
+        assertEquals("Updated App", service.describeApplication(update).name());
+        assertEquals(created.applicationArn(), service.createApplication(create, ACCOUNT_ID, "us-east-1").applicationArn());
+
+        ObjectNode invalidVisibility = mapper.createObjectNode().put("ApplicationArn", created.applicationArn());
+        invalidVisibility.putObject("PortalOptions").put("Visibility", "DISABLED");
+        assertError("ValidationException", () -> service.updateApplication(invalidVisibility));
+    }
+
+    @Test
     void createApplicationRejectsUnsupportedProvidersAndInvalidPortalOptions() {
         ObjectNode request = mapper.createObjectNode();
         request.put("InstanceArn", service.getInstanceArn());
@@ -1558,6 +1594,7 @@ class SsoAdminServiceTest {
                 new InMemoryStorage<String, PermissionSetProvisioning>(),
                 new InMemoryStorage<String, PermissionSetProvisioningOperation>(),
                 new InMemoryStorage<String, RegionMetadata>(),
+                new InMemoryStorage<String, SsoApplication>(),
                 new InMemoryStorage<String, SsoApplication>(),
                 new InMemoryStorage<String, String>(),
                 new InMemoryStorage<String, ApplicationAssignment>(),
