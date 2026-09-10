@@ -147,6 +147,28 @@ class SsoAdminAccountAssignmentTest {
                 assertThat(tag.key()).isEqualTo("Environment");
                 assertThat(tag.value()).isEqualTo("test");
             });
+            var tagged = sso.tagResource(request -> request
+                    .instanceArn(instanceArn)
+                    .resourceArn(created.applicationArn())
+                    .tags(tag -> tag.key("Environment").value("prod"),
+                            tag -> tag.key("Owner").value("platform")));
+            assertThat(tagged.sdkHttpResponse().isSuccessful()).isTrue();
+            assertThat(sso.listTagsForResource(request -> request.resourceArn(created.applicationArn())).tags())
+                    .extracting(tag -> tag.key() + "=" + tag.value())
+                    .containsExactly("Environment=prod", "Owner=platform");
+            var replayAfterTagging = sso.createApplication(request -> request
+                    .instanceArn(instanceArn)
+                    .applicationProviderArn("arn:aws:sso::aws:applicationProvider/custom")
+                    .name("Floci OAuth SDK")
+                    .clientToken("sdk-create-application-token")
+                    .status("DISABLED")
+                    .portalOptions(options -> options
+                            .visibility("ENABLED")
+                            .signInOptions(signIn -> signIn
+                                    .origin("APPLICATION")
+                                    .applicationUrl("https://example.com/login")))
+                    .tags(tag -> tag.key("Environment").value("test")));
+            assertThat(replayAfterTagging.applicationArn()).isEqualTo(created.applicationArn());
 
             var described = sso.describeApplication(request -> request.applicationArn(created.applicationArn()));
             assertThat(described.applicationArn()).isEqualTo(created.applicationArn());

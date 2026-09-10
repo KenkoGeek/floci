@@ -102,6 +102,7 @@ public class SsoAdminService implements Resettable {
     private final StorageBackend<String, ApplicationAuthenticationMethod> applicationAuthenticationMethods;
     private final StorageBackend<String, ApplicationGrant> applicationGrants;
     private final StorageBackend<String, String> applicationSessionConfigurations;
+    private final StorageBackend<String, Map<String, String>> resourceTagOverrides;
     private final StorageBackend<String, SsoInstance> instances;
     private final StorageBackend<String, String> instanceClientTokens;
     private final StorageBackend<String, Boolean> instanceDeletionMarkers;
@@ -132,6 +133,7 @@ public class SsoAdminService implements Resettable {
                 storageFactory.create("ssoadmin", "ssoadmin-application-authentication-methods.json", new TypeReference<Map<String, ApplicationAuthenticationMethod>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-application-grants.json", new TypeReference<Map<String, ApplicationGrant>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-application-session-configurations.json", new TypeReference<Map<String, String>>() {}),
+                storageFactory.create("ssoadmin", "ssoadmin-resource-tag-overrides.json", new TypeReference<Map<String, Map<String, String>>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instances.json", new TypeReference<Map<String, SsoInstance>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instance-client-tokens.json", new TypeReference<Map<String, String>>() {}),
                 storageFactory.create("ssoadmin", "ssoadmin-instance-deletion-markers.json", new TypeReference<Map<String, Boolean>>() {}),
@@ -159,6 +161,7 @@ public class SsoAdminService implements Resettable {
                     StorageBackend<String, ApplicationAuthenticationMethod> applicationAuthenticationMethods,
                     StorageBackend<String, ApplicationGrant> applicationGrants,
                     StorageBackend<String, String> applicationSessionConfigurations,
+                    StorageBackend<String, Map<String, String>> resourceTagOverrides,
                     StorageBackend<String, SsoInstance> instances,
                     StorageBackend<String, String> instanceClientTokens,
                     StorageBackend<String, Boolean> instanceDeletionMarkers,
@@ -184,6 +187,7 @@ public class SsoAdminService implements Resettable {
         this.applicationAuthenticationMethods = applicationAuthenticationMethods;
         this.applicationGrants = applicationGrants;
         this.applicationSessionConfigurations = applicationSessionConfigurations;
+        this.resourceTagOverrides = resourceTagOverrides;
         this.instances = instances;
         this.instanceClientTokens = instanceClientTokens;
         this.instanceDeletionMarkers = instanceDeletionMarkers;
@@ -345,34 +349,10 @@ public class SsoAdminService implements Resettable {
     public PaginatedResult<Map.Entry<String, String>> listTagsForResource(JsonNode request) {
         String instanceArn = optionalInstanceArn(request);
         String resourceArn = required(request, "ResourceArn");
-        if (resourceArn.length() > 2048) {
-            throw validation("ResourceArn is invalid.");
-        }
-        Map<String, String> tags;
-        String resourceInstanceArn;
-        if (INSTANCE_ARN_PATTERN.matcher(resourceArn).matches()) {
-            SsoInstance instance = requireInstance(resourceArn);
-            tags = instance.tags();
-            resourceInstanceArn = instance.instanceArn();
-        } else if (PERMISSION_SET_ARN.matcher(resourceArn).matches()) {
-            PermissionSet permissionSet = permissionSets.get(resourceArn)
-                    .orElseThrow(() -> notFound("Permission set not found: " + resourceArn));
-            tags = permissionSet.tags();
-            resourceInstanceArn = instanceArnForPermissionSet(resourceArn);
-        } else if (APPLICATION_ARN.matcher(resourceArn).matches()) {
-            SsoApplication application = getApplication(resourceArn);
-            tags = application.tags();
-            resourceInstanceArn = application.instanceArn();
-        } else if (TRUSTED_TOKEN_ISSUER_ARN.matcher(resourceArn).matches()) {
-            TrustedTokenIssuer issuer = getTrustedTokenIssuer(resourceArn);
-            tags = issuer.tags();
-            resourceInstanceArn = issuer.instanceArn();
-        } else {
-            throw validation("ResourceArn is invalid.");
-        }
-        if (instanceArn != null && !instanceArn.equals(resourceInstanceArn)) {
-            throw notFound("Resource not found under the specified IAM Identity Center instance.");
-        }
+        TaggableResource resource = resolveTaggableResource(resourceArn);
+        validateResourceInstance(instanceArn, resource.instanceArn());
+        Map<String, String> tags = resourceTagOverrides.get(resourceArn)
+                .orElseGet(() -> resource.tags());
         List<Map.Entry<String, String>> entries = tags.entrySet().stream()
                 .map(entry -> Map.entry(entry.getKey(), entry.getValue()))
                 .sorted(Map.Entry.comparingByKey())
@@ -380,6 +360,57 @@ public class SsoAdminService implements Resettable {
         return Pagination.paginate(entries, Map.Entry::getKey, null,
                 optionalNextToken(request), 75, 75, "ValidationException");
     }
+
+    public synchronized void tagResource(JsonNode request) {
+        String instanceArn = optionalInstanceArn(request);
+        String resourceArn = required(request, "ResourceArn");
+        TaggableResource resource = resolveTaggableResource(resourceArn);
+        validateResourceInstance(instanceArn, resource.instanceArn());
+        JsonNode tagsNode = request == null ? null : request.get("Tags");
+        if (tagsNode == null || tagsNode.isNull()) {
+            throw validation("Tags is required.");
+        }
+        Map<String, String> requestedTags = parseTags(tagsNode);
+        Map<String, String> updated = new LinkedHashMap<>(resourceTagOverrides.get(resourceArn)
+                .orElseGet(resource::tags));
+        updated.putAll(requestedTags);
+        if (updated.size() > 75) {
+            throw quota("A resource can have at most 75 tags.");
+        }
+        resourceTagOverrides.put(resourceArn, updated);
+    }
+
+    private TaggableResource resolveTaggableResource(String resourceArn) {
+        if (resourceArn == null || resourceArn.length() < 10 || resourceArn.length() > 2048) {
+            throw validation("ResourceArn is invalid.");
+        }
+        if (INSTANCE_ARN_PATTERN.matcher(resourceArn).matches()) {
+            SsoInstance instance = requireInstance(resourceArn);
+            return new TaggableResource(instance.tags(), instance.instanceArn());
+        }
+        if (PERMISSION_SET_ARN.matcher(resourceArn).matches()) {
+            PermissionSet permissionSet = permissionSets.get(resourceArn)
+                    .orElseThrow(() -> notFound("Permission set not found: " + resourceArn));
+            return new TaggableResource(permissionSet.tags(), instanceArnForPermissionSet(resourceArn));
+        }
+        if (APPLICATION_ARN.matcher(resourceArn).matches()) {
+            SsoApplication application = getApplication(resourceArn);
+            return new TaggableResource(application.tags(), application.instanceArn());
+        }
+        if (TRUSTED_TOKEN_ISSUER_ARN.matcher(resourceArn).matches()) {
+            TrustedTokenIssuer issuer = getTrustedTokenIssuer(resourceArn);
+            return new TaggableResource(issuer.tags(), issuer.instanceArn());
+        }
+        throw validation("ResourceArn is invalid.");
+    }
+
+    private static void validateResourceInstance(String requestedInstanceArn, String resourceInstanceArn) {
+        if (requestedInstanceArn != null && !requestedInstanceArn.equals(resourceInstanceArn)) {
+            throw notFound("Resource not found under the specified IAM Identity Center instance.");
+        }
+    }
+
+    private record TaggableResource(Map<String, String> tags, String instanceArn) {}
 
     public TrustedTokenIssuer getTrustedTokenIssuer(String trustedTokenIssuerArn) {
         validateTrustedTokenIssuerArn(trustedTokenIssuerArn);
@@ -391,6 +422,7 @@ public class SsoAdminService implements Resettable {
         String trustedTokenIssuerArn = required(request, "TrustedTokenIssuerArn");
         getTrustedTokenIssuer(trustedTokenIssuerArn);
         trustedTokenIssuers.delete(trustedTokenIssuerArn);
+        resourceTagOverrides.delete(trustedTokenIssuerArn);
         for (String key : new ArrayList<>(trustedTokenIssuerClientTokens.keys())) {
             if (trustedTokenIssuerArn.equals(trustedTokenIssuerClientTokens.get(key).orElse(null))) {
                 trustedTokenIssuerClientTokens.delete(key);
@@ -547,6 +579,9 @@ public class SsoAdminService implements Resettable {
         for (String applicationArn : applicationArns) {
             deleteApplication(applicationArn);
         }
+        for (String permissionSetArn : new ArrayList<>(permissionSets.keys())) {
+            resourceTagOverrides.delete(permissionSetArn);
+        }
 
         permissionSets.clear();
         assignments.clear();
@@ -559,6 +594,7 @@ public class SsoAdminService implements Resettable {
             TrustedTokenIssuer issuer = trustedTokenIssuers.get(key).orElse(null);
             if (issuer != null && instanceArn.equals(issuer.instanceArn())) {
                 trustedTokenIssuers.delete(key);
+                resourceTagOverrides.delete(key);
             }
         }
         for (String key : new java.util.ArrayList<>(trustedTokenIssuerClientTokens.keys())) {
@@ -574,12 +610,14 @@ public class SsoAdminService implements Resettable {
         }
         identityStoreService.deleteIdentityStore(instance.identityStoreId());
         instances.delete(callerAccountId);
+        resourceTagOverrides.delete(instanceArn);
         instanceDeletionMarkers.put(callerAccountId, true);
     }
 
     public synchronized void deleteApplication(String applicationArn) {
         getApplication(applicationArn);
         applications.delete(applicationArn);
+        resourceTagOverrides.delete(applicationArn);
         for (String key : new java.util.ArrayList<>(applicationAssignments.keys())) {
             ApplicationAssignment assignment = applicationAssignments.get(key).orElse(null);
             if (assignment != null && applicationArn.equals(assignment.applicationArn())) {
@@ -1158,6 +1196,7 @@ public class SsoAdminService implements Resettable {
         }
         getPermissionSet(instanceArn, permissionSetArn);
         permissionSets.delete(permissionSetArn);
+        resourceTagOverrides.delete(permissionSetArn);
         for (String key : new ArrayList<>(assignments.keys())) {
             Assignment assignment = assignments.get(key).orElse(null);
             if (assignment != null && permissionSetArn.equals(assignment.permissionSetArn())) {
@@ -2038,6 +2077,7 @@ public class SsoAdminService implements Resettable {
         applicationAuthenticationMethods.clear();
         applicationGrants.clear();
         applicationSessionConfigurations.clear();
+        resourceTagOverrides.clear();
         instances.clear();
         instanceClientTokens.clear();
         instanceDeletionMarkers.clear();

@@ -126,6 +126,27 @@ class SsoAdminIntegrationTest {
                 .body("Tags.size()", equalTo(1))
                 .body("Tags[0].Key", equalTo("Environment"))
                 .body("Tags[0].Value", equalTo("test"));
+
+        given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.TagResource")
+                .body("{\"InstanceArn\":\"" + instanceArn + "\",\"ResourceArn\":\"" + permissionSetArn + "\","
+                        + "\"Tags\":[{\"Key\":\"Environment\",\"Value\":\"prod\"},{\"Key\":\"Owner\",\"Value\":\"platform\"}]}")
+            .when().post("/")
+            .then().statusCode(200).body(org.hamcrest.Matchers.emptyOrNullString());
+
+        given()
+                .contentType("application/x-amz-json-1.1")
+                .header("Authorization", AUTH_HEADER)
+                .header("X-Amz-Target", "SWBExternalService.ListTagsForResource")
+                .body("{\"ResourceArn\":\"" + permissionSetArn + "\"}")
+            .when().post("/")
+            .then()
+                .statusCode(200)
+                .body("Tags.size()", equalTo(2))
+                .body("Tags[0].Key", equalTo("Environment"))
+                .body("Tags[0].Value", equalTo("prod"));
     }
 
     @Test

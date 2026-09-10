@@ -44,6 +44,7 @@ public class SsoAdminJsonHandler {
             case "DescribeRegion" -> describeRegion(request);
             case "ListRegions" -> listRegions(request);
             case "ListTagsForResource" -> listTagsForResource(request);
+            case "TagResource" -> tagResource(request);
             case "CreateApplication" -> createApplication(request, callerAccountId, region);
             case "DescribeApplication" -> describeApplication(request);
             case "ListApplications" -> listApplications(request, callerAccountId);
@@ -272,6 +273,11 @@ public class SsoAdminJsonHandler {
             response.put("NextToken", page.nextToken());
         }
         return Response.ok(response).build();
+    }
+
+    private Response tagResource(JsonNode request) {
+        service.tagResource(request);
+        return Response.ok().build();
     }
 
     private Response deleteApplication(JsonNode request) {
