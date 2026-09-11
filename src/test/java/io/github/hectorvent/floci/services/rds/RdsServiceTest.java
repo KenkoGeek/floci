@@ -5485,6 +5485,21 @@ class RdsServiceTest {
     }
 
     @Test
+    void refreshRuntimeHealthMarksDeadContainerFailedAndStopsProxy() {
+        when(rdsConfig.mock()).thenReturn(false);
+        when(containerManager.isContainerRunning("cont-id")).thenReturn(false);
+        DbInstance instance = rdsService.createDbInstance(
+                "dead-db", "postgres", "16", "admin", "password", "dbname",
+                "db.t3.micro", 20, false, null, null, null, null, false, false,
+                null, Map.of(), List.of(), null, null, true);
+
+        DbInstance refreshed = rdsService.refreshDbInstanceRuntimeHealth(instance);
+
+        assertEquals(DbInstanceStatus.FAILED, refreshed.getStatus());
+        verify(proxyManager).stopProxy("rds-resource:" + refreshed.getDbInstanceArn());
+    }
+
+    @Test
     void optionGroupsUseTheInjectedAccountAwareStorage() {
         String accountId = "123456789012";
         InMemoryStorage<String, OptionGroup> rawOptionGroups = new InMemoryStorage<>();

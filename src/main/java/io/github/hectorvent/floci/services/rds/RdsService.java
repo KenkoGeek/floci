@@ -1232,6 +1232,40 @@ public class RdsService implements Resettable, ResourceProvider {
         return unique.values();
     }
 
+    /**
+     * Reconciles the control-plane status with the Docker runtime before a describe response.
+     * AWS does not keep reporting an instance as available after its database process is gone.
+     */
+    public synchronized DbInstance refreshDbInstanceRuntimeHealth(DbInstance instance) {
+        if (instance == null
+                || config.services().rds().mock()
+                || instance.getStatus() != DbInstanceStatus.AVAILABLE
+                || instance.getContainerId() == null
+                || instance.getContainerId().isBlank()) {
+            return instance;
+        }
+        if (containerManager.isContainerRunning(instance.getContainerId())) {
+            return instance;
+        }
+
+        instance.setStatus(DbInstanceStatus.FAILED);
+        String accountId = accountIdFromArn(instance.getDbInstanceArn());
+        String region = regionFromArn(instance.getDbInstanceArn());
+        putInstanceForScope(accountId, region, instance.getDbInstanceIdentifier(), instance);
+        try {
+            proxyManager.stopProxy(rdsResourceRelayKey(
+                    instance.getDbInstanceArn(), instance.getDbInstanceIdentifier()));
+        } catch (RuntimeException e) {
+            // Health reconciliation must still return the failed control-plane state even when
+            // closing the local relay encounters a stale or already-closed listener.
+            LOG.warnv(e, "Failed to stop RDS proxy for unhealthy instance {0}",
+                    instance.getDbInstanceIdentifier());
+        }
+        LOG.warnv("RDS instance {0} backing container is no longer running; marking it failed",
+                instance.getDbInstanceIdentifier());
+        return instance;
+    }
+
     public Collection<DbInstance> listDbInstancesByDbiResourceIds(Collection<String> resourceIds) {
         return listDbInstancesByDbiResourceIds(resourceIds, regionResolver.getDefaultRegion());
     }

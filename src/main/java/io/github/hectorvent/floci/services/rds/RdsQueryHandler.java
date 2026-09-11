@@ -201,8 +201,9 @@ public class RdsQueryHandler {
             List<String> engines = engineFilter(params);
             XmlBuilder xml = new XmlBuilder().start("DBInstances");
             for (DbInstance i : result) {
-                if (engines.isEmpty() || engines.contains(instanceEngine(i))) {
-                    xml.start("DBInstance").raw(dbInstanceInnerXml(i)).end("DBInstance");
+                DbInstance reconciled = service.refreshDbInstanceRuntimeHealth(i);
+                if (engines.isEmpty() || engines.contains(instanceEngine(reconciled))) {
+                    xml.start("DBInstance").raw(dbInstanceInnerXml(reconciled)).end("DBInstance");
                 }
             }
             boolean listForm = (identifier == null || identifier.isBlank())
