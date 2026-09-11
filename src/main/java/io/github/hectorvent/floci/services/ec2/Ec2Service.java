@@ -4211,9 +4211,9 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
         List<Image> catalogImages = imageCatalog.images().stream()
                 .filter(Ec2ImageCatalog.CatalogImage::advertised)
                 .filter(img -> img.matchesIdOrAlias(imageIds))
-                .filter(img -> img.matchesOwner(owners))
-                .filter(img -> matchesImageFilters(img, filters))
                 .map(Ec2ImageCatalog.CatalogImage::toImage)
+                .filter(img -> matchesImageOwners(img, owners))
+                .filter(img -> matchesRegisteredImageFilters(img, filters))
                 .collect(Collectors.toList());
         List<Image> createdImages = registeredImages.scan(k -> true).stream()
                 .filter(img -> region.equals(img.getRegion()))

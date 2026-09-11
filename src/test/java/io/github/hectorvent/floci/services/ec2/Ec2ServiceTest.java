@@ -575,6 +575,24 @@ class Ec2ServiceTest {
     }
 
     @Test
+    void describeImagesAppliesAwsOwnerAliasesConsistentlyToCatalogImages() {
+        Ec2ImageCatalog imageCatalog = new Ec2ImageCatalog();
+        Ec2Service service = new Ec2Service(mockConfig(true), mock(Ec2ContainerManager.class),
+                mock(Ec2PortForwardManager.class),
+                new AmiImageResolver(imageCatalog), imageCatalog, new Ec2InstanceTypeCatalog(),
+                new InMemoryStorageFactory());
+
+        List<Image> amazon = service.describeImages(
+                "us-east-1", List.of(), List.of("amazon"), Map.of());
+        assertTrue(amazon.stream().anyMatch(image -> "amazon".equals(image.getImageOwnerAlias())));
+
+        List<Image> self = service.describeImages(
+                "us-east-1", List.of(), List.of("self"), Map.of());
+        assertTrue(self.stream().allMatch(image -> "000000000000".equals(image.getOwnerId())));
+        assertTrue(self.stream().noneMatch(image -> "amazon".equals(image.getImageOwnerAlias())));
+    }
+
+    @Test
     void describeImagesResolvesUnknownLaunchableAmiId() {
         Ec2ImageCatalog imageCatalog = new Ec2ImageCatalog();
         Ec2Service service = new Ec2Service(mockConfig(true), mock(Ec2ContainerManager.class),
