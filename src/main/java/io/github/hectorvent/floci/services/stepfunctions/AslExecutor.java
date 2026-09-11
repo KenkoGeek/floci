@@ -120,6 +120,22 @@ public class AslExecutor {
     private record ResolvedMapItems(JsonNode items, MapItemsSource source) {
     }
 
+    private record ActiveMockExecution(
+            MockedTestCase testCase,
+            ConcurrentHashMap<String, AtomicInteger> responseIndexes) {
+
+        private ActiveMockExecution(MockedTestCase testCase) {
+            this(testCase, new ConcurrentHashMap<>());
+        }
+
+        private int nextResponseIndex(String stateName) {
+            return responseIndexes.computeIfAbsent(stateName, ignored -> new AtomicInteger()).getAndIncrement();
+        }
+    }
+
+    private record MockedTaskInvocation(List<MockedResponseStep> steps, int responseIndex) {
+    }
+
     private static final Logger LOG = Logger.getLogger(AslExecutor.class);
     private static final int MAX_WAIT_SECONDS = 30;
     // How long a Task waits for its token when the state declares no TimeoutSeconds. AWS lets it
@@ -225,7 +241,7 @@ public class AslExecutor {
     private final WebClient webClient;
     private final EmulatorConfig config;
     private final CustomResourceLiveness customResourceLiveness;
-    private final Map<String, MockedTestCase> activeMocks = new ConcurrentHashMap<>();
+    private final Map<String, ActiveMockExecution> activeMocks = new ConcurrentHashMap<>();
     private final ExecutorService executor = Executors.newCachedThreadPool(r -> {
         Thread t = new Thread(r, "sfn-executor");
         t.setDaemon(true);
@@ -539,7 +555,7 @@ public class AslExecutor {
 
     private void registerMocks(Execution exec, MockedTestCase mockedTestCase) {
         if (mockedTestCase != null) {
-            activeMocks.put(exec.getExecutionArn(), mockedTestCase);
+            activeMocks.put(exec.getExecutionArn(), new ActiveMockExecution(mockedTestCase));
         }
     }
 
@@ -560,7 +576,7 @@ public class AslExecutor {
         while (true) {
             try {
                 return executeState(name, type, stateDef, input, chain, sm, jsonata,
-                        topLevelQueryLanguage, context, variables, attempt, executionDeadlineNanos);
+                        topLevelQueryLanguage, context, variables, executionDeadlineNanos);
             } catch (FailStateException raised) {
                 var e = raised.attributedTo(name, enteredEventId);
                 if (!raised.hasFinalCause()) {
@@ -634,11 +650,11 @@ public class AslExecutor {
     private StateResult executeState(String name, String type, JsonNode stateDef, JsonNode input,
                                      HistoryChain chain, StateMachine sm, boolean jsonata,
                                      String topLevelQueryLanguage, JsonNode context, ObjectNode variables,
-                                     int attempt, long executionDeadlineNanos) throws Exception {
+                                     long executionDeadlineNanos) throws Exception {
         return switch (type) {
             case "Pass" -> executePassState(stateDef, input, jsonata, context, variables);
             case "Task" -> executeTaskState(name, stateDef, input, chain, sm,
-                    jsonata, context, variables, attempt, executionDeadlineNanos);
+                    jsonata, context, variables, executionDeadlineNanos);
             case "Choice" -> executeChoiceState(stateDef, input, jsonata, context, variables);
             case "Wait" -> executeWaitState(stateDef, input, jsonata, context, variables, executionDeadlineNanos);
             case "Succeed" -> executeSucceedState(stateDef, input, jsonata, context, variables);
@@ -678,7 +694,7 @@ public class AslExecutor {
 
     private StateResult executeTaskState(String stateName, JsonNode stateDef, JsonNode input,
                                          HistoryChain chain, StateMachine sm, boolean jsonata,
-                                         JsonNode context, ObjectNode variables, int attempt,
+                                         JsonNode context, ObjectNode variables,
                                          long executionDeadlineNanos) throws Exception {
         var resource = stateDef.path("Resource").asText();
         var isWaitForToken = resource.endsWith(".waitForTaskToken");
@@ -686,10 +702,10 @@ public class AslExecutor {
                 ? resource.substring(0, resource.length() - ".waitForTaskToken".length())
                 : resource;
         var isActivity = isActivityArn(effectiveResource);
-        var mockedSteps = findMockedResponses(context, stateName);
+        var mockedInvocation = findMockedInvocation(context, stateName);
         // A mocked task never calls the integrated service, so it neither registers a task token
         // nor waits for one; the mocked response stands in for the whole interaction.
-        var needsToken = mockedSteps == null && (isWaitForToken || isActivity);
+        var needsToken = mockedInvocation == null && (isWaitForToken || isActivity);
 
         String taskToken = null;
         if (needsToken) {
@@ -720,8 +736,8 @@ public class AslExecutor {
             addTaskScheduledEvent(chain, profile, stateDef, effectiveInput, sm);
             addTaskStartedEvent(chain, profile);
             try {
-                taskResult = mockedSteps != null
-                        ? mockedTaskResult(mockedSteps, stateName, attempt)
+                taskResult = mockedInvocation != null
+                        ? mockedTaskResult(mockedInvocation.steps(), stateName, mockedInvocation.responseIndex())
                         : invokeResource(effectiveResource, effectiveInput, sm, taskToken,
                                 executionDeadlineNanos, jsonata ? null : stateDef.path("Parameters"));
                 if (tokenFuture != null) {
@@ -773,7 +789,7 @@ public class AslExecutor {
         }
     }
 
-    private List<MockedResponseStep> findMockedResponses(JsonNode context, String stateName) {
+    private MockedTaskInvocation findMockedInvocation(JsonNode context, String stateName) {
         if (activeMocks.isEmpty()) {
             return null;
         }
@@ -781,13 +797,19 @@ public class AslExecutor {
         if (executionArn == null) {
             return null;
         }
-        var testCase = activeMocks.get(executionArn);
-        return testCase != null ? testCase.stateResponses().get(stateName) : null;
+        var activeMock = activeMocks.get(executionArn);
+        if (activeMock == null) {
+            return null;
+        }
+        var steps = activeMock.testCase().stateResponses().get(stateName);
+        return steps != null
+                ? new MockedTaskInvocation(steps, activeMock.nextResponseIndex(stateName))
+                : null;
     }
 
-    private JsonNode mockedTaskResult(List<MockedResponseStep> steps, String stateName, int attempt) {
+    private JsonNode mockedTaskResult(List<MockedResponseStep> steps, String stateName, int responseIndex) {
         for (var step : steps) {
-            if (step.covers(attempt)) {
+            if (step.covers(responseIndex)) {
                 if (step.isThrow()) {
                     // The mocked Error and Cause must reach Retry/Catch unchanged; routing them
                     // through integration error translation would rewrite the error name that
@@ -798,7 +820,7 @@ public class AslExecutor {
             }
         }
         throw new FailStateException("States.Runtime",
-                "No mocked response defined for attempt " + attempt + " of state '" + stateName + "'");
+                "No mocked response defined for attempt " + responseIndex + " of state '" + stateName + "'");
     }
 
     /**
