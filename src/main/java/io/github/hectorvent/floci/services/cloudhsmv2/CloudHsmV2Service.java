@@ -681,45 +681,36 @@ public class CloudHsmV2Service {
     // ──────────────────────────── Resource Policies ────────────────────────────
 
     public void putResourcePolicy(String resourceArn, String policy, String region) {
-        String id = extractId(resourceArn);
-        if (id.startsWith("backup-")) {
-            Backup backup = getBackup(id, region);
-            if (!"READY".equals(backup.getBackupState())) {
-                throw new AwsException("CloudHsmInvalidRequestException", "Backup must be READY to apply a policy", 400);
-            }
-            backup.setResourcePolicy(policy);
-            backups.put(regionKey(region, id), backup);
-        } else {
-            Cluster cluster = getCluster(id, region);
-            cluster.setResourcePolicy(policy);
-            clusters.put(regionKey(region, id), cluster);
+        String id = resourcePolicyBackupId(resourceArn);
+        Backup backup = getBackup(id, region);
+        if (!"READY".equals(backup.getBackupState())) {
+            throw new AwsException("CloudHsmInvalidRequestException",
+                    "Backup must be READY to apply a policy", 400);
         }
+        backup.setResourcePolicy(policy);
+        backups.put(regionKey(region, id), backup);
     }
 
     public String getResourcePolicy(String resourceArn, String region) {
-        String id = extractId(resourceArn);
-        if (id.startsWith("backup-")) {
-            return getBackup(id, region).getResourcePolicy();
-        } else {
-            return getCluster(id, region).getResourcePolicy();
-        }
+        return getBackup(resourcePolicyBackupId(resourceArn), region).getResourcePolicy();
     }
 
     public String deleteResourcePolicy(String resourceArn, String region) {
-        String id = extractId(resourceArn);
-        String oldPolicy = null;
-        if (id.startsWith("backup-")) {
-            Backup backup = getBackup(id, region);
-            oldPolicy = backup.getResourcePolicy();
-            backup.setResourcePolicy(null);
-            backups.put(regionKey(region, id), backup);
-        } else {
-            Cluster cluster = getCluster(id, region);
-            oldPolicy = cluster.getResourcePolicy();
-            cluster.setResourcePolicy(null);
-            clusters.put(regionKey(region, id), cluster);
-        }
+        String id = resourcePolicyBackupId(resourceArn);
+        Backup backup = getBackup(id, region);
+        String oldPolicy = backup.getResourcePolicy();
+        backup.setResourcePolicy(null);
+        backups.put(regionKey(region, id), backup);
         return oldPolicy;
+    }
+
+    private String resourcePolicyBackupId(String resourceArn) {
+        String id = extractId(resourceArn);
+        if (!id.startsWith("backup-")) {
+            throw new AwsException("CloudHsmInvalidRequestException",
+                    "AWS CloudHSM resource policies are supported only for backups.", 400);
+        }
+        return id;
     }
 
     private String extractId(String arn) {

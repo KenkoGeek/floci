@@ -707,6 +707,41 @@ class CloudHsmV2IntegrationTest {
 
     @Test
     @Order(54)
+    void resourcePoliciesRejectClustersBecauseAwsSupportsOnlyBackups() {
+        String clusterId = given()
+            .header("X-Amz-Target", TARGET_PREFIX + "CreateCluster")
+            .contentType(CONTENT_TYPE)
+            .body("""
+                {
+                    "HsmType": "hsm1.medium",
+                    "SubnetIds": ["subnet-policy01"]
+                }
+                """)
+        .when()
+            .post("/")
+        .then()
+            .statusCode(200)
+            .extract().jsonPath().getString("Cluster.ClusterId");
+        String clusterArn = "arn:aws:cloudhsm:us-east-1:000000000000:cluster/" + clusterId;
+
+        given()
+            .header("X-Amz-Target", TARGET_PREFIX + "PutResourcePolicy")
+            .contentType(CONTENT_TYPE)
+            .body("""
+                {
+                    "ResourceArn": "%s",
+                    "Policy": "{}"
+                }
+                """.formatted(clusterArn))
+        .when()
+            .post("/")
+        .then()
+            .statusCode(400)
+            .body("__type", equalTo("CloudHsmInvalidRequestException"));
+    }
+
+    @Test
+    @Order(55)
     void deleteClusterWithHsmsFails() {
         // Create a cluster, add an HSM, then try to delete the cluster
         String tempClusterId = given()
