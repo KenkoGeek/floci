@@ -87,8 +87,10 @@ jobs:
         # REST invokers for AwsQueryController.dispatch and AwsJson11Controller.handle are each the
         # single call site of a very large method; inlined, the method outgrows the aarch64
         # conditional-branch range and the build dies with BranchTargetOutOfBoundsException.
-        # The flag only exists on Mandrel, so it is passed here rather than in application.yml.
-        run: mvn clean package -Dnative -DskipTests -B -Dquarkus.native.additional-build-args-append="-H:-AOTSingleCallsiteInline"
+        # Keep ARM64 portable across older cores (for example Raspberry Pi 4) instead of
+        # inheriting the CI host's optional AArch64 features such as LSE. The AOT flag only
+        # exists on Mandrel, so both native-image arguments stay scoped to this build.
+        run: mvn clean package -Dnative -DskipTests -B -Dquarkus.native.additional-build-args-append="-march=compatibility,-H:-AOTSingleCallsiteInline"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
