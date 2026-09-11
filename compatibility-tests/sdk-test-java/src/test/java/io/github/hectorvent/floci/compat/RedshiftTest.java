@@ -14,6 +14,8 @@ import software.amazon.awssdk.services.redshift.model.DescribeClustersRequest;
 import software.amazon.awssdk.services.redshift.model.DescribeClustersResponse;
 import software.amazon.awssdk.services.redshift.model.DeleteClusterRequest;
 import software.amazon.awssdk.services.redshift.model.DeleteClusterResponse;
+import software.amazon.awssdk.services.redshift.model.GetClusterCredentialsResponse;
+import software.amazon.awssdk.services.redshift.model.GetClusterCredentialsWithIamResponse;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
@@ -152,6 +154,39 @@ public class RedshiftTest {
 
     @Test
     @Order(3)
+    public void testGetClusterCredentialsReturnsTemporaryCredentials() throws Exception {
+        RedshiftClient client = getClient();
+        GetClusterCredentialsResponse res = withRetry(() -> client.getClusterCredentials(b -> b
+                .clusterIdentifier("test-cluster")
+                .dbUser("analyst")
+                .dbName("dev")
+                .durationSeconds(900)));
+
+        assertNotNull(res.dbUser());
+        assertTrue(res.dbUser().contains("analyst"));
+        assertNotNull(res.dbPassword());
+        assertTrue(!res.dbPassword().isBlank());
+        assertNotNull(res.expiration());
+    }
+
+    @Test
+    @Order(4)
+    public void testGetClusterCredentialsWithIamReturnsIamPrefixedUser() throws Exception {
+        RedshiftClient client = getClient();
+        GetClusterCredentialsWithIamResponse res = withRetry(() -> client.getClusterCredentialsWithIAM(b -> b
+                .clusterIdentifier("test-cluster")
+                .dbName("dev")
+                .durationSeconds(900)));
+
+        assertNotNull(res.dbUser());
+        assertTrue(res.dbUser().startsWith("IAM"));
+        assertNotNull(res.dbPassword());
+        assertTrue(!res.dbPassword().isBlank());
+        assertNotNull(res.expiration());
+    }
+
+    @Test
+    @Order(5)
     public void testDeleteCluster() throws Exception {
         RedshiftClient client = getClient();
         DeleteClusterResponse res = withRetry(() -> client.deleteCluster(DeleteClusterRequest.builder()
