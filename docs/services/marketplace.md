@@ -54,6 +54,15 @@ Floci emulates AWS Marketplace APIs under the shared `aws-marketplace` SigV4 sig
 | `MeterUsage` | Submits metered usage for a Marketplace product |
 | `RegisterUsage` | Registers container product usage and returns a signed token |
 | `ResolveCustomer` | Resolves a Marketplace registration token to customer identity |
+| `GetListing` | Returns full buyer-facing listing details |
+| `GetOffer` | Returns an offer and its associated product information |
+| `GetOfferSet` | Returns an offer set and its associated offers and products |
+| `GetOfferTerms` | Returns the terms attached to an offer with pagination |
+| `GetProduct` | Returns Marketplace product details |
+| `ListFulfillmentOptions` | Lists fulfillment options available for a product |
+| `ListPurchaseOptions` | Lists buyer purchase options with filtering and pagination |
+| `SearchFacets` | Returns paginated facet values for matching listings |
+| `SearchListings` | Searches listings with filtering, sorting, and pagination |
 <!-- floci:actions:end -->
 
 ## Marketplace Catalog
@@ -89,6 +98,10 @@ Marketplace Reporting validates buyer dashboard requests and returns account-sco
 ## Marketplace Metering
 
 Metering records and idempotency state are persisted through `StorageFactory`, isolated by AWS account and region. `RegisterUsage` produces locally signed PS256 JWTs with an emulator-generated RSA key.
+
+## Marketplace Discovery
+
+Marketplace Discovery reads the shared Marketplace Catalog entity backend and exposes listing, offer, purchase-option, facet, filtering, sorting, and pagination behavior across the supported Discovery regions.
 
 
 
