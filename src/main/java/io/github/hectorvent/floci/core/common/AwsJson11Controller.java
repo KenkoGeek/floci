@@ -43,6 +43,7 @@ import io.github.hectorvent.floci.services.eventbridge.EventBridgeHandler;
 import io.github.hectorvent.floci.services.emr.EmrHandler;
 import io.github.hectorvent.floci.services.memorydb.MemoryDbHandler;
 import io.github.hectorvent.floci.services.marketplace.MarketplaceEntitlementController;
+import io.github.hectorvent.floci.services.marketplace.MarketplaceMeteringController;
 import io.github.hectorvent.floci.services.wafv2.WafV2Handler;
 import io.github.hectorvent.floci.services.kinesis.KinesisJsonHandler;
 import io.github.hectorvent.floci.services.kinesisanalytics.KinesisAnalyticsV2JsonHandler;
@@ -133,6 +134,7 @@ public class AwsJson11Controller {
     private final BudgetsJsonHandler budgetsJsonHandler;
     private final ServiceQuotasJsonHandler serviceQuotasJsonHandler;
     private final MarketplaceEntitlementController marketplaceEntitlementController;
+    private final MarketplaceMeteringController marketplaceMeteringController;
 
     @Inject
     public AwsJson11Controller(ObjectMapper objectMapper, ResolvedServiceCatalog catalog,
@@ -183,7 +185,8 @@ public class AwsJson11Controller {
                                IdentityStoreJsonHandler identityStoreJsonHandler,
                                BudgetsJsonHandler budgetsJsonHandler,
                                ServiceQuotasJsonHandler serviceQuotasJsonHandler,
-                               MarketplaceEntitlementController marketplaceEntitlementController) {
+                               MarketplaceEntitlementController marketplaceEntitlementController,
+                               MarketplaceMeteringController marketplaceMeteringController) {
         this.objectMapper = objectMapper;
         this.strictBodyReader = objectMapper.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
         this.catalog = catalog;
@@ -239,6 +242,7 @@ public class AwsJson11Controller {
         this.budgetsJsonHandler = budgetsJsonHandler;
         this.serviceQuotasJsonHandler = serviceQuotasJsonHandler;
         this.marketplaceEntitlementController = marketplaceEntitlementController;
+        this.marketplaceMeteringController = marketplaceMeteringController;
     }
 
     @POST
@@ -331,7 +335,12 @@ public class AwsJson11Controller {
                 case "budgets" -> budgetsJsonHandler.handle(action, request, regionResolver.getAccountId());
                 case "servicequotas" -> serviceQuotasJsonHandler.handle(
                         action, request, region, regionResolver.getAccountId());
-                case "marketplace" -> marketplaceEntitlementController.handle(action, request, region);
+                case "marketplace" -> {
+                    if (targetMatch.prefix().startsWith("AWSMPEntitlementService.")) {
+                        yield marketplaceEntitlementController.handle(action, request, region);
+                    }
+                    yield marketplaceMeteringController.handle(action, request, region);
+                }
                 default -> null;
             };
             // catalog.matchTarget is protocol-agnostic: a JSON 1.0 target

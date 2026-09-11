@@ -307,6 +307,11 @@
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>marketplacereporting</artifactId>
         </dependency>
+        <!-- AWS Marketplace Metering client -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>marketplacemetering</artifactId>
+        </dependency>
         <!-- IAM Access Analyzer client -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>

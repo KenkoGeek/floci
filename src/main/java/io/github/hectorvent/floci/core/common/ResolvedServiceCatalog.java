@@ -658,7 +658,7 @@ public class ResolvedServiceCatalog {
                 descriptor("marketplace", "marketplace", config.services().marketplace().enabled(), true,
                         "marketplace", config.storage().mode(), 5000L, null, ServiceProtocol.REST_JSON,
                         protocols(ServiceProtocol.REST_JSON, ServiceProtocol.JSON, ServiceProtocol.CBOR),
-                        Set.of("AWSMPCommerceService_v20200301.", "AWSMPEntitlementService."), Set.of("aws-marketplace"), Set.of("AWS Marketplace Entitlement Service"),
+                        Set.of("AWSMPCommerceService_v20200301.", "AWSMPEntitlementService.", "AWSMPMeteringService."), Set.of("aws-marketplace"), Set.of("AWS Marketplace Entitlement Service"),
                         Set.of(MarketplaceCatalogController.class, MarketplaceDeploymentController.class, MarketplaceReportingController.class))
         ));
     }
