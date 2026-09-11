@@ -944,6 +944,8 @@ public class DynamoDbService implements ResourceProvider {
         String partitionKeyValuePlaceholder = DynamoDbAccessPathValidator.validateQuery(
                 table, accessPath, keyConditions, keyConditionExpression, filterExpression,
                 null, exprAttrNames, expressionAttrValues);
+        validateExclusiveStartKeyWithinQuery(exclusiveStartKey, table, accessPath, keyConditions,
+                keyConditionExpression, expressionAttrValues, exprAttrNames);
         String pkName = accessPath.partitionKeyName();
         List<String> pkNames = accessPath.partitionKeyNames();
         String skName = accessPath.sortKeyName();
@@ -3369,6 +3371,26 @@ public class DynamoDbService implements ResourceProvider {
             }
             default -> true;
         };
+    }
+
+    private void validateExclusiveStartKeyWithinQuery(JsonNode exclusiveStartKey, TableDefinition table,
+                                                      DynamoDbAccessPath accessPath, JsonNode keyConditions,
+                                                      String keyConditionExpression, JsonNode expressionAttrValues,
+                                                      JsonNode expressionAttrNames) {
+        if (exclusiveStartKey == null || exclusiveStartKey.isNull()) {
+            return;
+        }
+        DynamoDbAccessPathValidator.validateExclusiveStartKey(exclusiveStartKey, table, accessPath, false);
+
+        boolean withinBounds = keyConditionExpression != null
+                ? ExpressionEvaluator.matches(keyConditionExpression, exclusiveStartKey,
+                        expressionAttrNames, expressionAttrValues)
+                : keyConditions.properties().stream().allMatch(entry ->
+                        matchesKeyCondition(exclusiveStartKey.get(entry.getKey()), entry.getValue()));
+        if (!withinBounds) {
+            throw new AwsException("ValidationException",
+                    "The provided starting key is outside query boundaries based on provided condition", 400);
+        }
     }
 
     private List<JsonNode> queryWithExpression(ConcurrentSkipListMap<String, JsonNode> items,
