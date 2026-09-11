@@ -50,6 +50,10 @@ Floci emulates AWS Marketplace APIs under the shared `aws-marketplace` SigV4 sig
 | `GetEntitlements` | - |
 | `PutDeploymentParameter` | Creates or updates an AWS Marketplace deployment parameter |
 | `GetBuyerDashboard` | Returns an embeddable AWS Marketplace buyer dashboard URL |
+| `BatchMeterUsage` | Submits a batch of Marketplace usage records |
+| `MeterUsage` | Submits metered usage for a Marketplace product |
+| `RegisterUsage` | Registers container product usage and returns a signed token |
+| `ResolveCustomer` | Resolves a Marketplace registration token to customer identity |
 <!-- floci:actions:end -->
 
 ## Marketplace Catalog
@@ -81,6 +85,10 @@ Marketplace Reporting validates buyer dashboard requests and returns account-sco
 ### Known deviations
 
 - AWS limits `GetBuyerDashboard` to an AWS Organizations management account or a delegated administrator registered for procurement insights. Floci does not currently enforce that Organizations-role prerequisite.
+
+## Marketplace Metering
+
+Metering records and idempotency state are persisted through `StorageFactory`, isolated by AWS account and region. `RegisterUsage` produces locally signed PS256 JWTs with an emulator-generated RSA key.
 
 
 
