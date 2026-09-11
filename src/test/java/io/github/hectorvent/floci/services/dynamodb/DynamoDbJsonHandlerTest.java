@@ -914,4 +914,44 @@ class DynamoDbJsonHandlerTest {
         assertEquals("ExpressionAttributeNames can only be specified when using expressions: "
                 + "UpdateExpression is null, ConditionExpression is null", ex.getMessage());
     }
+
+    @Test
+    void scanRejectsANegativeSegment() {
+        var ex = expectValidationException("Scan", json("""
+                {"TableName": "Users", "Segment": -1, "TotalSegments": 4}
+                """));
+        assertEquals("1 validation error detected: Value '-1' at 'segment' failed to satisfy constraint: "
+                + "Member must have value greater than or equal to 0", ex.getMessage());
+    }
+
+    @Test
+    void scanRejectsTotalSegmentsBelowOne() {
+        var ex = expectValidationException("Scan", json("""
+                {"TableName": "Users", "Segment": 0, "TotalSegments": 0}
+                """));
+        assertEquals("1 validation error detected: Value '0' at 'totalSegments' failed to satisfy constraint: "
+                + "Member must have value greater than or equal to 1", ex.getMessage());
+    }
+
+    @Test
+    void scanReportsTotalSegmentsBeforeSegmentWhenBothAreOutOfRange() {
+        var ex = expectValidationException("Scan", json("""
+                {"TableName": "Users", "Segment": -1, "TotalSegments": 0}
+                """));
+        assertEquals("2 validation errors detected: "
+                + "Value '0' at 'totalSegments' failed to satisfy constraint: "
+                + "Member must have value greater than or equal to 1; "
+                + "Value '-1' at 'segment' failed to satisfy constraint: "
+                + "Member must have value greater than or equal to 0", ex.getMessage());
+    }
+
+    @Test
+    void scanAcceptsSegmentsAtTheBounds() throws Exception {
+        createUsersTable("eu-west-1");
+
+        var response = handler.handle("Scan", json("""
+                {"TableName": "Users", "Segment": 0, "TotalSegments": 1000000}
+                """), "eu-west-1");
+        assertEquals(200, response.getStatus());
+    }
 }
