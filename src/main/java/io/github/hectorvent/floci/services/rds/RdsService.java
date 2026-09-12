@@ -1867,6 +1867,22 @@ public class RdsService implements Resettable, ResourceProvider {
                                      Double serverlessV2MinCapacity, Double serverlessV2MaxCapacity,
                                      Integer serverlessV2SecondsUntilAutoPause,
                                      boolean manageMasterUserPassword, String masterUserSecretKmsKeyId) {
+        return createDbCluster(id, engineParam, engineVersion, masterUsername, masterPassword,
+                databaseName, iamEnabled, paramGroupName, dbSubnetGroupName, availabilityZone,
+                multiAz, region, serverlessV2MinCapacity, serverlessV2MaxCapacity,
+                serverlessV2SecondsUntilAutoPause, manageMasterUserPassword, masterUserSecretKmsKeyId,
+                null, false);
+    }
+
+    public DbCluster createDbCluster(String id, String engineParam, String engineVersion,
+                                     String masterUsername, String masterPassword,
+                                     String databaseName, boolean iamEnabled,
+                                     String paramGroupName, String dbSubnetGroupName,
+                                     String availabilityZone, boolean multiAz, String region,
+                                     Double serverlessV2MinCapacity, Double serverlessV2MaxCapacity,
+                                     Integer serverlessV2SecondsUntilAutoPause,
+                                     boolean manageMasterUserPassword, String masterUserSecretKmsKeyId,
+                                     String engineMode, boolean storageEncrypted) {
         String provisioningKey = "cluster:" + currentAccountId() + ":"
                 + dbResourceKey(effectiveRegion(region), id);
         if (!provisioningIds.add(provisioningKey)) {
@@ -1877,7 +1893,8 @@ public class RdsService implements Resettable, ResourceProvider {
             return doCreateDbCluster(id, engineParam, engineVersion, masterUsername, masterPassword,
                     databaseName, iamEnabled, paramGroupName, dbSubnetGroupName, availabilityZone,
                     multiAz, region, serverlessV2MinCapacity, serverlessV2MaxCapacity,
-                    serverlessV2SecondsUntilAutoPause, manageMasterUserPassword, masterUserSecretKmsKeyId);
+                    serverlessV2SecondsUntilAutoPause, manageMasterUserPassword, masterUserSecretKmsKeyId,
+                    engineMode, storageEncrypted);
         } finally {
             provisioningIds.remove(provisioningKey);
         }
@@ -1890,7 +1907,8 @@ public class RdsService implements Resettable, ResourceProvider {
                                         String availabilityZone, boolean multiAz, String region,
                                         Double serverlessV2MinCapacity, Double serverlessV2MaxCapacity,
                                         Integer serverlessV2SecondsUntilAutoPause,
-                                        boolean manageMasterUserPassword, String masterUserSecretKmsKeyId) {
+                                        boolean manageMasterUserPassword, String masterUserSecretKmsKeyId,
+                                        String engineMode, boolean storageEncrypted) {
         String effectiveRegion = effectiveRegion(region);
         String clusterResourceId = "cluster-" + java.util.UUID.randomUUID().toString()
                 .replace("-", "").substring(0, 24).toUpperCase();
@@ -1922,6 +1940,8 @@ public class RdsService implements Resettable, ResourceProvider {
                 databaseName, DbInstanceStatus.AVAILABLE, endpoint, endpoint,
                 iamEnabled, new ArrayList<>(), paramGroupName, Instant.now(), proxyPort);
         cluster.setEngineIdentifier(effectiveEngineName(engineParam).toLowerCase(Locale.ROOT));
+        cluster.setEngineMode(engineMode != null && !engineMode.isBlank() ? engineMode : "provisioned");
+        cluster.setStorageEncrypted(storageEncrypted);
         cluster.setContainerStorageResourceId(clusterResourceId);
         if (!mock) {
             String image = imageForEngine(engine, engineVersion);
@@ -2055,7 +2075,7 @@ public class RdsService implements Resettable, ResourceProvider {
         }
     }
 
-    private static boolean isAuroraEngine(String engineIdentifier) {
+    static boolean isAuroraEngine(String engineIdentifier) {
         return engineIdentifier != null
                 && ("aurora-mysql".equalsIgnoreCase(engineIdentifier)
                 || "aurora-postgresql".equalsIgnoreCase(engineIdentifier));
