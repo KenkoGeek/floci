@@ -749,12 +749,12 @@ See the [full migration guide](https://floci.io/floci/getting-started/migrate-fr
 
 Every tag combines a variant and a channel.
 
-| Channel | Standard | Compat with AWS CLI and boto3 |
-|---|---|---|
-| Release, floating | `latest` | `latest-compat` |
-| Release, pinned | `x.y.z` | `x.y.z-compat` |
-| Nightly, floating | `nightly` | `nightly-compat` |
-| Nightly, dated | `nightly-mmddyyyy` | `nightly-mmddyyyy-compat` |
+| Channel | Standard | Baseline (ARM64 only) | Compat with AWS CLI and boto3 |
+|---|---|---|---|
+| Release, floating | `latest` | `latest-baseline` | `latest-compat` |
+| Release, pinned | `x.y.z` | `x.y.z-baseline` | `x.y.z-compat` |
+| Nightly, floating | `nightly` | — | `nightly-compat` |
+| Nightly, dated | `nightly-mmddyyyy` | — | `nightly-mmddyyyy-compat` |
 
 Use `latest` for stable releases, a pinned version for reproducible builds, and `nightly` to track `main`.
 
@@ -764,6 +764,9 @@ image: floci/floci:latest
 
 # Includes AWS CLI and boto3
 image: floci/floci:latest-compat
+
+# ARM64 baseline for Raspberry Pi 4 / pre-LSE cores
+image: floci/floci:latest-baseline
 
 # Pinned release
 image: floci/floci:x.y.z
