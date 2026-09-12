@@ -140,7 +140,7 @@ public class CloudHsmV2Service {
             }
         }
         cluster.setSubnetMapping(subnetMapping);
-        cluster.setSourceBackupId(sourceBackupId);
+        cluster.setSourceBackupId(sourceBackup != null ? sourceBackup.getBackupId() : null);
         cluster.setSecurityGroup("sg-" + generateShortId());
         cluster.setCreateTimestamp(Instant.now());
         cluster.setBackupPolicy(DEFAULT_BACKUP_POLICY);
@@ -188,6 +188,11 @@ public class CloudHsmV2Service {
             LOG.warnv("Failed to generate emulated hardware certs: {0}", e.getMessage());
         }
 
+        if (sourceBackup != null && sourceBackup.getClusterCertificate() != null) {
+            certs.setClusterCertificate(sourceBackup.getClusterCertificate());
+            certs.setClusterCsr(null);
+            cluster.setState(ClusterState.INITIALIZED);
+        }
         cluster.setCertificates(certs);
 
         String storageKey = regionKey(region, clusterId);
@@ -436,15 +441,23 @@ public class CloudHsmV2Service {
         }
         if (resourceId.startsWith("backup-")) {
             Backup backup = getBackup(resourceId, region);
-            if (tags != null && !tags.isEmpty()) {
-                backup.getTagList().putAll(tags);
+            Map<String, String> merged = new LinkedHashMap<>(backup.getTagList());
+            merged.putAll(tags);
+            if (merged.size() > 50) {
+                throw new AwsException("CloudHsmResourceLimitExceededException",
+                        "The resource cannot have more than 50 tags.", 400);
             }
+            backup.setTagList(merged);
             backups.put(regionKey(region, resourceId), backup);
         } else {
             Cluster cluster = getCluster(resourceId, region);
-            if (tags != null && !tags.isEmpty()) {
-                cluster.getTagList().putAll(tags);
+            Map<String, String> merged = new LinkedHashMap<>(cluster.getTagList());
+            merged.putAll(tags);
+            if (merged.size() > 50) {
+                throw new AwsException("CloudHsmResourceLimitExceededException",
+                        "The resource cannot have more than 50 tags.", 400);
             }
+            cluster.setTagList(merged);
             clusters.put(regionKey(region, resourceId), cluster);
         }
     }
@@ -595,6 +608,9 @@ public class CloudHsmV2Service {
         backup.setNeverExpires("False");
         backup.setMode(cluster.getMode());
         backup.setHsmType(cluster.getHsmType());
+        if (cluster.getCertificates() != null) {
+            backup.setClusterCertificate(cluster.getCertificates().getClusterCertificate());
+        }
         backups.put(regionKey(region, backup.getBackupId()), backup);
     }
 
@@ -673,6 +689,7 @@ public class CloudHsmV2Service {
         copy.setSourceCluster(source.getClusterId());
         copy.setMode(source.getMode());
         copy.setHsmType(source.getHsmType());
+        copy.setClusterCertificate(source.getClusterCertificate());
         copy.setNeverExpires(source.getNeverExpires());
         backups.put(regionKey(destinationRegion, copy.getBackupId()), copy);
         return copy;
@@ -681,6 +698,10 @@ public class CloudHsmV2Service {
     // ──────────────────────────── Resource Policies ────────────────────────────
 
     public void putResourcePolicy(String resourceArn, String policy, String region) {
+        if (policy != null && (policy.isEmpty() || policy.length() > 20_000)) {
+            throw new AwsException("CloudHsmInvalidRequestException",
+                    "Policy must be between 1 and 20000 characters.", 400);
+        }
         String id = resourcePolicyBackupId(resourceArn);
         Backup backup = getBackup(id, region);
         if (!"READY".equals(backup.getBackupState())) {

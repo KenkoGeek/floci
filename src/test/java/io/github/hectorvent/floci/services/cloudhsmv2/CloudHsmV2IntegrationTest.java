@@ -909,6 +909,32 @@ class CloudHsmV2IntegrationTest {
             .body("__type", equalTo("CloudHsmResourceNotFoundException"));
     }
 
+    @Test
+    @Order(55)
+    void tagResourceEnforcesFiftyTagTotalLimit() {
+        String clusterId = given()
+            .header("X-Amz-Target", TARGET_PREFIX + "CreateCluster")
+            .contentType(CONTENT_TYPE)
+            .body("{\"HsmType\":\"hsm1.medium\",\"SubnetIds\":[\"subnet-abcdef99\"]}")
+        .when().post("/")
+        .then().statusCode(200).extract().jsonPath().getString("Cluster.ClusterId");
+
+        StringBuilder firstTags = new StringBuilder("[");
+        for (int i = 0; i < 50; i++) {
+            if (i > 0) firstTags.append(',');
+            firstTags.append("{\"Key\":\"k").append(i).append("\",\"Value\":\"v\"}");
+        }
+        firstTags.append(']');
+        given().header("X-Amz-Target", TARGET_PREFIX + "TagResource").contentType(CONTENT_TYPE)
+            .body("{\"ResourceId\":\"" + clusterId + "\",\"TagList\":" + firstTags + "}")
+        .when().post("/").then().statusCode(200);
+
+        given().header("X-Amz-Target", TARGET_PREFIX + "TagResource").contentType(CONTENT_TYPE)
+            .body("{\"ResourceId\":\"" + clusterId + "\",\"TagList\":[{\"Key\":\"overflow\",\"Value\":\"v\"}]}")
+        .when().post("/").then().statusCode(400)
+            .body("__type", equalTo("CloudHsmResourceLimitExceededException"));
+    }
+
     /** Escapes a PEM string as a JSON string value. */
     private static String jsonString(String pem) {
         if (pem == null) {
