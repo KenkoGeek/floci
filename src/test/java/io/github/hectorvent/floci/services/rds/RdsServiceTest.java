@@ -5497,6 +5497,14 @@ class RdsServiceTest {
 
         assertEquals(DbInstanceStatus.FAILED, refreshed.getStatus());
         verify(proxyManager).stopProxy("rds-resource:" + refreshed.getDbInstanceArn());
+        var events = rdsService.describeEvents("dead-db", "db-instance", null, null, 60);
+        assertEquals(1, events.size());
+        assertEquals(List.of("availability"), events.getFirst().eventCategories());
+        assertEquals(refreshed.getDbInstanceArn(), events.getFirst().sourceArn());
+
+        // Repeated health reads do not duplicate the transition event.
+        rdsService.refreshDbInstanceRuntimeHealth(refreshed);
+        assertEquals(1, rdsService.describeEvents("dead-db", "db-instance", null, null, 60).size());
     }
 
     @Test

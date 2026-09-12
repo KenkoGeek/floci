@@ -35,6 +35,7 @@ import io.github.hectorvent.floci.services.rds.model.DbProxy;
 import io.github.hectorvent.floci.services.rds.model.DbProxyAuth;
 import io.github.hectorvent.floci.services.rds.model.DbProxyTarget;
 import io.github.hectorvent.floci.services.rds.model.DbProxyTargetGroup;
+import io.github.hectorvent.floci.services.rds.model.RdsEvent;
 import io.github.hectorvent.floci.services.rds.model.DbSnapshot;
 import io.github.hectorvent.floci.services.rds.model.DbSubnetGroup;
 import io.github.hectorvent.floci.services.rds.model.OptionGroup;
@@ -140,6 +141,7 @@ public class RdsService implements Resettable, ResourceProvider {
     private final StorageBackend<String, DbProxyTargetGroup> proxyTargetGroups;
     private final StorageBackend<String, DbSnapshot> snapshots;
     private final StorageBackend<String, String> snapshotData;
+    private StorageBackend<String, RdsEvent> events = new InMemoryStorage<>();
     private final RdsContainerManager containerManager;
     private final RdsProxyManager proxyManager;
     // CreateDBCluster/CreateDBInstance register the new resource only after the
@@ -221,6 +223,8 @@ public class RdsService implements Resettable, ResourceProvider {
                 new TypeReference<Map<String, DbSnapshot>>() {});
         this.snapshotData = storageFactory.create("rds", "rds-snapshot-data.json",
                 new TypeReference<Map<String, String>>() {});
+        this.events = storageFactory.create("rds", "rds-events.json",
+                new TypeReference<Map<String, RdsEvent>>() {});
     }
 
     RdsService(RdsContainerManager containerManager,
@@ -1249,6 +1253,7 @@ public class RdsService implements Resettable, ResourceProvider {
         }
 
         instance.setStatus(DbInstanceStatus.FAILED);
+        recordRuntimeFailureEvent(instance);
         String accountId = accountIdFromArn(instance.getDbInstanceArn());
         String region = regionFromArn(instance.getDbInstanceArn());
         putInstanceForScope(accountId, region, instance.getDbInstanceIdentifier(), instance);
@@ -1264,6 +1269,30 @@ public class RdsService implements Resettable, ResourceProvider {
         LOG.warnv("RDS instance {0} backing container is no longer running; marking it failed",
                 instance.getDbInstanceIdentifier());
         return instance;
+    }
+
+    private void recordRuntimeFailureEvent(DbInstance instance) {
+        String eventId = "runtime-failure:" + instance.getDbInstanceArn();
+        if (events.get(eventId).isPresent()) {
+            return;
+        }
+        events.put(eventId, new RdsEvent(
+                eventId, instance.getDbInstanceIdentifier(), "db-instance",
+                "DB instance backing database process is unavailable.",
+                List.of("availability"), Instant.now(), instance.getDbInstanceArn()));
+    }
+
+    public List<RdsEvent> describeEvents(String sourceIdentifier, String sourceType,
+                                         Instant startTime, Instant endTime, Integer durationMinutes) {
+        Instant effectiveEnd = endTime != null ? endTime : Instant.now();
+        Instant effectiveStart = startTime != null ? startTime
+                : effectiveEnd.minusSeconds((durationMinutes != null ? durationMinutes : 60) * 60L);
+        return events.scan(_ -> true).stream()
+                .filter(event -> sourceIdentifier == null || sourceIdentifier.equals(event.sourceIdentifier()))
+                .filter(event -> sourceType == null || sourceType.equals(event.sourceType()))
+                .filter(event -> !event.date().isBefore(effectiveStart) && !event.date().isAfter(effectiveEnd))
+                .sorted(java.util.Comparator.comparing(RdsEvent::date))
+                .toList();
     }
 
     public Collection<DbInstance> listDbInstancesByDbiResourceIds(Collection<String> resourceIds) {

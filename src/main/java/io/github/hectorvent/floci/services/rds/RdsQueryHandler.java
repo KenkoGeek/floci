@@ -22,6 +22,7 @@ import io.github.hectorvent.floci.services.rds.model.DbProxyTargetGroup;
 import io.github.hectorvent.floci.services.rds.model.DbSubnetGroup;
 import io.github.hectorvent.floci.services.rds.model.OptionGroup;
 import io.github.hectorvent.floci.services.rds.model.OptionGroupOption;
+import io.github.hectorvent.floci.services.rds.model.RdsEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.MultivaluedMap;
@@ -70,6 +71,7 @@ public class RdsQueryHandler {
                 case "ModifyDBInstance" -> handleModifyDbInstance(params, region);
                 case "RebootDBInstance" -> handleRebootDbInstance(params, region);
                 case "DescribeOrderableDBInstanceOptions" -> handleDescribeOrderableDbInstanceOptions(params);
+                case "DescribeEvents" -> handleDescribeEvents(params, region);
                 case "CreateDBSubnetGroup" -> handleCreateDbSubnetGroup(params, region);
                 case "DescribeDBSubnetGroups" -> handleDescribeDbSubnetGroups(params, region);
                 case "ModifyDBSubnetGroup" -> handleModifyDbSubnetGroup(params, region);
@@ -202,6 +204,9 @@ public class RdsQueryHandler {
             XmlBuilder xml = new XmlBuilder().start("DBInstances");
             for (DbInstance i : result) {
                 DbInstance reconciled = service.refreshDbInstanceRuntimeHealth(i);
+                if (reconciled == null) {
+                    reconciled = i;
+                }
                 if (engines.isEmpty() || engines.contains(instanceEngine(reconciled))) {
                     xml.start("DBInstance").raw(dbInstanceInnerXml(reconciled)).end("DBInstance");
                 }
@@ -222,6 +227,99 @@ public class RdsQueryHandler {
             return Response.ok(AwsQueryResponse.envelope("DescribeDBInstances", AwsNamespaces.RDS, xml.build())).build();
         } catch (AwsException e) {
             return AwsQueryResponse.error(e.getErrorCode(), e.getMessage(), AwsNamespaces.RDS, e.getHttpStatus());
+        }
+    }
+
+    private Response handleDescribeEvents(MultivaluedMap<String, String> params, String region) {
+        String sourceIdentifier = params.getFirst("SourceIdentifier");
+        String sourceType = params.getFirst("SourceType");
+        if (sourceIdentifier != null && (sourceType == null || sourceType.isBlank())) {
+            throw new AwsException("InvalidParameterCombination",
+                    "SourceType must be provided when SourceIdentifier is specified.", 400);
+        }
+        if (sourceType != null && !List.of("db-instance", "db-parameter-group", "db-security-group",
+                "db-snapshot", "db-cluster", "db-cluster-snapshot", "custom-engine-version",
+                "db-proxy", "blue-green-deployment", "db-shard-group", "zero-etl").contains(sourceType)) {
+            throw new AwsException("InvalidParameterValue", "SourceType is invalid.", 400);
+        }
+        Integer duration = parseOptionalInt(params.getFirst("Duration"));
+        if (duration != null && (duration < 1 || duration > 20_160)) {
+            throw new AwsException("InvalidParameterValue", "Duration must be between 1 and 20160.", 400);
+        }
+        Integer maxRecords = parseOptionalInt(params.getFirst("MaxRecords"));
+        if (maxRecords != null && (maxRecords < 20 || maxRecords > 100)) {
+            throw new AwsException("InvalidParameterValue", "MaxRecords must be between 20 and 100.", 400);
+        }
+        java.time.Instant start = parseOptionalInstant(params.getFirst("StartTime"));
+        java.time.Instant end = parseOptionalInstant(params.getFirst("EndTime"));
+        if (start != null && end != null && start.isAfter(end)) {
+            throw new AwsException("InvalidParameterCombination", "StartTime must be before EndTime.", 400);
+        }
+
+        // Reconcile current instance health before returning the event history. This mirrors the
+        // same control-plane observation used by DescribeDBInstances and records the transition once.
+        for (DbInstance instance : service.listDbInstances(null, region)) {
+            service.refreshDbInstanceRuntimeHealth(instance);
+        }
+        List<RdsEvent> all = service.describeEvents(sourceIdentifier, sourceType, start, end, duration);
+        int offset = parseMarker(params.getFirst("Marker"));
+        int limit = maxRecords != null ? maxRecords : 100;
+        int from = Math.min(offset, all.size());
+        int to = Math.min(from + limit, all.size());
+        XmlBuilder xml = new XmlBuilder().start("Events");
+        for (RdsEvent event : all.subList(from, to)) {
+            xml.start("Event")
+                    .elem("SourceIdentifier", event.sourceIdentifier())
+                    .elem("SourceType", event.sourceType())
+                    .elem("Message", event.message())
+                    .start("EventCategories");
+            for (String category : event.eventCategories()) {
+                xml.elem("EventCategory", category);
+            }
+            xml.end("EventCategories")
+                    .elem("Date", event.date().toString())
+                    .elem("SourceArn", event.sourceArn())
+                    .end("Event");
+        }
+        xml.end("Events");
+        if (to < all.size()) {
+            xml.elem("Marker", String.valueOf(to));
+        }
+        return Response.ok(AwsQueryResponse.envelope("DescribeEvents", AwsNamespaces.RDS, xml.build())).build();
+    }
+
+    private static Integer parseOptionalInt(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            throw new AwsException("InvalidParameterValue", "The parameter must be an integer.", 400);
+        }
+    }
+
+    private static java.time.Instant parseOptionalInstant(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return java.time.Instant.parse(value);
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new AwsException("InvalidParameterValue", "Invalid timestamp.", 400);
+        }
+    }
+
+    private static int parseMarker(String marker) {
+        if (marker == null || marker.isBlank()) {
+            return 0;
+        }
+        try {
+            int value = Integer.parseInt(marker);
+            if (value < 0) throw new NumberFormatException();
+            return value;
+        } catch (NumberFormatException e) {
+            throw new AwsException("InvalidParameterValue", "Marker is invalid.", 400);
         }
     }
 
