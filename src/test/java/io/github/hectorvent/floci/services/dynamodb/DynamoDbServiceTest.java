@@ -2625,6 +2625,50 @@ class DynamoDbServiceTest {
                 + "The AttributeValue for a key attribute cannot contain an empty string value.", ex.getMessage());
     }
 
+    private void createBinaryIndexedTable(String region) {
+        var gsi = new GlobalSecondaryIndex("gsib",
+                List.of(new KeySchemaElement("bidx", "HASH")), null, "ALL", null);
+        service.createTable("BinaryIndexed",
+                List.of(new KeySchemaElement("pk", "HASH")),
+                List.of(
+                        new AttributeDefinition("pk", "S"),
+                        new AttributeDefinition("bidx", "B")),
+                5L, 5L, List.of(gsi), region);
+    }
+
+    @Test
+    void putItemEmptyBinaryGsiKeyThrowsValidationException() {
+        var region = "eu-west-1";
+        createBinaryIndexedTable(region);
+
+        var item = item("pk", "p1");
+        item.set("bidx", attributeValue("B", ""));
+
+        var ex = assertThrows(AwsException.class, () ->
+                service.putItem("BinaryIndexed", item, region));
+        assertEquals("ValidationException", ex.getErrorCode());
+        assertEquals("One or more parameter values are not valid. A value specified for a secondary "
+                + "index key is not supported. The AttributeValue for a key attribute cannot "
+                + "contain an empty binary value. IndexName: gsib, IndexKey: bidx", ex.getMessage());
+    }
+
+    @Test
+    void updateItemSettingEmptyBinaryGsiKeyThrowsValidationException() {
+        var region = "eu-west-1";
+        createBinaryIndexedTable(region);
+
+        var exprValues = mapper.createObjectNode();
+        exprValues.set(":v", attributeValue("B", ""));
+
+        var ex = assertThrows(AwsException.class, () ->
+                service.updateItem("BinaryIndexed", item("pk", "p1"), null,
+                        "SET bidx = :v", null, exprValues, null, region));
+        assertEquals("ValidationException", ex.getErrorCode());
+        assertEquals("One or more parameter values are not valid. The update expression attempted to "
+                + "update a secondary index key to a value that is not supported. "
+                + "The AttributeValue for a key attribute cannot contain an empty binary value.", ex.getMessage());
+    }
+
     @Test
     void updateItemNullPartitionKeyThrowsValidationException() {
         String region = "eu-west-1";
@@ -3449,6 +3493,41 @@ class DynamoDbServiceTest {
         assertEquals("VOID", stored.get("status").get("S").asText());
         assertEquals("ISSUED", stored.get("previousStatus").get("S").asText(),
                 "previousStatus should receive the pre-update value of status");
+    }
+
+    @Test
+    void updateItemSetArithmeticOverflowThrowsValidationException() {
+        var region = "eu-west-1";
+        createUsersTable(region);
+        var exprValues = mapper.createObjectNode();
+        exprValues.set(":a", attributeValue("N", "9.9e125"));
+        exprValues.set(":b", attributeValue("N", "9.9e125"));
+
+        var ex = assertThrows(AwsException.class, () ->
+                service.updateItem("Users", item("userId", "u1"), null,
+                        "SET n = :a + :b", null, exprValues, null, region));
+        assertEquals("ValidationException", ex.getErrorCode());
+        assertEquals("Number overflow. Attempting to store a number with magnitude larger than supported range",
+                ex.getMessage());
+        assertNull(service.getItem("Users", item("userId", "u1"), region));
+    }
+
+    @Test
+    void updateItemAddOverflowThrowsValidationException() {
+        var region = "eu-west-1";
+        createUsersTable(region);
+        var existing = item("userId", "u1");
+        existing.set("n", attributeValue("N", "9.9e125"));
+        service.putItem("Users", existing, region);
+        var exprValues = mapper.createObjectNode();
+        exprValues.set(":a", attributeValue("N", "9.9e125"));
+
+        var ex = assertThrows(AwsException.class, () ->
+                service.updateItem("Users", item("userId", "u1"), null,
+                        "ADD n :a", null, exprValues, null, region));
+        assertEquals("ValidationException", ex.getErrorCode());
+        assertEquals("Number overflow. Attempting to store a number with magnitude larger than supported range",
+                ex.getMessage());
     }
 
     @Test

@@ -814,9 +814,10 @@ public class DynamoDbService implements ResourceProvider {
                 item = key.deepCopy();
             }
 
+            var touchedPaths = new ArrayList<String>();
             // Apply UpdateExpression (modern format: "SET #n = :val, age = :age REMOVE attr")
             if (updateExpression != null) {
-                applyUpdateExpression(item, updateExpression, expressionAttrNames, expressionAttrValues);
+                applyUpdateExpression(item, updateExpression, expressionAttrNames, expressionAttrValues, touchedPaths);
             }
             // Apply attribute updates (legacy format: AttributeUpdates)
             else if (attributeUpdates != null && attributeUpdates.isObject()) {
@@ -824,6 +825,7 @@ public class DynamoDbService implements ResourceProvider {
                 while (fields.hasNext()) {
                     var entry = fields.next();
                     String attrName = entry.getKey();
+                    touchedPaths.add(attrName);
                     JsonNode update = entry.getValue();
                     String action = update.has("Action") ? update.get("Action").asText() : "PUT";
                     JsonNode value = update.get("Value");
@@ -863,8 +865,10 @@ public class DynamoDbService implements ResourceProvider {
                                     BigDecimal delta = new BigDecimal(value.get("N").asText());
                                     BigDecimal current = curAttr != null && curAttr.has("N")
                                             ? new BigDecimal(curAttr.get("N").asText()) : BigDecimal.ZERO;
+                                    var sum = current.add(delta);
+                                    DynamoDbNumberUtils.checkArithmeticResult(sum);
                                     ObjectNode numNode = objectMapper.createObjectNode();
-                                    numNode.put("N", current.add(delta).stripTrailingZeros().toPlainString());
+                                    numNode.put("N", sum.stripTrailingZeros().toPlainString());
                                     item.set(attrName, numNode);
                                 } else {
                                     // Add elements to a set
@@ -921,7 +925,13 @@ public class DynamoDbService implements ResourceProvider {
                 streamEvent.run();
             }
 
-            return new UpdateResult(item, existing);
+            var touched = new ArrayList<TouchedPath>();
+            for (var path : touchedPaths) {
+                var tokens = updateExpression != null ? parsePath(path, expressionAttrNames) : List.<Object>of(path);
+                touched.add(new TouchedPath(tokens,
+                        existing == null ? null : valueAtTokens(existing, tokens), valueAtTokens(item, tokens)));
+            }
+            return new UpdateResult(item, existing, touched);
         });
     }
 
@@ -1412,8 +1422,10 @@ public class DynamoDbService implements ResourceProvider {
             List<TransactionCanceledException.CancellationReason> cancellationReasons = new ArrayList<>();
             boolean hasFailed = false;
             for (JsonNode transactItem : transactItems) {
-                TransactionCanceledException.CancellationReason failReason =
-                        evaluateTransactCondition(transactItem, region, staged);
+                var failReason = transactUpdateValueTooDeep(transactItem);
+                if (failReason == null) {
+                    failReason = evaluateTransactCondition(transactItem, region, staged);
+                }
                 if (failReason != null) {
                     hasFailed = true;
                     cancellationReasons.add(failReason);
@@ -1514,6 +1526,17 @@ public class DynamoDbService implements ResourceProvider {
         var table = requireActiveTable(storageKey, tableName);
         String itemKey = buildItemKey(table, keyOrItem);
         return new TransactParticipant(storageKey, itemKey);
+    }
+
+    // AWS checks the depth of a transact Update's values as part of that member, so a too
+    // deep value cancels the transaction instead of failing the request up front.
+    private TransactionCanceledException.CancellationReason transactUpdateValueTooDeep(JsonNode transactItem) {
+        var values = transactItem.path("Update").get("ExpressionAttributeValues");
+        if (DynamoDbAttributeValueValidator.nestingWithinLimit(values)) {
+            return null;
+        }
+        return new TransactionCanceledException.CancellationReason("ValidationError", null,
+                "Nesting Levels have exceeded supported limits");
     }
 
     private TransactionCanceledException.CancellationReason evaluateTransactCondition(JsonNode transactItem, String region) {
@@ -2058,6 +2081,13 @@ public class DynamoDbService implements ResourceProvider {
 
     private void applyUpdateExpression(ObjectNode item, String expression,
                                         JsonNode exprAttrNames, JsonNode exprAttrValues) {
+        applyUpdateExpression(item, expression, exprAttrNames, exprAttrValues, new ArrayList<>());
+    }
+
+    // Every action's target path is added to touched, which UPDATED_NEW and UPDATED_OLD read.
+    private void applyUpdateExpression(ObjectNode item, String expression,
+                                        JsonNode exprAttrNames, JsonNode exprAttrValues,
+                                        List<String> touched) {
         // Parse SET and REMOVE clauses from expressions like:
         // "SET #n = :newName, age = :newAge REMOVE oldField"
         if (expression.isBlank()) {
@@ -2077,16 +2107,16 @@ public class DynamoDbService implements ResourceProvider {
             String upper = remaining.toUpperCase();
             if (upper.startsWith("SET ")) {
                 remaining = remaining.substring(4).trim();
-                remaining = applySetClause(item, remaining, exprAttrNames, exprAttrValues);
+                remaining = applySetClause(item, remaining, exprAttrNames, exprAttrValues, touched);
             } else if (upper.startsWith("REMOVE ")) {
                 remaining = remaining.substring(7).trim();
-                remaining = applyRemoveClause(item, remaining, exprAttrNames);
+                remaining = applyRemoveClause(item, remaining, exprAttrNames, touched);
             } else if (upper.startsWith("ADD ")) {
                 remaining = remaining.substring(4).trim();
-                remaining = applyAddClause(item, remaining, exprAttrNames, exprAttrValues);
+                remaining = applyAddClause(item, remaining, exprAttrNames, exprAttrValues, touched);
             } else if (upper.startsWith("DELETE ")) {
                 remaining = remaining.substring(7).trim();
-                remaining = applyDeleteClause(item, remaining, exprAttrNames, exprAttrValues);
+                remaining = applyDeleteClause(item, remaining, exprAttrNames, exprAttrValues, touched);
             } else {
                 // Unknown keyword — syntax error
                 String[] parts = remaining.split("\\s+", 3);
@@ -2101,7 +2131,7 @@ public class DynamoDbService implements ResourceProvider {
     }
 
     private String applySetClause(ObjectNode item, String clause,
-                                   JsonNode exprAttrNames, JsonNode exprAttrValues) {
+                                   JsonNode exprAttrNames, JsonNode exprAttrValues, List<String> touched) {
         // Parse comma-separated assignments: "attr = :val, #name = :val2"
         // Stop when we hit another clause keyword (REMOVE, ADD, DELETE) or end
         LOG.debugv("applySetClause: clause={0}, exprAttrNames={1}, exprAttrValues={2}",
@@ -2124,6 +2154,7 @@ public class DynamoDbService implements ResourceProvider {
             if (eqIdx < 0) break;
 
             String attrPath = clause.substring(0, eqIdx).trim();
+            touched.add(attrPath);
             String attrName = resolveAttributeName(attrPath, exprAttrNames);
 
             String rest = clause.substring(eqIdx + 1).trim();
@@ -2176,6 +2207,7 @@ public class DynamoDbService implements ResourceProvider {
                     BigDecimal left = new BigDecimal(leftVal.get("N").asText());
                     BigDecimal right = new BigDecimal(rightVal.get("N").asText());
                     BigDecimal result = (operator == '+') ? left.add(right) : left.subtract(right);
+                    DynamoDbNumberUtils.checkArithmeticResult(result);
                     ObjectNode numNode = JsonNodeFactory.instance.objectNode();
                     numNode.put("N", result.toPlainString());
                     setValueAtPath(item, attrPath, numNode, exprAttrNames);
@@ -2305,7 +2337,8 @@ public class DynamoDbService implements ResourceProvider {
         }
     }
 
-    private String applyRemoveClause(ObjectNode item, String clause, JsonNode exprAttrNames) {
+    private String applyRemoveClause(ObjectNode item, String clause, JsonNode exprAttrNames,
+                                     List<String> touched) {
         while (!clause.isEmpty()) {
             String upper = clause.toUpperCase();
             if (upper.startsWith("SET ") || upper.startsWith("ADD ") || upper.startsWith("DELETE ")) {
@@ -2330,13 +2363,14 @@ public class DynamoDbService implements ResourceProvider {
                 clause = "";
             }
 
+            touched.add(attrPart);
             removeValueAtPath(item, attrPart, exprAttrNames);
         }
         return clause;
     }
 
     private String applyAddClause(ObjectNode item, String clause,
-                                  JsonNode exprAttrNames, JsonNode exprAttrValues) {
+                                  JsonNode exprAttrNames, JsonNode exprAttrValues, List<String> touched) {
         while (!clause.isEmpty()) {
             String upper = clause.toUpperCase();
             if (upper.startsWith("SET ") || upper.startsWith("REMOVE ") || upper.startsWith("DELETE ")) {
@@ -2348,6 +2382,7 @@ public class DynamoDbService implements ResourceProvider {
             if (parts.length < 2) break;
 
             String attrPath = parts[0];
+            touched.add(attrPath);
             String valuePlaceholder = parts[1].replaceAll(",.*", "").trim();
 
             if (valuePlaceholder.startsWith(":") && exprAttrValues != null) {
@@ -2395,7 +2430,9 @@ public class DynamoDbService implements ResourceProvider {
             try {
                 BigDecimal existingNum = new BigDecimal(existingNumStr);
                 BigDecimal addNum = new BigDecimal(addNumStr);
-                result.put("N", existingNum.add(addNum).toPlainString());
+                var sum = existingNum.add(addNum);
+                DynamoDbNumberUtils.checkArithmeticResult(sum);
+                result.put("N", sum.toPlainString());
                 return result;
             } catch (NumberFormatException e) {
                 // Fall back to just setting the value
@@ -2447,7 +2484,7 @@ public class DynamoDbService implements ResourceProvider {
     }
 
     private String applyDeleteClause(ObjectNode item, String clause,
-                                     JsonNode exprAttrNames, JsonNode exprAttrValues) {
+                                     JsonNode exprAttrNames, JsonNode exprAttrValues, List<String> touched) {
         while (!clause.isEmpty()) {
             String upper = clause.toUpperCase();
             if (upper.startsWith("SET ") || upper.startsWith("REMOVE ") || upper.startsWith("ADD ") || upper.startsWith("DELETE ")) {
@@ -2459,6 +2496,7 @@ public class DynamoDbService implements ResourceProvider {
             if (parts.length < 2) break;
 
             String attrPath = parts[0];
+            touched.add(attrPath);
             String valuePlaceholder = parts[1].replaceAll(",.*", "").trim();
 
             if (valuePlaceholder.startsWith(":") && exprAttrValues != null) {
@@ -2751,7 +2789,10 @@ public class DynamoDbService implements ResourceProvider {
     }
 
     private JsonNode getValueAtPath(JsonNode item, String path, JsonNode exprAttrNames) {
-        List<Object> tokens = parsePath(path, exprAttrNames);
+        return valueAtTokens(item, parsePath(path, exprAttrNames));
+    }
+
+    private JsonNode valueAtTokens(JsonNode item, List<Object> tokens) {
         if (tokens.isEmpty()) return null;
         JsonNode current = item;
         for (int i = 0; i < tokens.size(); i++) {
@@ -3205,19 +3246,27 @@ public class DynamoDbService implements ResourceProvider {
                         + " IndexName: " + indexName, 400);
             }
             if (attr.has("S") && attr.get("S").asText().isEmpty()) {
-                // AWS uses different wording for UpdateItem than for writes of a whole item.
-                if (isUpdate) {
-                    throw new AwsException("ValidationException",
-                            "One or more parameter values are not valid. The update expression attempted to "
-                            + "update a secondary index key to a value that is not supported. "
-                            + "The AttributeValue for a key attribute cannot contain an empty string value.", 400);
-                }
-                throw new AwsException("ValidationException",
-                        "One or more parameter values are not valid. A value specified for a secondary "
-                        + "index key is not supported. The AttributeValue for a key attribute cannot "
-                        + "contain an empty string value. IndexName: " + indexName + ", IndexKey: " + attrName, 400);
+                throw emptyIndexKeyValue("empty string value", indexName, attrName, isUpdate);
+            }
+            if (attr.has("B") && attr.get("B").asText().isEmpty()) {
+                throw emptyIndexKeyValue("empty binary value", indexName, attrName, isUpdate);
             }
         }
+    }
+
+    // AWS uses different wording for UpdateItem than for writes of a whole item.
+    private static AwsException emptyIndexKeyValue(String what, String indexName, String attrName,
+                                                   boolean isUpdate) {
+        if (isUpdate) {
+            return new AwsException("ValidationException",
+                    "One or more parameter values are not valid. The update expression attempted to "
+                    + "update a secondary index key to a value that is not supported. "
+                    + "The AttributeValue for a key attribute cannot contain an " + what + ".", 400);
+        }
+        return new AwsException("ValidationException",
+                "One or more parameter values are not valid. A value specified for a secondary "
+                + "index key is not supported. The AttributeValue for a key attribute cannot "
+                + "contain an " + what + ". IndexName: " + indexName + ", IndexKey: " + attrName, 400);
     }
 
     private String buildItemKeyFromNode(JsonNode item, String pkName, String skName) {
@@ -3465,7 +3514,10 @@ public class DynamoDbService implements ResourceProvider {
         return table;
     }
 
-    public record UpdateResult(JsonNode newItem, JsonNode oldItem) {}
+    public record UpdateResult(JsonNode newItem, JsonNode oldItem, List<TouchedPath> touched) {}
+
+    // One path the update expression acted on, with the value there before and after.
+    public record TouchedPath(List<Object> tokens, JsonNode oldValue, JsonNode newValue) {}
 
     // scannedBytes carries the pre-filter size of the read items: DynamoDB bills a
     // Query or Scan on what it read, not on what survived the filter or projection.

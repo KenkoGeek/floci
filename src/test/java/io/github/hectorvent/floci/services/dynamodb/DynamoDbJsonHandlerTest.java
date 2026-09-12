@@ -1105,4 +1105,578 @@ class DynamoDbJsonHandlerTest {
         assertEquals(1, userSegments.get("alice").size(), "All alice items must belong to the exact same segment");
         assertEquals(1, userSegments.get("bob").size(), "All bob items must belong to the exact same segment");
     }
+
+    private ObjectNode updateUserRequest() {
+        var request = mapper.createObjectNode();
+        request.put("TableName", "Users");
+        request.set("Key", mapper.createObjectNode().set("userId", attributeValue("S", "u1")));
+        return request;
+    }
+
+    @Test
+    void updateItemUpdatedNewReturnsOnlyTheChangedMapFragment() throws Exception {
+        createUsersTable("eu-west-1");
+        var parent = mapper.createObjectNode();
+        parent.set("keep", attributeValue("S", "k"));
+        parent.set("child", attributeValue("S", "old"));
+        var putRequest = mapper.createObjectNode();
+        putRequest.put("TableName", "Users");
+        var item = mapper.createObjectNode();
+        item.set("userId", attributeValue("S", "u1"));
+        item.set("parent", mapper.createObjectNode().set("M", parent));
+        putRequest.set("Item", item);
+        handler.handle("PutItem", putRequest, "eu-west-1");
+
+        var request = updateUserRequest();
+        request.put("UpdateExpression", "SET parent.child = :v");
+        request.set("ExpressionAttributeValues",
+                mapper.createObjectNode().set(":v", attributeValue("S", "new")));
+        request.put("ReturnValues", "UPDATED_NEW");
+
+        var response = handler.handle("UpdateItem", request, "eu-west-1");
+        var body = mapper.convertValue(response.getEntity(), JsonNode.class);
+        var attributes = body.get("Attributes");
+        assertEquals("new", attributes.get("parent").get("M").get("child").get("S").asText());
+        assertFalse(attributes.get("parent").get("M").has("keep"));
+    }
+
+    @Test
+    void updateItemRemoveWithUpdatedNewOmitsAttributes() throws Exception {
+        createUsersTable("eu-west-1");
+        var putRequest = mapper.createObjectNode();
+        putRequest.put("TableName", "Users");
+        var item = mapper.createObjectNode();
+        item.set("userId", attributeValue("S", "u1"));
+        item.set("y", attributeValue("S", "drop"));
+        putRequest.set("Item", item);
+        handler.handle("PutItem", putRequest, "eu-west-1");
+
+        var request = updateUserRequest();
+        request.put("UpdateExpression", "REMOVE y");
+        request.put("ReturnValues", "UPDATED_NEW");
+
+        var response = handler.handle("UpdateItem", request, "eu-west-1");
+        var body = mapper.convertValue(response.getEntity(), JsonNode.class);
+        assertFalse(body.has("Attributes"));
+    }
+
+    @Test
+    void updateItemReportsOnlyTheFirstInvalidEnum() {
+        createUsersTable("eu-west-1");
+        var request = updateUserRequest();
+        request.put("ReturnValues", "INVALID");
+        request.put("ReturnConsumedCapacity", "INVALID");
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("UpdateItem", request, "eu-west-1"));
+        assertEquals("ValidationException", ex.getErrorCode());
+        assertTrue(ex.getMessage().startsWith("1 validation error detected:"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("'returnValues'"), ex.getMessage());
+    }
+
+    private static String nameOfBytes(int bytes) {
+        return "a".repeat(bytes);
+    }
+
+    private ObjectNode singleValue(String placeholder) {
+        return (ObjectNode) mapper.createObjectNode().set(placeholder, attributeValue("S", "x"));
+    }
+
+    @Test
+    void updateItemRejectsAnUpdateExpressionOver4096BytesBeforeTheTableLookup() {
+        var request = updateUserRequest();
+        request.put("TableName", "Missing");
+        request.put("UpdateExpression", "SET " + nameOfBytes(4088) + " = :v");
+        request.set("ExpressionAttributeValues", singleValue(":v"));
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("UpdateItem", request, "eu-west-1"));
+        assertEquals("ValidationException", ex.getErrorCode());
+        assertEquals("1 validation error detected: Invalid UpdateExpression: "
+                + "Expression size has exceeded the maximum allowed size;", ex.getMessage());
+    }
+
+    @Test
+    void updateItemAcceptsAnUpdateExpressionOfExactly4096Bytes() throws Exception {
+        createUsersTable("eu-west-1");
+        var request = updateUserRequest();
+        request.put("UpdateExpression", "SET " + nameOfBytes(4087) + " = :v");
+        request.set("ExpressionAttributeValues", singleValue(":v"));
+
+        var response = handler.handle("UpdateItem", request, "eu-west-1");
+        assertEquals(200, response.getStatus());
+    }
+
+    @Test
+    void putItemRejectsAConditionExpressionOver4096Bytes() {
+        createUsersTable("eu-west-1");
+        var request = mapper.createObjectNode();
+        request.put("TableName", "Users");
+        request.set("Item", item("userId", "u1"));
+        request.put("ConditionExpression", "attribute_not_exists(" + nameOfBytes(4075) + ")");
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("PutItem", request, "eu-west-1"));
+        assertEquals("1 validation error detected: Invalid ConditionExpression: "
+                + "Expression size has exceeded the maximum allowed size;", ex.getMessage());
+    }
+
+    @Test
+    void queryRejectsAFilterExpressionOver4096Bytes() {
+        createUsersTable("eu-west-1");
+        var request = mapper.createObjectNode();
+        request.put("TableName", "Users");
+        request.put("KeyConditionExpression", "userId = :pk");
+        request.put("FilterExpression", nameOfBytes(4092) + " = :v");
+        var values = singleValue(":pk");
+        values.set(":v", attributeValue("S", "x"));
+        request.set("ExpressionAttributeValues", values);
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("Query", request, "eu-west-1"));
+        assertEquals("Invalid FilterExpression: Expression size has exceeded the maximum allowed size;",
+                ex.getMessage());
+    }
+
+    @Test
+    void scanRejectsAFilterExpressionOver4096BytesAndReportsTheSize() {
+        createUsersTable("eu-west-1");
+        var request = mapper.createObjectNode();
+        request.put("TableName", "Users");
+        request.put("FilterExpression", nameOfBytes(4092) + " = :v");
+        request.set("ExpressionAttributeValues", singleValue(":v"));
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("Scan", request, "eu-west-1"));
+        assertEquals("Invalid FilterExpression: Expression size has exceeded the maximum allowed size; "
+                + "expression size: 4097", ex.getMessage());
+    }
+
+    @Test
+    void getItemRejectsAProjectionExpressionOver4096Bytes() {
+        createUsersTable("eu-west-1");
+        var request = updateUserRequest();
+        request.put("ProjectionExpression", nameOfBytes(4097));
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("GetItem", request, "eu-west-1"));
+        assertEquals("Invalid ProjectionExpression: Expression size has exceeded the maximum allowed size;",
+                ex.getMessage());
+    }
+
+    private ObjectNode nestedMaps(int levels) {
+        ObjectNode value = attributeValue("S", "leaf");
+        for (var i = 0; i < levels; i++) {
+            var map = mapper.createObjectNode();
+            map.set("n", value);
+            value = mapper.createObjectNode();
+            value.set("M", map);
+        }
+        return value;
+    }
+
+    private ObjectNode putRequest(JsonNode value) {
+        var request = mapper.createObjectNode();
+        request.put("TableName", "Users");
+        var item = item("userId", "u1");
+        item.set("data", value);
+        request.set("Item", item);
+        return request;
+    }
+
+    private static final String NESTING_MESSAGE = "1 validation error detected: Nesting Levels have exceeded "
+            + "supported limits: Attributes in the item have nested levels beyond supported limit";
+
+    @Test
+    void putItemAcceptsAnAttributeWithALeafAtLevel32() throws Exception {
+        createUsersTable("eu-west-1");
+
+        var response = handler.handle("PutItem", putRequest(nestedMaps(31)), "eu-west-1");
+        assertEquals(200, response.getStatus());
+    }
+
+    @Test
+    void putItemRejectsAnAttributeWithALeafAtLevel33BeforeTheTableLookup() {
+        var request = putRequest(nestedMaps(32));
+        request.put("TableName", "Missing");
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("PutItem", request, "eu-west-1"));
+        assertEquals("ValidationException", ex.getErrorCode());
+        assertEquals(NESTING_MESSAGE, ex.getMessage());
+    }
+
+    @Test
+    void updateItemRejectsAnExpressionAttributeValueWithALeafAtLevel33() {
+        createUsersTable("eu-west-1");
+        var request = updateUserRequest();
+        request.put("UpdateExpression", "SET touched = :t");
+        request.put("ConditionExpression", "#d = :deep");
+        request.set("ExpressionAttributeNames", mapper.createObjectNode().put("#d", "data"));
+        var values = singleValue(":t");
+        values.set(":deep", nestedMaps(32));
+        request.set("ExpressionAttributeValues", values);
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("UpdateItem", request, "eu-west-1"));
+        assertEquals(NESTING_MESSAGE, ex.getMessage());
+    }
+
+    private ObjectNode transactWrite(String action, ObjectNode op) {
+        op.put("TableName", "Users");
+        var member = mapper.createObjectNode();
+        member.set(action, op);
+        var request = mapper.createObjectNode();
+        request.set("TransactItems", mapper.createArrayNode().add(member));
+        return request;
+    }
+
+    @Test
+    void transactWriteItemsRejectsAConditionExpressionOver4096BytesWithTheSizeBeforeTheTableLookup() {
+        var put = mapper.createObjectNode();
+        put.set("Item", item("userId", "u1"));
+        put.put("ConditionExpression", "attribute_not_exists(" + nameOfBytes(4075) + ")");
+        var request = transactWrite("Put", put);
+        ((ObjectNode) request.get("TransactItems").get(0).get("Put")).put("TableName", "Missing");
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("TransactWriteItems", request, "eu-west-1"));
+        assertEquals("ValidationException", ex.getErrorCode());
+        assertEquals("Invalid ConditionExpression: Expression size has exceeded the maximum allowed size; "
+                + "expression size: 4097", ex.getMessage());
+    }
+
+    @Test
+    void transactWriteItemsRejectsAnUpdateExpressionOver4096Bytes() {
+        createUsersTable("eu-west-1");
+        var update = mapper.createObjectNode();
+        update.set("Key", item("userId", "u1"));
+        update.put("UpdateExpression", "SET " + nameOfBytes(4088) + " = :v");
+        update.set("ExpressionAttributeValues", singleValue(":v"));
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("TransactWriteItems", transactWrite("Update", update), "eu-west-1"));
+        assertEquals("Invalid UpdateExpression: Expression size has exceeded the maximum allowed size;",
+                ex.getMessage());
+    }
+
+    @Test
+    void transactWriteItemsRejectsAPutItemWithALeafAtLevel33() {
+        createUsersTable("eu-west-1");
+        var put = mapper.createObjectNode();
+        var item = item("userId", "u1");
+        item.set("data", nestedMaps(32));
+        put.set("Item", item);
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("TransactWriteItems", transactWrite("Put", put), "eu-west-1"));
+        assertEquals("Nesting Levels have exceeded supported limits: "
+                + "Attributes in the item have nested levels beyond supported limit", ex.getMessage());
+    }
+
+    @Test
+    void batchWriteItemRejectsAPutItemWithALeafAtLevel33BeforeTheTableLookup() {
+        var item = item("userId", "u1");
+        item.set("data", nestedMaps(32));
+        var putRequest = mapper.createObjectNode();
+        putRequest.set("PutRequest", mapper.createObjectNode().set("Item", item));
+        var request = mapper.createObjectNode();
+        request.set("RequestItems", mapper.createObjectNode().set("Missing", mapper.createArrayNode().add(putRequest)));
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("BatchWriteItem", request, "eu-west-1"));
+        assertEquals("ValidationException", ex.getErrorCode());
+        assertEquals("Nesting Levels have exceeded supported limits: "
+                + "Attributes in the item have nested levels beyond supported limit", ex.getMessage());
+    }
+
+    @Test
+    void transactWriteItemsCancelsOnAnUpdateValueWithALeafAtLevel33() throws Exception {
+        createUsersTable("eu-west-1");
+        var update = mapper.createObjectNode();
+        update.set("Key", item("userId", "u1"));
+        update.put("UpdateExpression", "SET deep = :deep");
+        update.set("ExpressionAttributeValues", mapper.createObjectNode().set(":deep", nestedMaps(32)));
+
+        var response = handler.handle("TransactWriteItems", transactWrite("Update", update), "eu-west-1");
+        assertEquals(400, response.getStatus());
+        var body = mapper.convertValue(response.getEntity(), JsonNode.class);
+        assertEquals("TransactionCanceledException", body.get("__type").asText());
+        var reason = body.get("CancellationReasons").get(0);
+        assertEquals("ValidationError", reason.get("Code").asText());
+        assertEquals("Nesting Levels have exceeded supported limits", reason.get("Message").asText());
+        assertNull(service.getItem("Users", item("userId", "u1"), "eu-west-1"));
+    }
+
+    @Test
+    void transactWriteItemsDoesNotCheckTheDepthOfAConditionCheckValue() throws Exception {
+        createUsersTable("eu-west-1");
+        var putRequest = mapper.createObjectNode();
+        putRequest.put("TableName", "Users");
+        putRequest.set("Item", item("userId", "u1", "marker", "x"));
+        handler.handle("PutItem", putRequest, "eu-west-1");
+        var check = mapper.createObjectNode();
+        check.set("Key", item("userId", "u1"));
+        check.put("ConditionExpression", "#d = :deep");
+        check.set("ExpressionAttributeNames", mapper.createObjectNode().put("#d", "data"));
+        check.set("ExpressionAttributeValues", mapper.createObjectNode().set(":deep", nestedMaps(32)));
+
+        var response = handler.handle("TransactWriteItems", transactWrite("ConditionCheck", check), "eu-west-1");
+        assertEquals(400, response.getStatus());
+        var reason = mapper.convertValue(response.getEntity(), JsonNode.class).get("CancellationReasons").get(0);
+        assertEquals("ConditionalCheckFailed", reason.get("Code").asText());
+        assertEquals("The conditional request failed", reason.get("Message").asText());
+    }
+
+    @Test
+    void updateItemRejectsAnOutOfRangeAddOperandBeforeTheTableLookup() {
+        var request = updateUserRequest();
+        request.put("TableName", "Missing");
+        request.put("UpdateExpression", "ADD n :a");
+        request.set("ExpressionAttributeValues", mapper.createObjectNode().set(":a", attributeValue("N", "1e126")));
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("UpdateItem", request, "eu-west-1"));
+        assertEquals("ValidationException", ex.getErrorCode());
+        assertEquals("1 validation error detected: Number overflow. "
+                + "Attempting to store a number with magnitude larger than supported range", ex.getMessage());
+    }
+
+    @Test
+    void updateItemRejectsATooSmallExpressionAttributeValue() {
+        createUsersTable("eu-west-1");
+        var request = updateUserRequest();
+        request.put("UpdateExpression", "SET x = :a");
+        request.set("ExpressionAttributeValues", mapper.createObjectNode().set(":a", attributeValue("N", "1e-131")));
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("UpdateItem", request, "eu-west-1"));
+        assertEquals("1 validation error detected: Number underflow. "
+                + "Attempting to store a number with magnitude smaller than supported range", ex.getMessage());
+    }
+
+    @Test
+    void updateItemRejectsAnAttributeUpdatesValueWithTooManyDigits() {
+        createUsersTable("eu-west-1");
+        var request = updateUserRequest();
+        var update = mapper.createObjectNode();
+        update.put("Action", "ADD");
+        update.set("Value", attributeValue("N", "123456789012345678901234567890123456789"));
+        request.set("AttributeUpdates", mapper.createObjectNode().set("n", update));
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("UpdateItem", request, "eu-west-1"));
+        assertEquals("1 validation error detected: Attempting to store more than 38 significant digits in a Number",
+                ex.getMessage());
+    }
+
+    @Test
+    void queryRejectsAnOutOfRangeExpressionAttributeValueWithoutTheEnvelope() {
+        createUsersTable("eu-west-1");
+        var request = mapper.createObjectNode();
+        request.put("TableName", "Users");
+        request.put("KeyConditionExpression", "userId = :p");
+        request.put("FilterExpression", "n = :a");
+        var values = singleValue(":p");
+        values.set(":a", attributeValue("N", "1e126"));
+        request.set("ExpressionAttributeValues", values);
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("Query", request, "eu-west-1"));
+        assertEquals("Number overflow. Attempting to store a number with magnitude larger than supported range",
+                ex.getMessage());
+    }
+
+    @Test
+    void updateItemRejectsAnAttributeUpdatesValueWithALeafAtLevel33BeforeTheTableLookup() {
+        var request = updateUserRequest();
+        request.put("TableName", "Missing");
+        var update = mapper.createObjectNode();
+        update.put("Action", "PUT");
+        update.set("Value", nestedMaps(32));
+        request.set("AttributeUpdates", mapper.createObjectNode().set("data", update));
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("UpdateItem", request, "eu-west-1"));
+        assertEquals("ValidationException", ex.getErrorCode());
+        assertEquals(NESTING_MESSAGE, ex.getMessage());
+    }
+
+    @Test
+    void putItemRejectsAnExpectedValueWithALeafAtLevel33() {
+        createUsersTable("eu-west-1");
+        var request = putRequest(attributeValue("S", "x"));
+        request.set("Expected", mapper.createObjectNode().set("data",
+                mapper.createObjectNode().set("Value", nestedMaps(32))));
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("PutItem", request, "eu-west-1"));
+        assertEquals(NESTING_MESSAGE, ex.getMessage());
+    }
+
+    @Test
+    void queryRejectsAQueryFilterValueWithALeafAtLevel33WithoutTheEnvelope() {
+        createUsersTable("eu-west-1");
+        var request = mapper.createObjectNode();
+        request.put("TableName", "Users");
+        var keyCondition = mapper.createObjectNode();
+        keyCondition.put("ComparisonOperator", "EQ");
+        keyCondition.set("AttributeValueList", mapper.createArrayNode().add(attributeValue("S", "u1")));
+        request.set("KeyConditions", mapper.createObjectNode().set("userId", keyCondition));
+        var filter = mapper.createObjectNode();
+        filter.put("ComparisonOperator", "EQ");
+        filter.set("AttributeValueList", mapper.createArrayNode().add(nestedMaps(32)));
+        request.set("QueryFilter", mapper.createObjectNode().set("data", filter));
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("Query", request, "eu-west-1"));
+        assertEquals("Nesting Levels have exceeded supported limits: "
+                + "Attributes in the item have nested levels beyond supported limit", ex.getMessage());
+    }
+
+    private void seedUpdateReturnValuesItem() throws Exception {
+        createUsersTable("eu-west-1");
+        var parent = mapper.createObjectNode();
+        parent.set("keep", attributeValue("S", "k"));
+        parent.set("child", attributeValue("S", "old"));
+        var list = mapper.createArrayNode()
+                .add(attributeValue("S", "l0")).add(attributeValue("S", "l1")).add(attributeValue("S", "l2"));
+        var item = item("userId", "u1");
+        item.set("parent", mapper.createObjectNode().set("M", parent));
+        item.set("l", mapper.createObjectNode().set("L", list));
+        var putRequest = mapper.createObjectNode();
+        putRequest.put("TableName", "Users");
+        putRequest.set("Item", item);
+        handler.handle("PutItem", putRequest, "eu-west-1");
+    }
+
+    private JsonNode updateAttributes(String expression, ObjectNode values, String returnValues) throws Exception {
+        var request = updateUserRequest();
+        request.put("UpdateExpression", expression);
+        if (values != null) {
+            request.set("ExpressionAttributeValues", values);
+        }
+        request.put("ReturnValues", returnValues);
+        var body = mapper.convertValue(handler.handle("UpdateItem", request, "eu-west-1").getEntity(), JsonNode.class);
+        return body.get("Attributes");
+    }
+
+    @Test
+    void updateItemUpdatedNewReturnsTheWholeMapWhenTheMapItselfIsSet() throws Exception {
+        seedUpdateReturnValuesItem();
+        var parent = mapper.createObjectNode();
+        parent.set("keep", attributeValue("S", "k"));
+        parent.set("child", attributeValue("S", "new"));
+        var values = mapper.createObjectNode();
+        values.set(":v", mapper.createObjectNode().set("M", parent));
+
+        var attributes = updateAttributes("SET parent = :v", values, "UPDATED_NEW");
+        assertEquals("k", attributes.get("parent").get("M").get("keep").get("S").asText());
+        assertEquals("new", attributes.get("parent").get("M").get("child").get("S").asText());
+    }
+
+    @Test
+    void updateItemUpdatedOldReturnsTheWholeOldMapWhenTheMapItselfIsSet() throws Exception {
+        seedUpdateReturnValuesItem();
+        var values = mapper.createObjectNode();
+        values.set(":v", mapper.createObjectNode().set("M", mapper.createObjectNode().set("child", attributeValue("S", "new"))));
+
+        var attributes = updateAttributes("SET parent = :v", values, "UPDATED_OLD");
+        assertEquals("k", attributes.get("parent").get("M").get("keep").get("S").asText());
+        assertEquals("old", attributes.get("parent").get("M").get("child").get("S").asText());
+    }
+
+    @Test
+    void updateItemUpdatedNewReturnsANestedSetEvenWhenTheValueDidNotChange() throws Exception {
+        seedUpdateReturnValuesItem();
+
+        var attributes = updateAttributes("SET parent.child = :v", singleValueOf("old"), "UPDATED_NEW");
+        assertEquals("old", attributes.get("parent").get("M").get("child").get("S").asText());
+        assertFalse(attributes.get("parent").get("M").has("keep"));
+    }
+
+    @Test
+    void updateItemUpdatedNewPacksTouchedListElementsInIndexOrder() throws Exception {
+        seedUpdateReturnValuesItem();
+        var values = mapper.createObjectNode();
+        values.set(":v", attributeValue("S", "L2"));
+        values.set(":w", attributeValue("S", "L0"));
+
+        var attributes = updateAttributes("SET l[2] = :v, l[0] = :w", values, "UPDATED_NEW");
+        var packed = attributes.get("l").get("L");
+        assertEquals(2, packed.size());
+        assertEquals("L0", packed.get(0).get("S").asText());
+        assertEquals("L2", packed.get(1).get("S").asText());
+    }
+
+    @Test
+    void updateItemUpdatedNewAfterRemovingAListElementReturnsTheElementNowAtThatIndex() throws Exception {
+        seedUpdateReturnValuesItem();
+
+        var attributes = updateAttributes("REMOVE l[1]", null, "UPDATED_NEW");
+        assertEquals(1, attributes.get("l").get("L").size());
+        assertEquals("l2", attributes.get("l").get("L").get(0).get("S").asText());
+    }
+
+    @Test
+    void updateItemUpdatedNewOmitsAttributesWhenAppendingPastTheEndOfAList() throws Exception {
+        seedUpdateReturnValuesItem();
+
+        assertNull(updateAttributes("SET l[5] = :v", singleValueOf("L5"), "UPDATED_NEW"));
+    }
+
+    private ObjectNode singleValueOf(String value) {
+        return (ObjectNode) mapper.createObjectNode().set(":v", attributeValue("S", value));
+    }
+
+    @Test
+    void transactGetItemsRejectsAnOversizedProjectionBeforeTheTableLookup() {
+        var get = mapper.createObjectNode();
+        get.put("TableName", "Missing");
+        get.set("Key", item("userId", "u1"));
+        get.put("ProjectionExpression", nameOfBytes(4097));
+        var request = mapper.createObjectNode();
+        request.set("TransactItems", mapper.createArrayNode().add(mapper.createObjectNode().set("Get", get)));
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("TransactGetItems", request, "eu-west-1"));
+        assertEquals("Invalid ProjectionExpression: Expression size has exceeded the maximum allowed size;",
+                ex.getMessage());
+    }
+
+    @Test
+    void executeStatementRejectsATooDeepParameter() {
+        createUsersTable("eu-west-1");
+        var request = mapper.createObjectNode();
+        request.put("Statement", "UPDATE \"Users\" SET deep=? WHERE userId=?");
+        request.set("Parameters", mapper.createArrayNode().add(nestedMaps(32)).add(attributeValue("S", "u1")));
+
+        var ex = assertThrows(AwsException.class,
+                () -> handler.handle("ExecuteStatement", request, "eu-west-1"));
+        assertEquals("ValidationException", ex.getErrorCode());
+        assertEquals("Nesting Levels have exceeded supported limits", ex.getMessage());
+    }
+
+    @Test
+    void executeTransactionCancelsOnATooDeepParameterWithThatStatementsReason() throws Exception {
+        createUsersTable("eu-west-1");
+        var fine = mapper.createObjectNode();
+        fine.put("Statement", "UPDATE \"Users\" SET x=? WHERE userId=?");
+        fine.set("Parameters", mapper.createArrayNode().add(attributeValue("S", "x")).add(attributeValue("S", "u1")));
+        var deep = mapper.createObjectNode();
+        deep.put("Statement", "INSERT INTO \"Users\" VALUE {'userId': ?, 'deep': ?}");
+        deep.set("Parameters", mapper.createArrayNode().add(attributeValue("S", "u2")).add(nestedMaps(32)));
+        var request = mapper.createObjectNode();
+        request.set("TransactStatements", mapper.createArrayNode().add(fine).add(deep));
+
+        var response = handler.handle("ExecuteTransaction", request, "eu-west-1");
+        assertEquals(400, response.getStatus());
+        var body = mapper.convertValue(response.getEntity(), JsonNode.class);
+        assertEquals("TransactionCanceledException", body.get("__type").asText());
+        var reasons = body.get("CancellationReasons");
+        assertEquals("None", reasons.get(0).get("Code").asText());
+        assertEquals("ValidationError", reasons.get(1).get("Code").asText());
+        assertEquals("Nesting Levels have exceeded supported limits", reasons.get(1).get("Message").asText());
+        assertNull(service.getItem("Users", item("userId", "u2"), "eu-west-1"));
+    }
 }
