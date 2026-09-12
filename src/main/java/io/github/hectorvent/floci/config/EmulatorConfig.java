@@ -743,6 +743,7 @@ public interface EmulatorConfig {
         AppIntegrationsServiceConfig appintegrations();
         CognitoIdentityServiceConfig cognitoidentity();
         GlobalAcceleratorServiceConfig globalaccelerator();
+        DataSyncServiceConfig datasync();
 
         ApsServiceConfig aps();
 
@@ -768,6 +769,11 @@ public interface EmulatorConfig {
     }
 
     interface GlobalAcceleratorServiceConfig {
+        @WithDefault("true")
+        boolean enabled();
+    }
+
+    interface DataSyncServiceConfig {
         @WithDefault("true")
         boolean enabled();
     }
