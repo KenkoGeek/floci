@@ -602,6 +602,8 @@ floci:
     bcm-data-exports:
       enabled: true
       emit-mode: synchronous
+    oam:
+      enabled: true
     cloudtrail:
       enabled: true
     lightsail:
