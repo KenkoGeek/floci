@@ -593,6 +593,21 @@ class Ec2ServiceTest {
     }
 
     @Test
+    void describeImagesMatchesCatalogAliasInImageIdFilter() {
+        Ec2ImageCatalog imageCatalog = new Ec2ImageCatalog();
+        Ec2Service service = new Ec2Service(mockConfig(true), mock(Ec2ContainerManager.class),
+                mock(Ec2PortForwardManager.class),
+                new AmiImageResolver(imageCatalog), imageCatalog, new Ec2InstanceTypeCatalog(),
+                new InMemoryStorageFactory());
+
+        List<Image> images = service.describeImages(
+                "us-east-1", List.of(), List.of(), Map.of("image-id", List.of("ami-amazonlinux2")));
+
+        assertEquals(1, images.size());
+        assertEquals("ami-0abcdef1234567890", images.getFirst().getImageId());
+    }
+
+    @Test
     void describeImagesResolvesUnknownLaunchableAmiId() {
         Ec2ImageCatalog imageCatalog = new Ec2ImageCatalog();
         Ec2Service service = new Ec2Service(mockConfig(true), mock(Ec2ContainerManager.class),
