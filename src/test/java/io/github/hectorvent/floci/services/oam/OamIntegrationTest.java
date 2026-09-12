@@ -139,4 +139,30 @@ class OamIntegrationTest {
             .when().post("/DeleteSink").then().statusCode(200);
     }
 
+    @Test
+    void explicitDenyOverridesMatchingAllow() {
+        String sinkArn = given().header("Authorization", MONITORING).contentType("application/json")
+                .body("{\"Name\":\"explicit-deny-test\"}")
+            .when().post("/CreateSink")
+            .then().statusCode(200).extract().path("Arn");
+
+        String policy = "{\"Version\":\"2012-10-17\",\"Statement\":["
+                + "{\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"oam:CreateLink\",\"Resource\":\"*\"},"
+                + "{\"Effect\":\"Deny\",\"Principal\":{\"AWS\":\"arn:aws:iam::222222222222:root\"},"
+                + "\"Action\":\"oam:CreateLink\",\"Resource\":\"*\"}]}";
+        given().header("Authorization", MONITORING).contentType("application/json")
+                .body(java.util.Map.of("SinkIdentifier", sinkArn, "Policy", policy))
+            .when().post("/PutSinkPolicy").then().statusCode(200);
+
+        given().header("Authorization", SOURCE).contentType("application/json")
+                .body(java.util.Map.of("SinkIdentifier", sinkArn, "LabelTemplate", "source",
+                        "ResourceTypes", java.util.List.of("AWS::CloudWatch::Metric")))
+            .when().post("/CreateLink")
+            .then().statusCode(400).body("__type", containsString("InvalidParameterException"));
+
+        given().header("Authorization", MONITORING).contentType("application/json")
+                .body(java.util.Map.of("Identifier", sinkArn))
+            .when().post("/DeleteSink").then().statusCode(200);
+    }
+
 }

@@ -241,12 +241,18 @@ public class OamService {
             if (!statements.isArray()) statements = objectMapper.createArrayNode().add(statements);
             boolean allowed = false;
             for (JsonNode statement : statements) {
-                if (!"Allow".equalsIgnoreCase(statement.path("Effect").asText())) continue;
                 if (!actionMatches(statement.get("Action"), action)) continue;
                 if (!principalMatches(statement.get("Principal"), sourceAccountId)) continue;
                 if (!resourceMatches(statement.get("Resource"), sink.getArn())) continue;
                 if (!resourceTypeConditionMatches(statement.get("Condition"), resourceTypes)) continue;
-                allowed = true;
+
+                String effect = statement.path("Effect").asText();
+                if ("Deny".equalsIgnoreCase(effect)) {
+                    throw invalid("The sink policy explicitly denies this source account from performing " + action + ".");
+                }
+                if ("Allow".equalsIgnoreCase(effect)) {
+                    allowed = true;
+                }
             }
             if (!allowed) throw invalid("The sink policy does not allow this source account to perform " + action + ".");
         } catch (AwsException e) {
