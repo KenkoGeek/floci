@@ -62,20 +62,21 @@ public class BcmPricingCalculatorService {
         this.objectMapper = objectMapper;
     }
 
-    public WorkloadEstimate create(String name, String clientToken, String rateType, Map<String, String> tags) {
+    public synchronized WorkloadEstimate create(String name, String clientToken, String rateType, Map<String, String> tags) {
         if (name == null) throw validation("name is required.");
         if (name.length() > 64 || !NAME.matcher(name).matches()) throw validation("name is invalid.");
         validateToken(clientToken);
         String effectiveRate = rateType == null || rateType.isBlank() ? "BEFORE_DISCOUNTS" : rateType;
         if (!RATE_TYPES.contains(effectiveRate)) throw validation("rateType is invalid.");
-        if (tags != null && tags.size() > 50) throw validation("tags exceeds the maximum size of 50.");
+        if (tags != null && tags.size() > 200) throw validation("tags exceeds the maximum size of 200.");
 
         if (clientToken != null) {
             WorkloadEstimate replay = estimates.scan(_ -> true).stream()
                     .filter(e -> clientToken.equals(e.getClientToken())).findFirst().orElse(null);
             if (replay != null) {
                 if (!replay.getName().equals(name) || !replay.getRateType().equals(effectiveRate)) {
-                    throw new AwsException("ConflictException", "The idempotency token was reused with different parameters.", 409);
+                    throw new AwsException("ConflictException", "The idempotency token was reused with different parameters.", 400,
+                            Map.of("resourceId", replay.getId(), "resourceType", "WorkloadEstimate"));
                 }
                 return replay;
             }
@@ -111,7 +112,7 @@ public class BcmPricingCalculatorService {
         usages.keys().stream().filter(k -> k.startsWith(id + "/")).toList().forEach(usages::delete);
     }
 
-    public UsageBatchResult batchCreateUsage(String estimateId, List<UsageInput> entries, String clientToken) {
+    public synchronized UsageBatchResult batchCreateUsage(String estimateId, List<UsageInput> entries, String clientToken) {
         WorkloadEstimate estimate = get(estimateId);
         validateToken(clientToken);
         if (entries == null || entries.isEmpty() || entries.size() > 25) {
@@ -221,7 +222,7 @@ public class BcmPricingCalculatorService {
 
     private static double roundMoney(double value) { return Math.round(value * 100_000_000d) / 100_000_000d; }
     private static AwsException validation(String message) { return new AwsException("ValidationException", message, 400); }
-    private static AwsException notFound(String id) { return new AwsException("ResourceNotFoundException", "Workload estimate " + id + " was not found.", 404,
+    private static AwsException notFound(String id) { return new AwsException("ResourceNotFoundException", "Workload estimate " + id + " was not found.", 400,
             Map.of("resourceId", id, "resourceType", "WorkloadEstimate")); }
     private record PricingMatch(double rate, String unit, String location) {}
 }

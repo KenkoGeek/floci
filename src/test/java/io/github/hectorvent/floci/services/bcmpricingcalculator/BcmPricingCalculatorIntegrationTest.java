@@ -75,7 +75,7 @@ class BcmPricingCalculatorIntegrationTest {
 
         given().contentType(CONTENT_TYPE).header("X-Amz-Target", TARGET + "CreateWorkloadEstimate")
                 .body("{\"name\":\"token-two\",\"clientToken\":\"conflict-token\"}")
-            .when().post("/").then().statusCode(409).body("__type", containsString("ConflictException"));
+            .when().post("/").then().statusCode(400).body("__type", containsString("ConflictException"));
 
         String deleteBody = "{\"identifier\":\"" + id + "\"}";
         given().contentType(CONTENT_TYPE).header("X-Amz-Target", TARGET + "DeleteWorkloadEstimate")
@@ -96,7 +96,24 @@ class BcmPricingCalculatorIntegrationTest {
         given().contentType(CONTENT_TYPE).header("Authorization", accountB)
                 .header("X-Amz-Target", TARGET + "GetWorkloadEstimate")
                 .body("{\"identifier\":\"" + id + "\"}")
-            .when().post("/").then().statusCode(404).body("__type", containsString("ResourceNotFoundException"));
+            .when().post("/").then().statusCode(400).body("__type", containsString("ResourceNotFoundException"));
+    }
+
+    @Test
+    void createAcceptsUpToTwoHundredTagsAndRejectsMore() {
+        java.util.Map<String, String> tags = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < 200; i++) {
+            tags.put("tag" + i, "value");
+        }
+        given().contentType(CONTENT_TYPE).header("X-Amz-Target", TARGET + "CreateWorkloadEstimate")
+                .body(java.util.Map.of("name", "two-hundred-tags", "tags", tags))
+            .when().post("/").then().statusCode(200);
+
+        tags.put("tag200", "value");
+        given().contentType(CONTENT_TYPE).header("X-Amz-Target", TARGET + "CreateWorkloadEstimate")
+                .body(java.util.Map.of("name", "too-many-tags", "tags", tags))
+            .when().post("/").then().statusCode(400)
+                .body("__type", containsString("ValidationException"));
     }
 
 }
