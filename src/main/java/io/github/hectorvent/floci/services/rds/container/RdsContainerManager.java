@@ -381,6 +381,13 @@ public class RdsContainerManager {
         }
     }
 
+    /** Returns whether a backing RDS container still exists and is running. */
+    public boolean isContainerRunning(String containerId) {
+        return containerId != null
+                && !containerId.isBlank()
+                && lifecycleManager.isContainerRunning(containerId);
+    }
+
     /** Returns the retained runtime handle used to persist cleanup identity after a failed start. */
     public RdsContainerHandle getActiveHandle(String runtimeId) {
         if (runtimeId == null || runtimeId.isBlank()) {
