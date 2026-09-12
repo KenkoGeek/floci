@@ -3,6 +3,7 @@ package com.floci.test;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.services.macie2.Macie2Client;
+import software.amazon.awssdk.services.macie2.model.CreateMemberResponse;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
@@ -35,7 +36,7 @@ class MacieOrganizationAdministrationTest {
 
             assertThat(administrator.describeOrganizationConfiguration(request -> {}).autoEnable()).isTrue();
 
-            var member = administrator.createMember(request -> request
+            CreateMemberResponse member = administrator.createMember(request -> request
                     .account(account -> account.accountId(MEMBER_ACCOUNT).email("member@example.com"))
                     .tags(java.util.Map.of("team", "security")));
             assertThat(member.arn())
@@ -44,6 +45,7 @@ class MacieOrganizationAdministrationTest {
                     .anySatisfy(account -> {
                         assertThat(account.accountId()).isEqualTo(MEMBER_ACCOUNT);
                         assertThat(account.administratorAccountId()).isEqualTo(ADMIN_ACCOUNT);
+                        assertThat(account.masterAccountId()).isEqualTo(ADMIN_ACCOUNT);
                         assertThat(account.relationshipStatusAsString()).isEqualTo("Enabled");
                     });
         }

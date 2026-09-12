@@ -7,11 +7,13 @@ import io.github.hectorvent.floci.services.macie2.model.MacieState;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -109,6 +111,51 @@ class MacieServiceTest {
     }
 
     @Test
+    void memberCannotBeAssociatedWithDifferentAdministrator() {
+        AccountAwareStorageBackend<MacieState> states = AccountAwareStorageBackend.inMemory(MANAGEMENT_ACCOUNT);
+        AccountAwareStorageBackend<MacieMember> members = AccountAwareStorageBackend.inMemory(MANAGEMENT_ACCOUNT);
+        MacieService localService = new MacieService(states, members);
+
+        localService.enableMacie(REGION);
+        localService.createMember(
+                REGION, MANAGEMENT_ACCOUNT, "333333333333", "member@example.com", Map.of());
+
+        MacieState secondAdmin = new MacieState();
+        secondAdmin.setEnabled(true);
+        secondAdmin.setAdminAccountId(ADMIN_ACCOUNT);
+        states.putForAccount(ADMIN_ACCOUNT, REGION, secondAdmin);
+
+        AwsException error = assertThrows(AwsException.class,
+                () -> localService.createMember(
+                        REGION, ADMIN_ACCOUNT, "333333333333", "member@example.com", Map.of()));
+
+        assertEquals("ConflictException", error.getErrorCode());
+    }
+
+    @Test
+    void listMembersPaginatesAndValidatesNextToken() {
+        service.enableOrganizationAdminAccount(REGION, ADMIN_ACCOUNT);
+        service.createMember(REGION, ADMIN_ACCOUNT, "333333333331", "one@example.com", Map.of());
+        service.createMember(REGION, ADMIN_ACCOUNT, "333333333332", "two@example.com", Map.of());
+        service.createMember(REGION, ADMIN_ACCOUNT, "333333333333", "three@example.com", Map.of());
+
+        MacieService.Page<MacieMember> first = service.listMembers(
+                REGION, ADMIN_ACCOUNT, "2", null, null);
+        assertEquals(List.of("333333333331", "333333333332"),
+                first.items().stream().map(MacieMember::accountId).toList());
+        assertTrue(first.nextToken() != null && !first.nextToken().isBlank());
+
+        MacieService.Page<MacieMember> second = service.listMembers(
+                REGION, ADMIN_ACCOUNT, "2", first.nextToken(), null);
+        assertEquals(List.of("333333333333"), second.items().stream().map(MacieMember::accountId).toList());
+        assertNull(second.nextToken());
+
+        AwsException error = assertThrows(AwsException.class,
+                () -> service.listMembers(REGION, ADMIN_ACCOUNT, "2", "not-base64", null));
+        assertEquals("ValidationException", error.getErrorCode());
+    }
+
+    @Test
     void createMemberValidatesAccountEmailAndTagQuota() {
         service.enableOrganizationAdminAccount(REGION, ADMIN_ACCOUNT);
 
@@ -118,7 +165,7 @@ class MacieServiceTest {
         assertEquals("ValidationException", assertThrows(AwsException.class,
                 () -> service.createMember(REGION, ADMIN_ACCOUNT, "333333333333", "not-an-email", Map.of()))
                 .getErrorCode());
-        Map<String, String> tooManyTags = new java.util.LinkedHashMap<>();
+        Map<String, String> tooManyTags = new LinkedHashMap<>();
         for (int i = 0; i < 51; i++) {
             tooManyTags.put("k" + i, "v");
         }

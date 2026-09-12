@@ -10,6 +10,7 @@ import java.util.Map;
 public record MacieMember(
         String accountId,
         String administratorAccountId,
+        String masterAccountId,
         String arn,
         String email,
         String invitedAt,

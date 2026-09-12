@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.nullValue;
 
 @QuarkusTest
 class MacieOrganizationIntegrationTest {
@@ -70,7 +71,8 @@ class MacieOrganizationIntegrationTest {
                 .body("members", hasSize(1))
                 .body("members[0].accountId", equalTo("444444444444"))
                 .body("members[0].administratorAccountId", equalTo(ADMIN_ACCOUNT))
-                .body("members[0].email", org.hamcrest.Matchers.nullValue())
+                .body("members[0].masterAccountId", equalTo(ADMIN_ACCOUNT))
+                .body("members[0].email", nullValue())
                 .body("members[0].relationshipStatus", equalTo("Enabled"))
                 .body("members[0].tags.team", equalTo("security"));
     }

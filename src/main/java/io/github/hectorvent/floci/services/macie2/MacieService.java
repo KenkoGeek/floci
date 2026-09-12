@@ -108,12 +108,19 @@ public class MacieService implements Resettable {
         if (members.getForAccount(callerAccountId, key).isPresent()) {
             throw conflict("The account is already associated with this Macie administrator account.");
         }
+        boolean associatedWithDifferentAdministrator = members.scanAllAccounts().stream()
+                .anyMatch(member -> memberAccountId.equals(member.accountId())
+                        && !callerAccountId.equals(member.administratorAccountId()));
+        if (associatedWithDifferentAdministrator) {
+            throw conflict("The account is already associated with a different Macie administrator account.");
+        }
 
         boolean organizationAdministrator = callerAccountId.equals(callerState.getAdminAccountId());
         String now = Instant.now().toString();
         String arn = "arn:aws:macie2:" + region + ":" + callerAccountId + ":member/" + memberAccountId;
         MacieMember member = new MacieMember(
                 memberAccountId,
+                callerAccountId,
                 callerAccountId,
                 arn,
                 organizationAdministrator ? null : email,
@@ -198,7 +205,8 @@ public class MacieService implements Resettable {
     }
 
     private static String encodeOffset(int offset) {
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(Integer.toString(offset).getBytes(StandardCharsets.UTF_8));
+        return Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(Integer.toString(offset).getBytes(StandardCharsets.UTF_8));
     }
 
     private static String memberKey(String region, String accountId) {
