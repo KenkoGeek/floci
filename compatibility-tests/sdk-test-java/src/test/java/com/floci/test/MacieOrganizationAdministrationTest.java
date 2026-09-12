@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assumptions.assumeFalse;
 class MacieOrganizationAdministrationTest {
     private static final String MANAGEMENT_ACCOUNT = "222222222222";
     private static final String ADMIN_ACCOUNT = "111111111111";
+    private static final String MEMBER_ACCOUNT = "333333333333";
 
     @Test
     @DisplayName("uses AWS SDK models for delegated administration and organization configuration")
@@ -33,6 +34,18 @@ class MacieOrganizationAdministrationTest {
             administrator.updateOrganizationConfiguration(request -> request.autoEnable(true));
 
             assertThat(administrator.describeOrganizationConfiguration(request -> {}).autoEnable()).isTrue();
+
+            var member = administrator.createMember(request -> request
+                    .account(account -> account.accountId(MEMBER_ACCOUNT).email("member@example.com"))
+                    .tags(java.util.Map.of("team", "security")));
+            assertThat(member.arn())
+                    .isEqualTo("arn:aws:macie2:us-east-1:" + ADMIN_ACCOUNT + ":member/" + MEMBER_ACCOUNT);
+            assertThat(administrator.listMembers(request -> request.onlyAssociated("true")).members())
+                    .anySatisfy(account -> {
+                        assertThat(account.accountId()).isEqualTo(MEMBER_ACCOUNT);
+                        assertThat(account.administratorAccountId()).isEqualTo(ADMIN_ACCOUNT);
+                        assertThat(account.relationshipStatusAsString()).isEqualTo("Enabled");
+                    });
         }
     }
 }

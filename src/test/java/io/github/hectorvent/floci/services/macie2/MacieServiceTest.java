@@ -2,9 +2,13 @@ package io.github.hectorvent.floci.services.macie2;
 
 import io.github.hectorvent.floci.core.common.AwsException;
 import io.github.hectorvent.floci.core.storage.AccountAwareStorageBackend;
+import io.github.hectorvent.floci.services.macie2.model.MacieMember;
 import io.github.hectorvent.floci.services.macie2.model.MacieState;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -20,7 +24,9 @@ class MacieServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new MacieService(AccountAwareStorageBackend.inMemory(MANAGEMENT_ACCOUNT));
+        service = new MacieService(
+                AccountAwareStorageBackend.inMemory(MANAGEMENT_ACCOUNT),
+                AccountAwareStorageBackend.inMemory(MANAGEMENT_ACCOUNT));
     }
 
     @Test
@@ -58,6 +64,68 @@ class MacieServiceTest {
         AwsException error = assertThrows(AwsException.class,
                 () -> service.enableOrganizationAdminAccount(REGION, "333333333333"));
         assertEquals("ConflictException", error.getErrorCode());
+    }
+
+
+    @Test
+    void delegatedAdministratorCreatesEnabledMember() {
+        service.enableOrganizationAdminAccount(REGION, ADMIN_ACCOUNT);
+
+        MacieMember member = service.createMember(
+                REGION, ADMIN_ACCOUNT, "333333333333", "member@example.com", Map.of("team", "security"));
+
+        assertEquals("Enabled", member.relationshipStatus());
+        assertEquals("arn:aws:macie2:us-east-1:111111111111:member/333333333333", member.arn());
+        assertEquals("security", member.tags().get("team"));
+        List<MacieMember> members = service.listMembers(REGION, ADMIN_ACCOUNT, null, null, null).items();
+        assertEquals(1, members.size());
+        assertEquals("333333333333", members.getFirst().accountId());
+    }
+
+    @Test
+    void standaloneAdministratorCreatesAssociationExcludedFromDefaultMemberList() {
+        service.enableMacie(REGION);
+
+        service.createMember(
+                REGION, MANAGEMENT_ACCOUNT, "333333333333", "member@example.com", Map.of());
+
+        assertTrue(service.listMembers(REGION, MANAGEMENT_ACCOUNT, null, null, null).items().isEmpty());
+        List<MacieMember> all = service.listMembers(
+                REGION, MANAGEMENT_ACCOUNT, null, null, "false").items();
+        assertEquals(1, all.size());
+        assertEquals("Created", all.getFirst().relationshipStatus());
+    }
+
+    @Test
+    void duplicateMemberAssociationIsConflict() {
+        service.enableOrganizationAdminAccount(REGION, ADMIN_ACCOUNT);
+        service.createMember(REGION, ADMIN_ACCOUNT, "333333333333", "member@example.com", Map.of());
+
+        AwsException error = assertThrows(AwsException.class,
+                () -> service.createMember(
+                        REGION, ADMIN_ACCOUNT, "333333333333", "member@example.com", Map.of()));
+
+        assertEquals("ConflictException", error.getErrorCode());
+    }
+
+    @Test
+    void createMemberValidatesAccountEmailAndTagQuota() {
+        service.enableOrganizationAdminAccount(REGION, ADMIN_ACCOUNT);
+
+        assertEquals("ValidationException", assertThrows(AwsException.class,
+                () -> service.createMember(REGION, ADMIN_ACCOUNT, "bad", "member@example.com", Map.of()))
+                .getErrorCode());
+        assertEquals("ValidationException", assertThrows(AwsException.class,
+                () -> service.createMember(REGION, ADMIN_ACCOUNT, "333333333333", "not-an-email", Map.of()))
+                .getErrorCode());
+        Map<String, String> tooManyTags = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < 51; i++) {
+            tooManyTags.put("k" + i, "v");
+        }
+        assertEquals("ValidationException", assertThrows(AwsException.class,
+                () -> service.createMember(
+                        REGION, ADMIN_ACCOUNT, "333333333333", "member@example.com", tooManyTags))
+                .getErrorCode());
     }
 
     @Test

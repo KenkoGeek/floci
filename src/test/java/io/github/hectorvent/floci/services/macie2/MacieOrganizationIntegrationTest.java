@@ -51,6 +51,42 @@ class MacieOrganizationIntegrationTest {
                 .get("/admin/configuration").then().statusCode(200).body("autoEnable", equalTo(true));
     }
 
+
+    @Test
+    void delegatedAdministratorCreatesAndListsOrganizationMember() {
+        given().contentType("application/json").header("Authorization", auth(MANAGEMENT_ACCOUNT, "macie2"))
+                .body("{\"adminAccountId\":\"" + ADMIN_ACCOUNT + "\"}")
+                .post("/admin").then().statusCode(200);
+
+        given().contentType("application/json").header("Authorization", auth(ADMIN_ACCOUNT, "macie2"))
+                .body("{\"account\":{\"accountId\":\"444444444444\","
+                        + "\"email\":\"member@example.com\"},\"tags\":{\"team\":\"security\"}}")
+                .post("/members").then().statusCode(200)
+                .body("arn", equalTo(
+                        "arn:aws:macie2:us-east-1:" + ADMIN_ACCOUNT + ":member/444444444444"));
+
+        given().header("Authorization", auth(ADMIN_ACCOUNT, "macie2"))
+                .get("/members").then().statusCode(200)
+                .body("members", hasSize(1))
+                .body("members[0].accountId", equalTo("444444444444"))
+                .body("members[0].administratorAccountId", equalTo(ADMIN_ACCOUNT))
+                .body("members[0].email", org.hamcrest.Matchers.nullValue())
+                .body("members[0].relationshipStatus", equalTo("Enabled"))
+                .body("members[0].tags.team", equalTo("security"));
+    }
+
+    @Test
+    void listMembersRejectsInvalidOnlyAssociatedValue() {
+        given().contentType("application/json").header("Authorization", auth(MANAGEMENT_ACCOUNT, "macie2"))
+                .body("{\"adminAccountId\":\"" + ADMIN_ACCOUNT + "\"}")
+                .post("/admin").then().statusCode(200);
+
+        given().header("Authorization", auth(ADMIN_ACCOUNT, "macie2"))
+                .queryParam("onlyAssociated", "maybe")
+                .get("/members").then().statusCode(400)
+                .body("__type", equalTo("ValidationException"));
+    }
+
     @Test
     void sharedAdminRouteKeepsGuardDutyBehavior() {
         given().header("Authorization", auth(GUARDDUTY_ACCOUNT, "guardduty"))
