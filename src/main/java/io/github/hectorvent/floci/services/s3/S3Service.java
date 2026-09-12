@@ -71,9 +71,9 @@ public class S3Service implements Resettable, ResourceProvider {
 
     private static final Logger LOG = Logger.getLogger(S3Service.class);
 
-    record RequestAuthorization(boolean signed, String accessKeyId) {
+    record RequestAuthorization(boolean signed, String accessKeyId, String sessionToken) {
         static RequestAuthorization unsigned() {
-            return new RequestAuthorization(false, null);
+            return new RequestAuthorization(false, null, null);
         }
     }
 
@@ -852,7 +852,7 @@ public class S3Service implements Resettable, ResourceProvider {
         RequestAuthorization requestAuthorization = authorization != null
                 ? authorization
                 : RequestAuthorization.unsigned();
-        if (requestAuthorization.signed() && !isKnownAccessKey(requestAuthorization.accessKeyId())) {
+        if (requestAuthorization.signed() && !isKnownAccessKey(requestAuthorization)) {
             throw new AwsException("InvalidAccessKeyId",
                     "The AWS Access Key Id you provided does not exist in our records.", 403);
         }
@@ -878,7 +878,7 @@ public class S3Service implements Resettable, ResourceProvider {
                 : RequestAuthorization.unsigned();
 
         if (requestAuthorization.signed()) {
-            if (isKnownAccessKey(requestAuthorization.accessKeyId())) {
+            if (isKnownAccessKey(requestAuthorization)) {
                 return;
             }
             throw new AwsException("InvalidAccessKeyId",
@@ -935,14 +935,16 @@ public class S3Service implements Resettable, ResourceProvider {
         return authorization == null || !authorization.signed();
     }
 
-    private boolean isKnownAccessKey(String accessKeyId) {
+    private boolean isKnownAccessKey(RequestAuthorization authorization) {
+        String accessKeyId = authorization != null ? authorization.accessKeyId() : null;
         if (accessKeyId == null || accessKeyId.isBlank()) {
             return false;
         }
         if (LEGACY_ACCESS_KEY_ID.equals(accessKeyId)) {
             return true;
         }
-        return iamService != null && iamService.findSecretKey(accessKeyId).isPresent();
+        return iamService != null
+                && iamService.findSecretKey(accessKeyId, authorization.sessionToken()).isPresent();
     }
 
     private boolean publicBucketAclAllowsRead(Bucket bucket) {
