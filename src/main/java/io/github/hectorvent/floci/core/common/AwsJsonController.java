@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import io.github.hectorvent.floci.services.cloudcontrol.CloudControlJsonHandler;
+import io.github.hectorvent.floci.services.bcmpricingcalculator.BcmPricingCalculatorJsonHandler;
 import io.github.hectorvent.floci.services.cloudwatch.metrics.CloudWatchMetricsJsonHandler;
 import io.github.hectorvent.floci.services.dynamodb.DynamoDbJsonHandler;
 import io.github.hectorvent.floci.services.dynamodb.DynamoDbResponses;
@@ -53,6 +54,7 @@ public class AwsJsonController {
     private final NetworkFirewallJsonHandler networkFirewallJsonHandler;
     private final MarketplaceJsonHandler marketplaceJsonHandler;
     private final VerifiedPermissionsJsonHandler verifiedPermissionsJsonHandler;
+    private final BcmPricingCalculatorJsonHandler bcmPricingCalculatorJsonHandler;
 
     @Inject
     public AwsJsonController(ObjectMapper objectMapper, ResolvedServiceCatalog catalog,
@@ -66,7 +68,8 @@ public class AwsJsonController {
                              SwfJsonHandler swfJsonHandler,
                              NetworkFirewallJsonHandler networkFirewallJsonHandler,
                              MarketplaceJsonHandler marketplaceJsonHandler,
-                             VerifiedPermissionsJsonHandler verifiedPermissionsJsonHandler) {
+                             VerifiedPermissionsJsonHandler verifiedPermissionsJsonHandler,
+                             BcmPricingCalculatorJsonHandler bcmPricingCalculatorJsonHandler) {
         this.objectMapper = objectMapper;
         this.strictBodyReader = objectMapper.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
         this.catalog = catalog;
@@ -82,6 +85,7 @@ public class AwsJsonController {
         this.networkFirewallJsonHandler = networkFirewallJsonHandler;
         this.marketplaceJsonHandler = marketplaceJsonHandler;
         this.verifiedPermissionsJsonHandler = verifiedPermissionsJsonHandler;
+        this.bcmPricingCalculatorJsonHandler = bcmPricingCalculatorJsonHandler;
     }
 
     @POST
@@ -134,6 +138,7 @@ public class AwsJsonController {
                         action, request, region, regionResolver.getAccountId());
                 case "marketplace" -> marketplaceJsonHandler.handle(action, request, region);
                 case "verifiedpermissions" -> verifiedPermissionsJsonHandler.handle(action, request, region);
+                case "bcm-pricing-calculator" -> bcmPricingCalculatorJsonHandler.handle(action, request, region);
                 default -> null;
             };
             // catalog.matchTarget is protocol-agnostic: a JSON 1.1 target

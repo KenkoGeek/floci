@@ -210,6 +210,7 @@ nav:
     - Pricing: services/pricing.md
     - Cost Explorer: services/ce.md
     - Cost and Usage Reports: services/cur.md
+    - BCM Pricing Calculator: services/bcm-pricing-calculator.md
     - BCM Data Exports: services/bcm-data-exports.md
   - Testcontainers:
     - Overview: testcontainers/index.md
