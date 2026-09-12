@@ -575,7 +575,7 @@ class Ec2ServiceTest {
     }
 
     @Test
-    void describeImagesAppliesAwsOwnerAliasesConsistentlyToCatalogImages() {
+    void describeImagesUsesOnlyAwsSupportedOwnerSelectorsForCatalogImages() {
         Ec2ImageCatalog imageCatalog = new Ec2ImageCatalog();
         Ec2Service service = new Ec2Service(mockConfig(true), mock(Ec2ContainerManager.class),
                 mock(Ec2PortForwardManager.class),
@@ -586,10 +586,10 @@ class Ec2ServiceTest {
                 "us-east-1", List.of(), List.of("amazon"), Map.of());
         assertTrue(amazon.stream().anyMatch(image -> "amazon".equals(image.getImageOwnerAlias())));
 
-        List<Image> self = service.describeImages(
-                "us-east-1", List.of(), List.of("self"), Map.of());
-        assertTrue(self.stream().allMatch(image -> "000000000000".equals(image.getOwnerId())));
-        assertTrue(self.stream().noneMatch(image -> "amazon".equals(image.getImageOwnerAlias())));
+        List<Image> unsupportedAlias = service.describeImages(
+                "us-east-1", List.of(), List.of("canonical"), Map.of());
+        assertTrue(unsupportedAlias.isEmpty(),
+                "catalog imageOwnerAlias values must not turn arbitrary owner strings into Owners selectors");
     }
 
     @Test
