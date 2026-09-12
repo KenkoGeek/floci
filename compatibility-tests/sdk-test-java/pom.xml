@@ -517,6 +517,11 @@
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>oam</artifactId>
         </dependency>
+        <!-- BCM Pricing Calculator client -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>bcmpricingcalculator</artifactId>
+        </dependency>
         <!-- SSO credential support (needed for FLOCI_TARGET=aws with SSO profiles) -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>

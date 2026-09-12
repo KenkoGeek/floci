@@ -602,6 +602,8 @@ floci:
       enabled: true
       emit-mode: synchronous
       staging-bucket: floci-cur-staging
+    bcm-pricing-calculator:
+      enabled: true
     bcm-data-exports:
       enabled: true
       emit-mode: synchronous

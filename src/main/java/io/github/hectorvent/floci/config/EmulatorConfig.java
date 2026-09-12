@@ -704,6 +704,7 @@ public interface EmulatorConfig {
         CurServiceConfig cur();
         BcmDataExportsServiceConfig bcmDataExports();
         OamServiceConfig oam();
+        BcmPricingCalculatorServiceConfig bcmPricingCalculator();
         ConfigServiceConfig configservice();
         CloudTrailServiceConfig cloudtrail();
         CloudControlServiceConfig cloudcontrol();
@@ -1924,6 +1925,11 @@ public interface EmulatorConfig {
     }
 
     interface OamServiceConfig {
+        @WithDefault("true")
+        boolean enabled();
+    }
+
+    interface BcmPricingCalculatorServiceConfig {
         @WithDefault("true")
         boolean enabled();
     }

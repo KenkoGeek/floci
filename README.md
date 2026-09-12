@@ -239,7 +239,7 @@ Floci supports local emulation for application services, data services, eventing
 | Databases and caching | RDS, RDS Data API, Neptune, DocumentDB, MemoryDB, ElastiCache |
 | Messaging and transfer | SES, Kinesis, MSK, Amazon MQ, Transfer Family, DataSync, IoT Core, Amazon Connect, Amazon AppIntegrations |
 | Security and governance | AWS Network Firewall, AWS RAM, Service Quotas, WAF v2, GuardDuty, Amazon Inspector, CloudTrail, CloudFront, Resource Groups Tagging API, Resource Explorer 2, CloudHSM v2, Organizations, AWS Account Management, IAM Access Analyzer, IAM Identity Center (SSO Admin, OIDC, Access Portal, SCIM), Identity Store, Amazon Macie, Amazon Detective, Security Hub, Amazon Verified Permissions, Control Catalog, Control Tower, Service Catalog, AWS Marketplace |
-| Cost and billing | AWS Budgets, Pricing, Cost Explorer, Cost and Usage Reports, BCM Data Exports |
+| Cost and billing | AWS Budgets, Pricing, Cost Explorer, Cost and Usage Reports, BCM Pricing Calculator, BCM Data Exports |
 | Resilience, backup, and config | AWS FIS, AWS Backup, AWS Config, AppConfig, AppConfigData, CloudFormation, Cloud Control API |
 
 For operation-level compatibility, see the [Services Overview](https://floci.io/floci/services/).
@@ -328,6 +328,7 @@ For operation-level compatibility, see the [Services Overview](https://floci.io/
 | Pricing | In-process with static snapshot | Product discovery, attributes, price list files, pagination |
 | Cost Explorer | In-process | Cost synthesized from Floci resource state and pricing snapshots |
 | Cost and Usage Reports | In-process with floci-duck sidecar | CUR 2.0 and FOCUS 1.2 columns, account-scoped storage, Parquet emission |
+| BCM Pricing Calculator | In-process | Workload estimate create, usage pricing, read, and delete lifecycle |
 | BCM Data Exports | In-process | Export lifecycle, executions, update and delete operations |
 
 </details>
