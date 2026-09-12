@@ -1150,6 +1150,39 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
     private static final int LOCK_STRIPES = 512;
     private final Object[] resourceLocks = newLockStripes();
 
+    /** The AMI state a deregistered image is tombstoned with; one of EC2's documented ImageState values. */
+    private static final String DEREGISTERED_STATE = "deregistered";
+
+    /**
+     * Guards the registered-image set. The invariants here span the whole set rather than one
+     * image, so no per-image stripe can express them, and each is decided by a scan that must not
+     * observe a half-applied change from another caller:
+     *
+     * <ul>
+     *   <li>AMI names are unique per region, so registration is a scan-then-insert.</li>
+     *   <li>A snapshot is deleted on deregistration only when no other AMI references it, so
+     *       deletion is a scan-then-delete that must exclude a registration in flight.</li>
+     *   <li>A captured layer is released only when nothing can still launch from it, so the
+     *       decision and the removal must exclude a launch that has resolved the layer but has
+     *       not yet stored its instance.</li>
+     * </ul>
+     *
+     * <p>One monitor rather than a per-region one, because the last of those invariants is not
+     * region-scoped: Docker image references are global to the daemon, so a copy of an AMI in
+     * another region shares the layer with its source.
+     */
+    private final Object imageRegistryLock = new Object();
+
+    /**
+     * The monitor guarding the AMI registry against a launch and a deregistration interleaving.
+     * Exposed package-private so a test can hold it and land a tombstone at a chosen point in a
+     * launch, which is the only deterministic way to exercise that race. A method rather than a
+     * field because the injected bean is a client proxy, through which a field read sees null.
+     */
+    Object imageRegistryLock() {
+        return imageRegistryLock;
+    }
+
     private static Object[] newLockStripes() {
         Object[] stripes = new Object[LOCK_STRIPES];
         for (int i = 0; i < stripes.length; i++) {
@@ -2415,6 +2448,10 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
         if (imageId == null || imageId.isBlank()) {
             throw new AwsException("MissingParameter", "The request must contain the parameter ImageId", 400);
         }
+        // "A deregistered AMI can't be used to launch new instances" (DeregisterImage). The
+        // tombstone stays in the store so instances already launched from it keep resolving
+        // their ancestry, so the launch path has to reject it explicitly.
+        requireNotDeregistered(region, imageId);
         validateMetadataOptions(metadataOptions);
         LaunchTemplateData.MetadataOptions launchMetadataOptions = LaunchTemplateData.MetadataOptions.merge(
                 LaunchTemplateData.MetadataOptions.launchDefaults(), metadataOptions);
@@ -2487,118 +2524,149 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
         validateArchitectureCompatibility(region, imageId, effectiveInstanceType);
         int count = Math.min(maxCount, Math.max(minCount, 1));
         String architecture = architectureFor(region, imageId, effectiveInstanceType);
+        List<Instance> launched = new ArrayList<>();
+        // Resolving the AMI, building the instances that depend on it and publishing them is one
+        // step. A DeregisterImage releases the captured layer only when no live instance resolves
+        // to it, so a launch that had resolved the layer but not yet stored its instance would
+        // otherwise have that layer removed underneath it and start a container from a reference
+        // that no longer exists. Re-checking the tombstone here is part of the same invariant: a
+        // launch that loses the race must be rejected, not quietly demoted to the ancestor image.
+        //
+        // Everything the launch persists lives inside this block, because the check is only
+        // meaningful if nothing has been written before it. A tombstone landing mid-launch used to
+        // leave the rejected launch's root volumes, tags, subnet IP and caller-supplied ENI
+        // attachment behind, since the reservation was never returned and nothing rolled them
+        // back. Building under the lock costs nothing that rollback would not cost more: the work
+        // is in-memory record construction, and the slow part, the container launch, still runs
+        // outside.
         ResolvedAmiImage dockerImage = null;
-        if (!config.services().ec2().mock()) {
-            // A CreateImage AMI is not in the catalog, so resolve through its source.
-            dockerImage = amiImageResolver.resolveImage(resolveLaunchableImageId(region, imageId));
-        }
-        for (int i = 0; i < count; i++) {
-            String instanceId = "i-" + randomHex(17);
-            String privateIp = suppliedEni != null
-                    ? suppliedEni.getPrivateIpAddress()
-                    : assignPrivateIp(region, finalSubnetId);
-
-            Instance inst = new Instance();
-            inst.setInstanceId(instanceId);
-            inst.setImageId(imageId);
-            inst.setState(InstanceState.pending());
-            inst.setInstanceType(effectiveInstanceType);
-            inst.setPlacement(new Placement(az));
-            inst.setSubnetId(finalSubnetId);
-            inst.setVpcId(vpcId);
-            // AWS precedence (#1984): the launch-time AssociatePublicIpAddress
-            // override wins in both directions; the subnet's MapPublicIpOnLaunch
-            // attribute is only the default when the launch does not specify it.
-            inst.setAssociatePublicIp(associatePublicIp != null
-                    ? associatePublicIp
-                    : subnet != null && subnet.isMapPublicIpOnLaunch());
-            inst.setPrivateIpAddress(privateIp);
-            inst.setPrivateDnsName("ip-" + privateIp.replace('.', '-') + ".ec2.internal");
-            inst.setKeyName(keyName);
-            inst.setSecurityGroups(new ArrayList<>(sgIdentifiers));
-            inst.setArchitecture(architecture);
-            inst.setLaunchTime(Instant.now());
-            inst.setAmiLaunchIndex(i);
-            inst.setClientToken(clientToken);
-            inst.setRegion(region);
-            inst.setUserData(userData);
-            inst.setIamInstanceProfileArn(iamInstanceProfileArn);
-            inst.setMetadataOptions(LaunchTemplateData.MetadataOptions.merge(launchMetadataOptions, null));
-            if (instanceTags != null && !instanceTags.isEmpty()) {
-                inst.setTags(new ArrayList<>(instanceTags));
-                tags.put(instanceId, new ArrayList<>(instanceTags));
-            }
-
-            // Network interface, either the caller-supplied standalone ENI (override-default-eni,
-            // floci-kt9) or a freshly-minted implicit primary interface.
-            InstanceNetworkInterface eni = new InstanceNetworkInterface();
-            eni.setNetworkInterfaceId(suppliedEni != null ? suppliedEni.getNetworkInterfaceId() : "eni-" + randomHex(17));
-            eni.setSubnetId(finalSubnetId);
-            eni.setVpcId(vpcId);
-            eni.setOwnerId(accountId);
-            eni.setDescription(suppliedEni != null ? suppliedEni.getDescription() : null);
-            eni.setMacAddress(suppliedEni != null ? suppliedEni.getMacAddress() : null);
-            eni.setPrivateIpAddress(privateIp);
-            eni.setPrivateDnsName(inst.getPrivateDnsName());
-            eni.setGroups(new ArrayList<>(sgIdentifiers));
-            eni.setAttachmentId("eni-attach-" + randomHex(17));
-            eni.setDeviceIndex(suppliedEni != null ? networkInterfaceDeviceIndex : 0);
-            if (inst.getLaunchTime() != null) {
-                eni.setAttachTime(ISO_FMT.format(inst.getLaunchTime()));
-            }
-            inst.getNetworkInterfaces().add(eni);
-            if (suppliedEni != null) {
-                // The standalone record stays authoritative rather than being folded into the
-                // instance: AWS defaults deleteOnTermination to false for an interface the caller
-                // created and handed to a launch, so it outlives the instance and returns to
-                // "available" on termination instead of vanishing with it. Double-counting is
-                // avoided in describeNetworkInterfaces, which skips the instance-side copy of any
-                // id the standalone store owns.
-                NetworkInterfaceAttachment launchAttachment = new NetworkInterfaceAttachment();
-                launchAttachment.setAttachmentId(eni.getAttachmentId());
-                launchAttachment.setDeviceIndex(eni.getDeviceIndex());
-                launchAttachment.setStatus("attached");
-                launchAttachment.setInstanceId(instanceId);
-                launchAttachment.setInstanceOwnerId(accountId);
-                launchAttachment.setAttachTime(eni.getAttachTime());
-                launchAttachment.setDeleteOnTermination(false);
-                suppliedEni.setAttachment(launchAttachment);
-                suppliedEni.setStatus("in-use");
-                networkInterfaces.put(key(region, suppliedEni.getNetworkInterfaceId()), suppliedEni);
-            }
-
-            // Root EBS volume
-            String rootVolId = "vol-" + randomHex(17);
-            inst.setRootVolumeId(rootVolId);
-            Volume rootVol = new Volume();
-            rootVol.setVolumeId(rootVolId);
-            rootVol.setAvailabilityZone(az);
-            rootVol.setVolumeType(DEFAULT_ROOT_VOLUME_TYPE);
-            rootVol.setSize(DEFAULT_ROOT_VOLUME_SIZE_GIB);
-            rootVol.setState("in-use");
-            rootVol.setRegion(region);
-            rootVol.setCreateTime(Instant.now());
-            VolumeAttachment att = new VolumeAttachment();
-            att.setVolumeId(rootVolId);
-            att.setInstanceId(instanceId);
-            att.setDevice(inst.getRootDeviceName());
-            att.setState("attached");
-            att.setDeleteOnTermination(true);
-            att.setAttachTime(Instant.now());
-            rootVol.getAttachments().add(att);
-            volumes.put(key(region, rootVolId), rootVol);
-
-            instances.put(key(region, instanceId), inst);
-            reservation.getInstances().add(inst);
-
+        synchronized (imageRegistryLock) {
+            requireNotDeregistered(region, imageId);
             if (!config.services().ec2().mock()) {
-                String publicKey = null;
-                if (keyName != null) {
-                    KeyPair kp = findKeyPair(region, keyName);
-                    if (kp != null) {
-                        publicKey = kp.getPublicKey();
-                    }
+                // A CreateImage AMI is not in the catalog, so resolve through its source. The
+                // ancestor supplies the guest runtime (systemd vs minimal, cloud-init), which a
+                // committed layer does not change; the captured file system, when there is one,
+                // then replaces the image to actually run.
+                dockerImage = amiImageResolver.resolveImage(resolveLaunchableImageId(region, imageId));
+                String captured = capturedImageFor(region, imageId);
+                if (captured != null) {
+                    dockerImage = new ResolvedAmiImage(captured, dockerImage.guestRuntime(),
+                            dockerImage.cloudInit(), dockerImage.dockerPlatform());
                 }
+            }
+            for (int i = 0; i < count; i++) {
+                String instanceId = "i-" + randomHex(17);
+                String privateIp = suppliedEni != null
+                        ? suppliedEni.getPrivateIpAddress()
+                        : assignPrivateIp(region, finalSubnetId);
+
+                Instance inst = new Instance();
+                inst.setInstanceId(instanceId);
+                inst.setImageId(imageId);
+                inst.setState(InstanceState.pending());
+                inst.setInstanceType(effectiveInstanceType);
+                inst.setPlacement(new Placement(az));
+                inst.setSubnetId(finalSubnetId);
+                inst.setVpcId(vpcId);
+                // AWS precedence (#1984): the launch-time AssociatePublicIpAddress
+                // override wins in both directions; the subnet's MapPublicIpOnLaunch
+                // attribute is only the default when the launch does not specify it.
+                inst.setAssociatePublicIp(associatePublicIp != null
+                        ? associatePublicIp
+                        : subnet != null && subnet.isMapPublicIpOnLaunch());
+                inst.setPrivateIpAddress(privateIp);
+                inst.setPrivateDnsName("ip-" + privateIp.replace('.', '-') + ".ec2.internal");
+                inst.setKeyName(keyName);
+                inst.setSecurityGroups(new ArrayList<>(sgIdentifiers));
+                inst.setArchitecture(architecture);
+                inst.setLaunchTime(Instant.now());
+                inst.setAmiLaunchIndex(i);
+                inst.setClientToken(clientToken);
+                inst.setRegion(region);
+                inst.setUserData(userData);
+                inst.setIamInstanceProfileArn(iamInstanceProfileArn);
+                inst.setMetadataOptions(LaunchTemplateData.MetadataOptions.merge(launchMetadataOptions, null));
+                if (instanceTags != null && !instanceTags.isEmpty()) {
+                    inst.setTags(new ArrayList<>(instanceTags));
+                    tags.put(instanceId, new ArrayList<>(instanceTags));
+                }
+
+                // Network interface, either the caller-supplied standalone ENI (override-default-eni,
+                // floci-kt9) or a freshly-minted implicit primary interface.
+                InstanceNetworkInterface eni = new InstanceNetworkInterface();
+                eni.setNetworkInterfaceId(suppliedEni != null ? suppliedEni.getNetworkInterfaceId() : "eni-" + randomHex(17));
+                eni.setSubnetId(finalSubnetId);
+                eni.setVpcId(vpcId);
+                eni.setOwnerId(accountId);
+                eni.setDescription(suppliedEni != null ? suppliedEni.getDescription() : null);
+                eni.setMacAddress(suppliedEni != null ? suppliedEni.getMacAddress() : null);
+                eni.setPrivateIpAddress(privateIp);
+                eni.setPrivateDnsName(inst.getPrivateDnsName());
+                eni.setGroups(new ArrayList<>(sgIdentifiers));
+                eni.setAttachmentId("eni-attach-" + randomHex(17));
+                eni.setDeviceIndex(suppliedEni != null ? networkInterfaceDeviceIndex : 0);
+                if (inst.getLaunchTime() != null) {
+                    eni.setAttachTime(ISO_FMT.format(inst.getLaunchTime()));
+                }
+                inst.getNetworkInterfaces().add(eni);
+                if (suppliedEni != null) {
+                    // The standalone record stays authoritative rather than being folded into the
+                    // instance: AWS defaults deleteOnTermination to false for an interface the caller
+                    // created and handed to a launch, so it outlives the instance and returns to
+                    // "available" on termination instead of vanishing with it. Double-counting is
+                    // avoided in describeNetworkInterfaces, which skips the instance-side copy of any
+                    // id the standalone store owns.
+                    NetworkInterfaceAttachment launchAttachment = new NetworkInterfaceAttachment();
+                    launchAttachment.setAttachmentId(eni.getAttachmentId());
+                    launchAttachment.setDeviceIndex(eni.getDeviceIndex());
+                    launchAttachment.setStatus("attached");
+                    launchAttachment.setInstanceId(instanceId);
+                    launchAttachment.setInstanceOwnerId(accountId);
+                    launchAttachment.setAttachTime(eni.getAttachTime());
+                    launchAttachment.setDeleteOnTermination(false);
+                    suppliedEni.setAttachment(launchAttachment);
+                    suppliedEni.setStatus("in-use");
+                    networkInterfaces.put(key(region, suppliedEni.getNetworkInterfaceId()), suppliedEni);
+                }
+
+                // Root EBS volume
+                String rootVolId = "vol-" + randomHex(17);
+                inst.setRootVolumeId(rootVolId);
+                Volume rootVol = new Volume();
+                rootVol.setVolumeId(rootVolId);
+                rootVol.setAvailabilityZone(az);
+                rootVol.setVolumeType(DEFAULT_ROOT_VOLUME_TYPE);
+                rootVol.setSize(DEFAULT_ROOT_VOLUME_SIZE_GIB);
+                rootVol.setState("in-use");
+                rootVol.setRegion(region);
+                rootVol.setCreateTime(Instant.now());
+                VolumeAttachment att = new VolumeAttachment();
+                att.setVolumeId(rootVolId);
+                att.setInstanceId(instanceId);
+                att.setDevice(inst.getRootDeviceName());
+                att.setState("attached");
+                att.setDeleteOnTermination(true);
+                att.setAttachTime(Instant.now());
+                rootVol.getAttachments().add(att);
+                volumes.put(key(region, rootVolId), rootVol);
+
+                instances.put(key(region, instanceId), inst);
+                launched.add(inst);
+                reservation.getInstances().add(inst);
+            }
+        }
+
+        // Outside the lock: the containers are what the lock protects a reference to, not part of
+        // the registry, and a launch is slow.
+        if (!config.services().ec2().mock()) {
+            String publicKey = null;
+            if (keyName != null) {
+                KeyPair kp = findKeyPair(region, keyName);
+                if (kp != null) {
+                    publicKey = kp.getPublicKey();
+                }
+            }
+            for (Instance inst : launched) {
                 containerManager.launch(inst, dockerImage, publicKey, region, desiredPublishedPorts(region, inst));
             }
         }
@@ -2842,6 +2910,8 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
             }
             releaseStandaloneInterfacesOnTermination(region, inst);
             instances.put(key(region, id), inst);
+            // The last instance depending on a deregistered AMI's capture has just gone away.
+            reclaimCapturesPinnedBy(region, inst);
             Map<String, String> entry = new LinkedHashMap<>();
             entry.put("instanceId", id);
             entry.put("previousState", prev.getName());
@@ -4217,6 +4287,9 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
                 .collect(Collectors.toList());
         List<Image> createdImages = registeredImages.scan(k -> true).stream()
                 .filter(img -> region.equals(img.getRegion()))
+                // A deregistered AMI is retained only as a tombstone, so that ancestry and
+                // repeat-deregistration still resolve; DescribeImages must not report it.
+                .filter(img -> !DEREGISTERED_STATE.equals(img.getState()))
                 .filter(img -> matchesImageIds(img, imageIds))
                 .filter(img -> matchesImageOwners(img, owners))
                 .filter(img -> matchesRegisteredImageFilters(img, filters))
@@ -4287,10 +4360,59 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
                 captureBlockDeviceMappings(region, source, sourceImage));
 
         // Carry the launchable ancestor so RunInstances on this AMI starts the same guest instead
-        // of falling through to the catalog default.
+        // of falling through to the catalog default. This is also the fallback when the file
+        // system cannot be captured below.
         image.setSourceImageId(resolveLaunchableImageId(region, source.getImageId()));
+
+        // Capture the instance's file system. Without this the AMI is a metadata record that
+        // launches the *base* image, so everything provisioned on the source instance is
+        // silently discarded -- a Packer build reports success and produces an empty artifact.
+        //
+        // A capture that cannot be made fails the call rather than producing an AMI that reports
+        // itself available and boots the ancestor: Floci commits inline, so there is no later
+        // state transition a caller could observe, and an accepted-but-empty AMI is the exact
+        // silent wrongness this capture exists to remove. The half-built AMI is dropped first, so
+        // a retry is not met with InvalidAMIName.Duplicate against a record nobody can see.
+        if (!config.services().ec2().mock()) {
+            image.setDockerImage(captureFileSystem(region, source, image));
+        }
+
         registeredImages.put(key(region, image.getImageId()), image);
         return image;
+    }
+
+    /**
+     * Commits the source instance's container for a CreateImage, discarding the AMI record and
+     * failing the call if it cannot be done.
+     */
+    private String captureFileSystem(String region, Instance source, Image image) {
+        String captured;
+        try {
+            captured = containerManager.commitInstance(source, committedImageTag(image.getImageId()));
+        } catch (Ec2ContainerManager.CaptureFailedException e) {
+            registeredImages.delete(key(region, image.getImageId()));
+            throw new AwsException("InternalError", "Could not create image '" + image.getName()
+                    + "' from instance " + source.getInstanceId()
+                    + ": capturing its file system failed (" + e.getMessage() + ")", 500);
+        }
+        if (captured == null) {
+            // No container: the instance never launched one, or its launch has not got that far.
+            // AWS requires a running or stopped instance for CreateImage and reports anything
+            // else as IncorrectInstanceState, which is the same condition seen from here.
+            registeredImages.delete(key(region, image.getImageId()));
+            throw new AwsException("IncorrectInstanceState", "The instance '"
+                    + source.getInstanceId() + "' is not in a state from which an image can be"
+                    + " created: it has no running container to capture", 400);
+        }
+        return captured;
+    }
+
+    /**
+     * Docker reference for an AMI's captured file system. Keyed by AMI id so it is unique, and
+     * namespaced so these are distinguishable from images Floci did not create.
+     */
+    static String committedImageTag(String imageId) {
+        return "floci-ami/" + imageId + ":latest";
     }
 
     /**
@@ -4399,6 +4521,27 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
     }
 
     /**
+     * The captured file system to launch for an AMI, following the CreateImage chain so an image
+     * captured from an instance that was itself launched from a capture still resolves. Null when
+     * no ancestor in the chain was ever captured, which is the case for catalog and
+     * RegisterImage AMIs.
+     */
+    private String capturedImageFor(String region, String imageId) {
+        String current = imageId;
+        for (int hops = 0; hops < 16 && current != null; hops++) {
+            Image registered = registeredImages.get(key(region, current)).orElse(null);
+            if (registered == null) {
+                return null;
+            }
+            if (registered.getDockerImage() != null) {
+                return registered.getDockerImage();
+            }
+            current = registered.getSourceImageId();
+        }
+        return null;
+    }
+
+    /**
      * Follows CreateImage ancestry back to an id the AMI resolver can map to a guest image.
      * Images from RegisterImage have no source and stop the walk, as does a catalog id.
      */
@@ -4419,8 +4562,26 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
         if (name == null || name.isBlank()) {
             throw new AwsException("MissingParameter", "The request must contain the parameter Name", 400);
         }
+        // The duplicate-name check is a read-modify-write over the whole image store, so two
+        // registrations of the same name racing each other would both see no duplicate and both
+        // insert. Registration also publishes this image's snapshot references, which is what
+        // DeregisterImage scans before deleting a snapshot; both run under the registry lock so
+        // a registration cannot slip between that scan and the delete.
+        synchronized (imageRegistryLock) {
+            return registerImageLocked(region, name, description, architecture, rootDeviceName,
+                    blockDeviceMappings);
+        }
+    }
+
+    private Image registerImageLocked(String region, String name, String description, String architecture,
+                                      String rootDeviceName, List<BlockDeviceMapping> blockDeviceMappings) {
         boolean duplicateName = registeredImages.scan(k -> true).stream()
                 .filter(img -> region.equals(img.getRegion()))
+                // A deregistered AMI no longer holds its name: "If you have recently deregistered
+                // an AMI with the same name, allow enough time for the change to propagate"
+                // (InvalidAMIName.Duplicate). Floci has no propagation delay, so the name is free
+                // immediately -- which is what Packer's force_deregister then rebuild relies on.
+                .filter(img -> !DEREGISTERED_STATE.equals(img.getState()))
                 .anyMatch(img -> name.equals(img.getName()));
         if (duplicateName) {
             throw new AwsException("InvalidAMIName.Duplicate",
@@ -4452,6 +4613,246 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
             }
         }
         return image;
+    }
+
+    /**
+     * DeregisterImage. AWS: "Deregisters the specified AMI. A deregistered AMI can't be used to
+     * launch new instances", and explicitly does not delete "Instances already launched from the
+     * AMI". The image is therefore tombstoned with the AMI state {@code deregistered} rather than
+     * dropped from the store: DescribeImages stops reporting it and its name is released, while
+     * an instance launched from it keeps resolving its ancestry to a guest image (so a stop/start
+     * still comes back on the right image) and a second deregistration can be told apart from a
+     * never-existed id.
+     *
+     * <p>Snapshots are kept by default -- "Default: The snapshots are not deleted" -- and deleted
+     * only when {@code DeleteAssociatedSnapshots} is set, minus any snapshot still referenced by
+     * another AMI: "if a snapshot is associated with multiple AMIs, it won't be deleted even if
+     * specified for deletion, although the AMI will still be deregistered."
+     *
+     * @return the per-snapshot deletion results, empty when deletion was not requested
+     * @see <a href="https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DeregisterImage.html">DeregisterImage</a>
+     */
+    public List<SnapshotDeletion> deregisterImage(String region, String imageId,
+                                                  boolean deleteAssociatedSnapshots) {
+        if (imageId == null || imageId.isBlank()) {
+            throw new AwsException("MissingParameter", "The request must contain the parameter ImageId", 400);
+        }
+        synchronized (imageRegistryLock) {
+            Image image = registeredImages.get(key(region, imageId)).orElse(null);
+            if (image == null) {
+                // A catalog AMI is owned by amazon, not by the caller. AWS reports an attempt to
+                // act on someone else's AMI as AuthFailure ("trying to use an AMI for which you do
+                // not have permissions"), not as a missing image.
+                if (imageCatalog.findByIdOrAlias(imageId).isPresent()) {
+                    throw new AwsException("AuthFailure",
+                            "Not authorized for images: [" + imageId + "]", 400);
+                }
+                throw new AwsException("InvalidAMIID.NotFound",
+                        "The image id '[" + imageId + "]' does not exist", 400);
+            }
+            if (DEREGISTERED_STATE.equals(image.getState())) {
+                throw new AwsException("InvalidAMIID.Unavailable",
+                        "The image id '[" + imageId + "]' has been deregistered and is no longer available", 400);
+            }
+            image.setState(DEREGISTERED_STATE);
+            reclaimCapturedImage(image, null);
+            registeredImages.put(key(region, imageId), image);
+            return deleteAssociatedSnapshots ? deleteSnapshotsOf(region, image) : List.of();
+        }
+    }
+
+    /**
+     * Releases the Docker image holding a deregistered AMI's captured file system, so repeated
+     * builds of the same AMI name do not accumulate one committed layer each.
+     *
+     * <p>Skipped while any live instance still resolves to that capture, and while any other AMI
+     * still carries the same reference (a CopyImage of a captured AMI shares the layer with its
+     * source). AWS keeps instances launched from a deregistered AMI running and lets them stop
+     * and start again, so the layer has to outlive the AMI record whenever something can still
+     * boot from it. The tombstone keeps its dockerImage in that case, and the capture is simply
+     * not reclaimed -- correctness before disk.
+     *
+     * <p>Both scans cross regions, because a Docker reference is global to the daemon: an AMI
+     * copied to another region, and instances launched from that copy, share this layer.
+     *
+     * <p>Callers must hold {@link #imageRegistryLock}.
+     *
+     * @param excludedInstanceId an instance not to count as a live dependant, used by the
+     *                           terminate path where the store still reads the instance as
+     *                           running while its container is being torn down; null to count
+     *                           every live instance
+     * @return true when the reference was released, so the caller knows to store the change
+     */
+    private boolean reclaimCapturedImage(Image image, String excludedInstanceId) {
+        String captured = image.getDockerImage();
+        if (captured == null || config.services().ec2().mock()) {
+            return false;
+        }
+        boolean sharedWithAnotherImage = registeredImages.scan(k -> true).stream()
+                .filter(other -> !image.getImageId().equals(other.getImageId()))
+                .filter(other -> !DEREGISTERED_STATE.equals(other.getState()))
+                .anyMatch(other -> captured.equals(other.getDockerImage()));
+        if (sharedWithAnotherImage) {
+            LOG.infov("Keeping captured image {0}: another AMI still carries it", captured);
+            return false;
+        }
+        boolean stillLaunchable = instances.scan(i -> true).stream()
+                .filter(i -> i.getRegion() != null && !i.getInstanceId().equals(excludedInstanceId))
+                .filter(i -> i.getState() != null && !"terminated".equals(i.getState().getName()))
+                .anyMatch(i -> captured.equals(capturedImageFor(i.getRegion(), i.getImageId())));
+        if (stillLaunchable) {
+            LOG.infov("Keeping captured image {0}: an instance can still be launched from it", captured);
+            return false;
+        }
+        // Only forget the reference once the layer is actually gone. Deregistration is rejected
+        // the second time and nothing else can rediscover the tag, so clearing it after a failed
+        // removal would leak the layer for the lifetime of the emulator.
+        if (!containerManager.removeCommittedImage(captured)) {
+            return false;
+        }
+        image.setDockerImage(null);
+        return true;
+    }
+
+    /**
+     * Releases a capture once the instance that was pinning it goes away. Deregistration is the
+     * only other place this runs and it is rejected the second time, so without this a capture
+     * retained for a live instance would never be reclaimed at all.
+     *
+     * <p>Only tombstoned AMIs are considered: while the AMI is still registered its capture is
+     * needed for the next launch.
+     */
+    private void reclaimCapturesPinnedBy(String region, Instance terminated) {
+        if (config.services().ec2().mock()) {
+            return;
+        }
+        String captured = capturedImageFor(region, terminated.getImageId());
+        if (captured == null) {
+            return;
+        }
+        synchronized (imageRegistryLock) {
+            Image holder = registeredImages.scan(k -> true).stream()
+                    .filter(img -> captured.equals(img.getDockerImage()))
+                    .filter(img -> DEREGISTERED_STATE.equals(img.getState()))
+                    .findFirst()
+                    .orElse(null);
+            if (holder != null && reclaimCapturedImage(holder, terminated.getInstanceId())) {
+                registeredImages.put(key(holder.getRegion(), holder.getImageId()), holder);
+            }
+        }
+    }
+
+    /** The deletion outcome DeregisterImage reports for one of the AMI's backing snapshots. */
+    public record SnapshotDeletion(String snapshotId, String returnCode) {}
+
+    private List<SnapshotDeletion> deleteSnapshotsOf(String region, Image image) {
+        List<SnapshotDeletion> results = new ArrayList<>();
+        for (BlockDeviceMapping mapping : image.getBlockDeviceMappings()) {
+            EbsBlockDevice ebs = mapping.getEbs();
+            if (ebs == null || ebs.getSnapshotId() == null) {
+                continue;
+            }
+            String snapshotId = ebs.getSnapshotId();
+            if (snapshotIsSharedWithAnotherImage(region, image.getImageId(), snapshotId)) {
+                results.add(new SnapshotDeletion(snapshotId, "skipped"));
+                continue;
+            }
+            snapshots.delete(key(region, snapshotId));
+            results.add(new SnapshotDeletion(snapshotId, "success"));
+        }
+        return results;
+    }
+
+    private boolean snapshotIsSharedWithAnotherImage(String region, String imageId, String snapshotId) {
+        return registeredImages.scan(k -> true).stream()
+                .filter(other -> region.equals(other.getRegion()))
+                .filter(other -> !imageId.equals(other.getImageId()))
+                .filter(other -> !DEREGISTERED_STATE.equals(other.getState()))
+                .flatMap(other -> other.getBlockDeviceMappings().stream())
+                .map(BlockDeviceMapping::getEbs)
+                .filter(Objects::nonNull)
+                .anyMatch(ebs -> snapshotId.equals(ebs.getSnapshotId()));
+    }
+
+    /**
+     * CopyImage. "The copy operation must be initiated in the destination Region", and for a
+     * Region-to-Region copy "the destination Region is the Region in which you initiate the copy
+     * operation" -- so {@code destinationRegion} is the request's own region and only the source
+     * is looked up under {@code SourceRegion}. The result is an independent AMI: its own id, its
+     * own snapshots, owned by the caller.
+     *
+     * <p>State: AWS reports the new AMI as {@code pending} until the backing snapshots finish
+     * copying. Floci's store is in-memory and the copy completes within the call, so the copy is
+     * {@code available} immediately, consistent with what CreateImage and RegisterImage already
+     * report. A caller that waits for {@code available} therefore returns on its first poll.
+     *
+     * @see <a href="https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CopyImage.html">CopyImage</a>
+     */
+    public Image copyImage(String destinationRegion, String sourceRegion, String sourceImageId,
+                           String name, String description) {
+        if (sourceImageId == null || sourceImageId.isBlank()) {
+            throw new AwsException("MissingParameter", "The request must contain the parameter SourceImageId", 400);
+        }
+        if (sourceRegion == null || sourceRegion.isBlank()) {
+            throw new AwsException("MissingParameter", "The request must contain the parameter SourceRegion", 400);
+        }
+        if (name == null || name.isBlank()) {
+            throw new AwsException("MissingParameter", "The request must contain the parameter Name", 400);
+        }
+
+        // Resolving the source, reading its capture and publishing the copy happen under one
+        // lock, so a DeregisterImage of the source cannot reclaim the captured layer in between
+        // and leave the copy pointing at a Docker reference that no longer exists.
+        synchronized (imageRegistryLock) {
+            // Registered AMIs are keyed by (region, id) and are visible only in their own region,
+            // so the source is resolved against SourceRegion rather than the request's region.
+            // Catalog AMIs are region-independent in Floci and so resolve from either side.
+            Image source = registeredImages.get(key(sourceRegion, sourceImageId)).orElse(null);
+            if (source != null && DEREGISTERED_STATE.equals(source.getState())) {
+                throw new AwsException("InvalidAMIID.Unavailable",
+                        "The image id '[" + sourceImageId + "]' has been deregistered and is no longer available", 400);
+            }
+            if (source == null) {
+                source = imageCatalog.findByIdOrAlias(sourceImageId)
+                        .map(Ec2ImageCatalog.CatalogImage::toImage)
+                        .orElse(null);
+            }
+            if (source == null) {
+                throw new AwsException("InvalidAMIID.NotFound",
+                        "The image id '[" + sourceImageId + "]' does not exist in region " + sourceRegion, 400);
+            }
+
+            // Fresh snapshot ids: two AMIs sharing one snapshot would make deleting either appear
+            // to take the other's backing with it, and the copy's snapshots live in the
+            // destination region anyway.
+            Image copy = registerImage(destinationRegion, name, description, source.getArchitecture(),
+                    source.getRootDeviceName(), sourceImageMappings(source));
+            copy.setVirtualizationType(source.getVirtualizationType());
+            copy.setRootDeviceType(source.getRootDeviceType());
+            copy.setPlatform(source.getPlatform());
+            // The launchable ancestor is resolved in the SOURCE region, since that is where the
+            // chain of CreateImage parents lives; it bottoms out at a catalog id, which is
+            // region-agnostic.
+            copy.setSourceImageId(resolveLaunchableImageId(sourceRegion, sourceImageId));
+            // The captured file system is the point of a CreateImage AMI, and the ancestry the
+            // copy inherits does not carry it: sourceImageId is flattened to a launchable catalog
+            // id, and the chain in between lives in the source region where the copy cannot see
+            // it. Without this the copy launches the base image, which is the same silent
+            // emptiness CreateImage itself used to produce. The layer is shared rather than
+            // duplicated; reclamation accounts for that.
+            copy.setDockerImage(capturedImageFor(sourceRegion, sourceImageId));
+            registeredImages.put(key(destinationRegion, copy.getImageId()), copy);
+            return copy;
+        }
+    }
+
+    /** Rejects an AMI id that has been deregistered; unknown ids fall through to the resolver. */
+    private void requireNotDeregistered(String region, String imageId) {
+        Image image = registeredImages.get(key(region, imageId)).orElse(null);
+        if (image != null && DEREGISTERED_STATE.equals(image.getState())) {
+            throw new AwsException("InvalidAMIID.Unavailable",
+                    "The image id '[" + imageId + "]' has been deregistered and is no longer available", 400);
+        }
     }
 
     public List<Snapshot> describeSnapshots(String region, List<String> snapshotIds,
