@@ -44,6 +44,7 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
@@ -405,7 +406,7 @@ public class ApiGatewayExecuteController {
             case "AWS_PROXY" -> invokeProxy(region, apiId, httpMethod, path, proxy, stageName,
                     matched, stage, integration, headers, uriInfo, body, authorizerResult, resolvedApiKey,
                     iamIdentity);
-            case "AWS" -> invokeAwsIntegration(region, httpMethod, path, proxy, stageName,
+            case "AWS" -> invokeAwsIntegration(region, httpMethod, path, stageName,
                     matched, integration, headers, uriInfo, body);
             case "MOCK" -> invokeMock(region, httpMethod, path, stageName, matched, integration, headers, uriInfo, body);
             default -> Response.status(500)
@@ -436,7 +437,7 @@ public class ApiGatewayExecuteController {
         }
 
         String requestId = UUID.randomUUID().toString();
-        String eventJson = buildProxyEvent(region, apiId, httpMethod, path, proxy, resource.getPath(),
+        String eventJson = buildProxyEvent(region, apiId, httpMethod, path, resource.getPath(),
                 resource.getId(), stageName, stage, headers, uriInfo, body, requestId,
                 authorizerResult.principalId(), authorizerResult.context(), resolvedApiKey, iamIdentity);
 
@@ -725,7 +726,7 @@ public class ApiGatewayExecuteController {
     // Package-private rather than private so a focused unit test can assert the event's wire shape
     // without standing up a Lambda runtime, mirroring the buildV2ProxyEvent tests.
     String buildProxyEvent(String region, String apiId,
-                           String httpMethod, String path, String proxy,
+                           String httpMethod, String path,
                            String resourcePath, String resourceId,
                            String stageName, Stage stage,
                            HttpHeaders headers, UriInfo uriInfo,
@@ -750,12 +751,10 @@ public class ApiGatewayExecuteController {
         putMultiValueQueryStringParameters(event, uriInfo);
 
         // pathParameters come from the matcher, which ran on the normalized path, so the greedy
-        // {proxy+} value has no trailing slash on real AWS even when event.path keeps one.
+        // value has no trailing slash on real AWS even when event.path keeps one.
         ObjectNode pathParams = event.putObject("pathParameters");
-        if (proxy != null && !proxy.isEmpty()) {
-            pathParams.put("proxy", proxy);
-        }
         extractPathParams(resourcePath, path).forEach(pathParams::put);
+        greedyPathParam(resourcePath, path).forEach(pathParams::put);
 
         // stageVariables: populate from the Stage object (null if no variables configured)
         Map<String, String> stageVars = stage != null ? stage.getVariables() : null;
@@ -988,7 +987,7 @@ public class ApiGatewayExecuteController {
         return params;
     }
 
-    private Response invokeAwsIntegration(String region, String httpMethod, String path, String proxy,
+    private Response invokeAwsIntegration(String region, String httpMethod, String path,
                                           String stageName, ApiGatewayResource resource,
                                           Integration integration, HttpHeaders headers,
                                           UriInfo uriInfo, byte[] body) {
@@ -1012,8 +1011,8 @@ public class ApiGatewayExecuteController {
             if (!e.getValue().isEmpty()) queryMap.put(e.getKey(), e.getValue().get(0));
         }
         Map<String, String> pathMap = new HashMap<>();
-        if (proxy != null && !proxy.isEmpty()) pathMap.put("proxy", proxy);
         pathMap.putAll(extractPathParams(resource.getPath(), path));
+        pathMap.putAll(greedyPathParam(resource.getPath(), path));
 
         String incomingContentType = headerMap.getOrDefault("Content-Type",
                 headerMap.getOrDefault("content-type", "application/json"));
@@ -1371,6 +1370,7 @@ public class ApiGatewayExecuteController {
             }
         }
         Map<String, String> pathMap = new HashMap<>(extractPathParams(resource.getPath(), path));
+        pathMap.putAll(greedyPathParam(resource.getPath(), path));
 
         VtlTemplateEngine.VtlContext vtlCtx = new VtlTemplateEngine.VtlContext(
                 bodyStr, headerMap, queryMap, pathMap, stageName, httpMethod,
@@ -2703,18 +2703,18 @@ public class ApiGatewayExecuteController {
         }
         // 2. Template path match — /items/{id} matches /items/anything
         for (ApiGatewayResource r : resources) {
-            if (r.getPath() != null && r.getPath().contains("{") && !r.getPath().contains("{proxy+}")) {
+            if (r.getPath() != null && r.getPath().contains("{") && greedyParentPrefix(r.getPath()) == null) {
                 if (pathMatchesTemplate(r.getPath(), requestPath)) {
                     matches.add(r);
                 }
             }
         }
-        // 3. Proxy+ wildcard — {proxy+} matches longest parent prefix
+        // 3. Greedy wildcard: {proxy+}, or any other {name+}, matches longest parent prefix
         // Requires at least one path segment after the parent prefix (except root /{proxy+})
         List<ApiGatewayResource> proxyMatches = new ArrayList<>();
         for (ApiGatewayResource r : resources) {
-            if (r.getPath() == null || !r.getPath().contains("{proxy+}")) continue;
-            String parentPrefix = r.getPath().substring(0, r.getPath().indexOf("{proxy+}"));
+            String parentPrefix = greedyParentPrefix(r.getPath());
+            if (parentPrefix == null) continue;
             // Root /{proxy+} matches everything including /
             if ("/".equals(parentPrefix)) {
                 proxyMatches.add(r);
@@ -2728,8 +2728,8 @@ public class ApiGatewayExecuteController {
         }
         // Sort proxy matches by parentPrefix length descending
         proxyMatches.sort((r1, r2) -> {
-            String p1 = r1.getPath().substring(0, r1.getPath().indexOf("{proxy+}"));
-            String p2 = r2.getPath().substring(0, r2.getPath().indexOf("{proxy+}"));
+            String p1 = greedyParentPrefix(r1.getPath());
+            String p2 = greedyParentPrefix(r2.getPath());
             return Integer.compare(p2.length(), p1.length());
         });
         matches.addAll(proxyMatches);
@@ -2758,6 +2758,65 @@ public class ApiGatewayExecuteController {
             if (!tParts[i].equals(rParts[i])) return false;
         }
         return true;
+    }
+
+    /**
+     * True for a greedy path segment: {@code {proxy+}}, {@code {rest+}}, any {@code {name+}}.
+     *
+     * <p>AWS does not reserve the name: "you can use any string for the greedy path parameter
+     * name", so the segment is recognised by its trailing {@code +} rather than by the
+     * conventional {@code proxy} spelling. {@code {+}} is not greedy: the name must be present.
+     */
+    private static boolean isGreedySegment(String segment) {
+        return segment.length() > 3 && segment.startsWith("{") && segment.endsWith("+}");
+    }
+
+    /**
+     * Returns the literal prefix preceding a resource's greedy segment, or {@code null} when the
+     * resource declares none. {@code /assets/{rest+}} yields {@code /assets/}, and the root greedy
+     * resource {@code /{proxy+}} yields {@code /}.
+     *
+     * <p>Only a <em>terminal</em> greedy segment counts, matching AWS, where a greedy parameter is
+     * allowed solely as the last segment of a resource path and captures every descendant below
+     * the parent. This is what lets routing treat {@code /assets/{rest+}} as greedy: keying on the
+     * literal {@code {proxy+}} left such a resource to the single-segment template matcher, which
+     * compares segment counts, so {@code /assets/foo} matched but {@code /assets/img/logo.png}
+     * matched nothing at all.
+     */
+    private static String greedyParentPrefix(String resourcePath) {
+        if (resourcePath == null) return null;
+        int lastSlash = resourcePath.lastIndexOf('/');
+        if (lastSlash < 0) return null;
+        if (!isGreedySegment(resourcePath.substring(lastSlash + 1))) return null;
+        return resourcePath.substring(0, lastSlash + 1);
+    }
+
+    /**
+     * Returns the greedy path parameter for a matched resource, or an empty map when the resource
+     * declares none. It is the companion to {@link #extractPathParams}, which skips it deliberately.
+     *
+     * <p>AWS emits it solely for a greedy resource such as {@code /files/{proxy+}}, and its value
+     * is the remainder after the literal prefix: {@code a/b/c} for {@code /files/a/b/c}, not the
+     * whole request path. A plain parameterised resource such as {@code /datasets/{datasetId}}
+     * receives no extra key, so integrations validating the event against a strict schema
+     * (JSON Schema {@code additionalProperties: false}) do not see an undeclared property.
+     *
+     * <p>The parameter is named by the template, since {@code {proxy+}} is only the conventional
+     * spelling, so the name is read from the resource rather than hardcoded.
+     */
+    private static Map<String, String> greedyPathParam(String resourcePath, String requestPath) {
+        if (requestPath == null || greedyParentPrefix(resourcePath) == null) return Map.of();
+
+        String[] tParts = resourcePath.split("/", -1);
+        int greedyIndex = tParts.length - 1;   // terminal by definition of greedyParentPrefix
+        String greedy = tParts[greedyIndex];
+        String name = greedy.substring(1, greedy.length() - 2);
+
+        String[] rParts = requestPath.split("/", -1);
+        if (rParts.length <= greedyIndex) return Map.of();
+
+        String remainder = String.join("/", Arrays.copyOfRange(rParts, greedyIndex, rParts.length));
+        return remainder.isEmpty() ? Map.of() : Map.of(name, remainder);
     }
 
     /**
