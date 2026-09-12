@@ -3308,7 +3308,8 @@ public class S3Controller {
         }
 
         String accessKeyId = credential.split("/", 2)[0];
-        Optional<String> secretKey = S3PostPolicySigner.resolveSecretKey(iamService, accessKeyId);
+        Optional<String> secretKey = S3PostPolicySigner.resolveSecretKey(
+                iamService, accessKeyId, fields.get("x-amz-security-token"));
         if (secretKey.isEmpty()
                 || !S3PostPolicySigner.verifySignature(policy, credential, signature, secretKey.get())) {
             throw new AwsException("SignatureDoesNotMatch",
@@ -3322,7 +3323,7 @@ public class S3Controller {
         // known - strictly weaker than the signature check just performed above - but that will
         // change if authorizeObjectWrite grows real policy evaluation.
         s3Service.authorizeObjectWrite(bucket, key, "s3:PutObject",
-                new S3Service.RequestAuthorization(true, accessKeyId));
+                new S3Service.RequestAuthorization(true, accessKeyId, fields.get("x-amz-security-token")));
 
         validatePolicyExpiration(policy);
         validatePolicyConditions(policy, bucket, fields, contentLength);
