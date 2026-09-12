@@ -432,7 +432,7 @@ public class CloudHsmV2Service {
 
     // ──────────────────────────── TagResource ────────────────────────────
 
-    public void tagResource(String resourceId, Map<String, String> tags, String region) {
+    public synchronized void tagResource(String resourceId, Map<String, String> tags, String region) {
         if (resourceId == null || resourceId.isBlank()) {
             throw new AwsException("CloudHsmInvalidRequestException", "ResourceId is required.", 400);
         }
@@ -462,7 +462,7 @@ public class CloudHsmV2Service {
         }
     }
 
-    public void untagResource(String resourceId, List<String> tagKeys, String region) {
+    public synchronized void untagResource(String resourceId, List<String> tagKeys, String region) {
         if (resourceId == null || resourceId.isBlank()) {
             throw new AwsException("CloudHsmInvalidRequestException", "ResourceId is required.", 400);
         }
