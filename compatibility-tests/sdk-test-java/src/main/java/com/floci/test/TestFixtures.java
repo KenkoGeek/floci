@@ -26,6 +26,7 @@ import software.amazon.awssdk.http.Protocol;
 import software.amazon.awssdk.services.kms.KmsClient;
 import software.amazon.awssdk.services.lambda.LambdaClient;
 import software.amazon.awssdk.services.opensearch.OpenSearchClient;
+import software.amazon.awssdk.services.oam.OamClient;
 import software.amazon.awssdk.services.neptune.NeptuneClient;
 import software.amazon.awssdk.services.rds.RdsClient;
 import software.amazon.awssdk.services.redshift.RedshiftClient;
@@ -1288,6 +1289,14 @@ public final class TestFixtures {
 
     public static BackupClient backupClient() {
         return BackupClient.builder()
+                .endpointOverride(ENDPOINT)
+                .region(REGION)
+                .credentialsProvider(CREDENTIALS)
+                .build();
+    }
+
+    public static OamClient oamClient() {
+        return OamClient.builder()
                 .endpointOverride(ENDPOINT)
                 .region(REGION)
                 .credentialsProvider(CREDENTIALS)

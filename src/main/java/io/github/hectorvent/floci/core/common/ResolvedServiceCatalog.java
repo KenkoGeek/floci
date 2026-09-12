@@ -29,6 +29,7 @@ import io.github.hectorvent.floci.services.lambda.LambdaController;
 import io.github.hectorvent.floci.services.lambdamicrovms.LambdaMicrovmsController;
 import io.github.hectorvent.floci.services.lambdamicrovms.LambdaNetworkConnectorsController;
 import io.github.hectorvent.floci.services.opensearch.OpenSearchController;
+import io.github.hectorvent.floci.services.oam.OamController;
 import io.github.hectorvent.floci.services.cloudfront.CloudFrontController;
 import io.github.hectorvent.floci.services.cloudfront.CloudFrontServingController;
 import io.github.hectorvent.floci.services.route53.Route53Controller;
@@ -558,6 +559,10 @@ public class ResolvedServiceCatalog {
                         "bcmdataexports", config.storage().mode(), 5000L, null, ServiceProtocol.JSON,
                         protocols(ServiceProtocol.JSON),
                         Set.of("AWSBillingAndCostManagementDataExports."), Set.of("bcm-data-exports"), Set.of(), Set.of()),
+                descriptor("oam", "oam", config.services().oam().enabled(), true,
+                        "oam", config.storage().mode(), 5000L, null, ServiceProtocol.REST_JSON,
+                        protocols(ServiceProtocol.REST_JSON),
+                        Set.of(), Set.of("oam"), Set.of(), Set.of(OamController.class)),
                 descriptor("cloudfront", "cloudfront", config.services().cloudfront().enabled(), true,
                         "cloudfront", storageMode(config.storage().services().cloudfront().mode(), config.storage().mode()),
                         5000L, AwsNamespaces.CLOUDFRONT, ServiceProtocol.REST_XML,

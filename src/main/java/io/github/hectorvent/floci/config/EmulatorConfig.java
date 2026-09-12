@@ -703,6 +703,7 @@ public interface EmulatorConfig {
         CostExplorerServiceConfig ce();
         CurServiceConfig cur();
         BcmDataExportsServiceConfig bcmDataExports();
+        OamServiceConfig oam();
         ConfigServiceConfig configservice();
         CloudTrailServiceConfig cloudtrail();
         CloudControlServiceConfig cloudcontrol();
@@ -1920,6 +1921,11 @@ public interface EmulatorConfig {
         /** Seconds to wait for in-flight schema workers on shutdown. Env: FLOCI_SERVICES_APPSYNC_SCHEMA_WORKER_SHUTDOWN_TIMEOUT_SECONDS */
         @WithDefault("30")
         int schemaWorkerShutdownTimeoutSeconds();
+    }
+
+    interface OamServiceConfig {
+        @WithDefault("true")
+        boolean enabled();
     }
 
     interface BcmDataExportsServiceConfig {
