@@ -590,7 +590,7 @@ class MwaaServiceTest {
             Environment environment = realModeService.createEnvironment("starting-env",
                     createRequest("arn:aws:s3:::my-bucket", "dags"));
             when(environmentManager.isReady(environment)).thenReturn(false);
-            when(environmentManager.hasAirflowContainerExited(environment)).thenReturn(false);
+            when(environmentManager.hasAnyContainerExited(environment)).thenReturn(false);
 
             realModeService.checkReadiness(environment);
 
@@ -598,14 +598,14 @@ class MwaaServiceTest {
         }
 
         @Test
-        void checkReadinessMarksCreateFailedWhenTheAirflowContainerHasExited() {
-            // e.g. a startup script or `airflow db migrate` failed after docker start returned;
-            // without this, the environment would poll a dead container forever and never leave
-            // CREATING.
+        void checkReadinessMarksCreateFailedWhenAContainerHasExited() {
+            // e.g. a startup script or `airflow db migrate` failed after docker start returned, or
+            // the sibling Postgres container died; without this, the environment would poll dead
+            // containers forever and never leave CREATING.
             Environment environment = realModeService.createEnvironment("crashed-env",
                     createRequest("arn:aws:s3:::my-bucket", "dags"));
             when(environmentManager.isReady(environment)).thenReturn(false);
-            when(environmentManager.hasAirflowContainerExited(environment)).thenReturn(true);
+            when(environmentManager.hasAnyContainerExited(environment)).thenReturn(true);
 
             realModeService.checkReadiness(environment);
 
@@ -622,7 +622,7 @@ class MwaaServiceTest {
 
             assertEquals(EnvironmentStatus.AVAILABLE, environment.getStatus());
             verify(environmentManager, Mockito.never()).isReady(any());
-            verify(environmentManager, Mockito.never()).hasAirflowContainerExited(any());
+            verify(environmentManager, Mockito.never()).hasAnyContainerExited(any());
         }
 
         @Test
@@ -643,12 +643,12 @@ class MwaaServiceTest {
 
         @Test
         void checkReadinessDoesNotOverwriteAStatusChangedConcurrentlyWhileWaitingOnContainerExitCheck() {
-            // Same race, on the hasAirflowContainerExited() branch: without the re-check, this would
+            // Same race, on the hasAnyContainerExited() branch: without the re-check, this would
             // resurrect a just-deleted environment into storage as CREATE_FAILED.
             Environment environment = realModeService.createEnvironment("deleted-mid-crash-check-env",
                     createRequest("arn:aws:s3:::my-bucket", "dags"));
             when(environmentManager.isReady(environment)).thenReturn(false);
-            when(environmentManager.hasAirflowContainerExited(environment)).thenAnswer(invocation -> {
+            when(environmentManager.hasAnyContainerExited(environment)).thenAnswer(invocation -> {
                 environment.setStatus(EnvironmentStatus.DELETING);
                 return true;
             });
