@@ -262,7 +262,11 @@ class CodePipelineIntegrationTest {
                 .then()
                 .statusCode(200)
                 .body("stageStates", hasSize(2))
-                .body("stageStates[0].actionStates[0].latestExecution.status", equalTo("Succeeded"));
+                .body("stageStates[0].actionStates[0].latestExecution.status", equalTo("Succeeded"))
+                .body("stageStates[0].latestExecution.pipelineExecutionId", equalTo(executionId))
+                .body("stageStates[0].latestExecution.status", equalTo("Succeeded"))
+                .body("stageStates[1].latestExecution.pipelineExecutionId", equalTo(executionId))
+                .body("stageStates[1].latestExecution.status", equalTo("Succeeded"));
 
         post("ListActionExecutions", """
                 {
@@ -764,7 +768,133 @@ class CodePipelineIntegrationTest {
                 .then()
                 .statusCode(200)
                 .body("stageStates[0].actionStates[0].latestExecution.status", equalTo("Failed"))
-                .body("stageStates[0].actionStates[0].latestExecution.summary", equalTo("Rejected by test"));
+                .body("stageStates[0].actionStates[0].latestExecution.summary", equalTo("Rejected by test"))
+                .body("stageStates[0].latestExecution.pipelineExecutionId", equalTo(executionId2))
+                .body("stageStates[0].latestExecution.status", equalTo("Failed"));
+    }
+
+    @Test
+    void stageStatusTracksMultipleRunOrdersAndStopBeforeLaterGroup() throws Exception {
+        String pipelineName = "multi-run-order-stage-status";
+        post("CreatePipeline", pipeline(pipelineName, """
+                {
+                    "name": "Approve",
+                    "actions": [
+                        {
+                            "name": "FirstApproval",
+                            "actionTypeId": {
+                                "category": "Approval",
+                                "owner": "AWS",
+                                "provider": "Manual",
+                                "version": "1"
+                            },
+                            "configuration": {},
+                            "runOrder": 1
+                        },
+                        {
+                            "name": "SecondApproval",
+                            "actionTypeId": {
+                                "category": "Approval",
+                                "owner": "AWS",
+                                "provider": "Manual",
+                                "version": "1"
+                            },
+                            "configuration": {},
+                            "runOrder": 2
+                        },
+                        {
+                            "name": "NeverStartedApproval",
+                            "actionTypeId": {
+                                "category": "Approval",
+                                "owner": "AWS",
+                                "provider": "Manual",
+                                "version": "1"
+                            },
+                            "configuration": {},
+                            "runOrder": 3
+                        }
+                    ]
+                },
+                {
+                    "name": "Deploy",
+                    "actions": [{
+                        "name": "PlaceholderAction",
+                        "actionTypeId": {
+                            "category": "Deploy",
+                            "owner": "AWS",
+                            "provider": "S3",
+                            "version": "1"
+                        },
+                        "configuration": {
+                            "BucketName": "codepipeline-artifacts",
+                            "ObjectKey": "placeholder"
+                        },
+                        "runOrder": 1
+                    }]
+                }
+                """))
+                .then()
+                .statusCode(200);
+
+        String executionId = post("StartPipelineExecution", """
+                {"name": "%s"}
+                """.formatted(pipelineName))
+                .then()
+                .statusCode(200)
+                .extract().path("pipelineExecutionId");
+
+        String firstToken = waitForApprovalToken(pipelineName, 0);
+        post("PutApprovalResult", """
+                {
+                    "pipelineName": "%s",
+                    "stageName": "Approve",
+                    "actionName": "FirstApproval",
+                    "token": "%s",
+                    "result": {"status": "Approved", "summary": "First group complete"}
+                }
+                """.formatted(pipelineName, firstToken))
+                .then()
+                .statusCode(200);
+
+        waitForApprovalToken(pipelineName, 1);
+        post("GetPipelineState", """
+                {"name": "%s"}
+                """.formatted(pipelineName))
+                .then()
+                .statusCode(200)
+                .body("stageStates[0].latestExecution.pipelineExecutionId", equalTo(executionId))
+                .body("stageStates[0].latestExecution.status", equalTo("InProgress"))
+                .body("stageStates[0].actionStates[0].latestExecution.status", equalTo("Succeeded"))
+                .body("stageStates[0].actionStates[1].latestExecution.status", equalTo("InProgress"))
+                .body("stageStates[0].actionStates[2].latestExecution", nullValue());
+
+        post("StopPipelineExecution", """
+                {
+                    "pipelineName": "%s",
+                    "pipelineExecutionId": "%s",
+                    "abandon": true,
+                    "reason": "Verify stage status"
+                }
+                """.formatted(pipelineName, executionId))
+                .then()
+                .statusCode(200)
+                .body("pipelineExecutionId", equalTo(executionId));
+
+        waitForExecution(pipelineName, executionId, "Stopped");
+        post("GetPipelineState", """
+                {"name": "%s"}
+                """.formatted(pipelineName))
+                .then()
+                .statusCode(200)
+                .body("stageStates[0].latestExecution.pipelineExecutionId", equalTo(executionId))
+                .body("stageStates[0].latestExecution.status", equalTo("Stopped"))
+                .body("stageStates[0].actionStates[0].latestExecution.status", equalTo("Succeeded"))
+                .body("stageStates[0].actionStates[1].latestExecution.status", equalTo("Abandoned"))
+                .body("stageStates[0].actionStates[2].latestExecution", nullValue());
+
+        post("DeletePipeline", """
+                {"name": "%s"}
+                """.formatted(pipelineName)).then().statusCode(200);
     }
 
     @Test
@@ -1094,13 +1224,18 @@ class CodePipelineIntegrationTest {
     }
 
     private String waitForApprovalToken(String pipelineName) throws Exception {
+        return waitForApprovalToken(pipelineName, 0);
+    }
+
+    private String waitForApprovalToken(String pipelineName, int actionIndex) throws Exception {
         Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
         String token;
         do {
             token = post("GetPipelineState", """
                     {"name": "%s"}
                     """.formatted(pipelineName))
-                    .jsonPath().getString("stageStates[0].actionStates[0].latestExecution.token");
+                    .jsonPath().getString(
+                            "stageStates[0].actionStates[%d].latestExecution.token".formatted(actionIndex));
             if (token != null) {
                 return token;
             }
