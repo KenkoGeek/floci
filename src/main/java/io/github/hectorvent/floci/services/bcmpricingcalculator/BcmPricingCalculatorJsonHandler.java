@@ -88,10 +88,10 @@ public class BcmPricingCalculatorJsonHandler {
         ObjectNode out = objectMapper.createObjectNode();
         out.put("id", e.getId());
         out.put("name", e.getName());
-        out.put("createdAt", e.getCreatedAt().toString());
-        out.put("expiresAt", e.getExpiresAt().toString());
+        out.put("createdAt", epochSeconds(e.getCreatedAt()));
+        out.put("expiresAt", epochSeconds(e.getExpiresAt()));
         out.put("rateType", e.getRateType());
-        out.put("rateTimestamp", e.getRateTimestamp().toString());
+        out.put("rateTimestamp", epochSeconds(e.getRateTimestamp()));
         out.put("status", e.getStatus());
         out.put("totalCost", e.getTotalCost());
         out.put("costCurrency", e.getCostCurrency());
@@ -115,6 +115,10 @@ public class BcmPricingCalculatorJsonHandler {
         out.put("status", u.getStatus());
         out.put("key", u.getKey());
         return out;
+    }
+
+    private static double epochSeconds(java.time.Instant instant) {
+        return instant.getEpochSecond() + instant.getNano() / 1_000_000_000.0;
     }
 
     private static String text(JsonNode node, String field) {

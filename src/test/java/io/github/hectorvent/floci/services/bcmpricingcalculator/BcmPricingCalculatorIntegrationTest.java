@@ -25,6 +25,9 @@ class BcmPricingCalculatorIntegrationTest {
             .when().post("/")
             .then().statusCode(200)
                 .body("status", equalTo("VALID"))
+                .body("createdAt", instanceOf(Number.class))
+                .body("expiresAt", instanceOf(Number.class))
+                .body("rateTimestamp", instanceOf(Number.class))
                 .body("costCurrency", equalTo("USD"))
                 .extract().path("id");
 
