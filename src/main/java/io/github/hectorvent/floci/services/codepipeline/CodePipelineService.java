@@ -71,6 +71,7 @@ public class CodePipelineService {
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final ScheduledExecutorService sourcePoller = Executors.newSingleThreadScheduledExecutor();
     private final Map<String, Object> pipelineLocks = new ConcurrentHashMap<>();
+    private final Map<String, Object> sourcePollLocks = new ConcurrentHashMap<>();
     // Admission is serialized per pipeline on its own lock. A QUEUED worker holds the pipelineLocks
     // monitor for its whole run, so counting under that monitor would block StartPipelineExecution
     // until the running execution finished.
@@ -215,6 +216,19 @@ public class CodePipelineService {
     }
 
     private void pollS3Sources(CodePipelinePipeline pipeline) {
+        String pollLockKey = pipelineLockKey(
+                pipeline.getAccountId(), pipeline.getRegion(), pipeline.getName());
+        synchronized (sourcePollLocks.computeIfAbsent(pollLockKey, ignored -> new Object())) {
+            Optional<CodePipelinePipeline> currentPipeline = pipelineStore.getForAccount(
+                    pipeline.getAccountId(), pipelineKey(pipeline.getRegion(), pipeline.getName()));
+            if (currentPipeline.isEmpty()) {
+                return;
+            }
+            pollS3SourcesLocked(currentPipeline.get());
+        }
+    }
+
+    private void pollS3SourcesLocked(CodePipelinePipeline pipeline) {
         forEachPolledS3Source(pipeline, (stageName, action) -> {
             String actionName = action.path("name").asText();
             String cursorId = sourcePollCursorId(pipeline.getName(), stageName, actionName);
@@ -333,8 +347,11 @@ public class CodePipelineService {
         pipeline.setDeclaration(normalizeDeclaration(declaration, 1));
         pipeline.setTags(parseTags(request.path("tags")));
         initializeTransitions(pipeline);
-        putPipeline(pipeline);
-        resetSourcePollingBaselines(pipeline);
+        String pollLockKey = pipelineLockKey(account, region, name);
+        synchronized (sourcePollLocks.computeIfAbsent(pollLockKey, ignored -> new Object())) {
+            putPipeline(pipeline);
+            resetSourcePollingBaselines(pipeline);
+        }
         ObjectNode response = mapper.createObjectNode();
         response.set("pipeline", pipeline.getDeclaration());
         if (!pipeline.getTags().isEmpty()) {
@@ -352,8 +369,11 @@ public class CodePipelineService {
         pipeline.setUpdated(now());
         pipeline.setDeclaration(normalizeDeclaration(declaration, version));
         initializeTransitions(pipeline);
-        putPipeline(pipeline);
-        resetSourcePollingBaselines(pipeline);
+        String pollLockKey = pipelineLockKey(account, region, name);
+        synchronized (sourcePollLocks.computeIfAbsent(pollLockKey, ignored -> new Object())) {
+            putPipeline(pipeline);
+            resetSourcePollingBaselines(pipeline);
+        }
         ObjectNode response = mapper.createObjectNode();
         response.set("pipeline", pipeline.getDeclaration());
         return response;
@@ -378,13 +398,16 @@ public class CodePipelineService {
     private ObjectNode deletePipeline(JsonNode request, String region, String account) {
         String name = text(request, "name");
         validatePipelineName(name);
-        pipelineStore.deleteForAccount(account, pipelineKey(region, name));
-        for (String key : executionStore.keysForAccount(account)) {
-            if (key.startsWith(region + ":" + name + ":")) {
-                executionStore.deleteForAccount(account, key);
+        String pollLockKey = pipelineLockKey(account, region, name);
+        synchronized (sourcePollLocks.computeIfAbsent(pollLockKey, ignored -> new Object())) {
+            pipelineStore.deleteForAccount(account, pipelineKey(region, name));
+            for (String key : executionStore.keysForAccount(account)) {
+                if (key.startsWith(region + ":" + name + ":")) {
+                    executionStore.deleteForAccount(account, key);
+                }
             }
+            deleteSourcePollingBaselines(account, region, name);
         }
-        deleteSourcePollingBaselines(account, region, name);
         return mapper.createObjectNode();
     }
 
@@ -1658,7 +1681,11 @@ public class CodePipelineService {
     }
 
     private static String lockKey(CodePipelineExecution execution) {
-        return execution.getAccountId() + ":" + execution.getRegion() + ":" + execution.getPipelineName();
+        return pipelineLockKey(execution.getAccountId(), execution.getRegion(), execution.getPipelineName());
+    }
+
+    private static String pipelineLockKey(String account, String region, String pipelineName) {
+        return account + ":" + region + ":" + pipelineName;
     }
 
     private static String artifactKey(CodePipelineExecution execution, String artifactName) {
