@@ -156,6 +156,24 @@ class MacieServiceTest {
     }
 
     @Test
+    void listMembersDefaultsAndCapsMaxResultsAtTwentyFive() {
+        service.enableOrganizationAdminAccount(REGION, ADMIN_ACCOUNT);
+        for (int i = 0; i < 26; i++) {
+            String accountId = String.format("333333333%03d", i);
+            service.createMember(REGION, ADMIN_ACCOUNT, accountId, "member" + i + "@example.com", Map.of());
+        }
+
+        MacieService.Page<MacieMember> defaultPage = service.listMembers(
+                REGION, ADMIN_ACCOUNT, null, null, null);
+        assertEquals(25, defaultPage.items().size());
+        assertTrue(defaultPage.nextToken() != null && !defaultPage.nextToken().isBlank());
+
+        AwsException error = assertThrows(AwsException.class,
+                () -> service.listMembers(REGION, ADMIN_ACCOUNT, "26", null, null));
+        assertEquals("ValidationException", error.getErrorCode());
+    }
+
+    @Test
     void createMemberValidatesAccountEmailAndTagQuota() {
         service.enableOrganizationAdminAccount(REGION, ADMIN_ACCOUNT);
 

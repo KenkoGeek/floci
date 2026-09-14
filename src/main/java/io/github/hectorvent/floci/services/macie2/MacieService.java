@@ -176,16 +176,16 @@ public class MacieService implements Resettable {
 
     private static int parseMaxResults(String value) {
         if (value == null) {
-            return 50;
+            return 25;
         }
         try {
             int parsed = Integer.parseInt(value);
-            if (parsed < 1 || parsed > 50) {
-                throw validation("maxResults must be between 1 and 50.");
+            if (parsed < 1 || parsed > 25) {
+                throw validation("maxResults must be between 1 and 25.");
             }
             return parsed;
         } catch (NumberFormatException e) {
-            throw validation("maxResults must be between 1 and 50.");
+            throw validation("maxResults must be between 1 and 25.");
         }
     }
 
